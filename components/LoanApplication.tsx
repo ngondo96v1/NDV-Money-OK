@@ -257,13 +257,14 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
 
   const isSystemOutOfCapital = systemBudget <= 0 || systemBudget < Number(settings.MIN_SYSTEM_BUDGET || 1000000);
 
-  const nextSequence = (user?.lastLoanSeq || 0) + 1;
   const nextContractId = useMemo(() => {
     if (!user) return 'TEMP-ID';
-    const format = getSystemFormat(settings, 'contract', 'HD-{RANDOM}');
-    const nextSeq = (user.lastLoanSeq || 0) + 1;
+    const userLoans = (loans || []).filter(l => l.userId === user.id);
+    const settledCount = userLoans.filter(l => l.status === 'ĐÃ TẤT TOÁN').length;
+    const nextSeq = settledCount + 1;
+    const format = getSystemFormat(settings, 'contract', '{ID}NDV{N}');
     return generateContractId(user.id, format, settings, undefined, nextSeq);
-  }, [user?.id, step === LoanStep.CONTRACT, settings.SYSTEM_FORMATS_CONFIG, settings.CONTRACT_CODE_FORMAT, user?.lastLoanSeq]);
+  }, [user?.id, step === LoanStep.CONTRACT, settings.SYSTEM_FORMATS_CONFIG, settings.CONTRACT_CODE_FORMAT, loans]);
 
   const getCalculatedDueDate = () => {
     const now = new Date();

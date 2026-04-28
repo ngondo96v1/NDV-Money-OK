@@ -139,7 +139,7 @@ const resolveMasterConfig = (
         if (type === 'user_id' && context.userId) dataValue = context.userId;
         if ((type === 'contract_id' || type === 'contract_id_original') && context.originalId) dataValue = context.originalId;
         if (type === 'sequence' && (context.sequence !== undefined || context.n !== undefined)) {
-          dataValue = (context.sequence ?? context.n ?? 0).toString();
+          dataValue = (context.sequence ?? context.n ?? 1).toString();
         }
         if (type === 'phone' && context.phone) dataValue = context.phone;
 
@@ -167,7 +167,7 @@ const resolveMasterConfig = (
           } else if ((abbr === 'MHD' || abbr === 'CONTRACT' || abbr === 'HD') && context.originalId) {
             dataValue = context.originalId;
           } else if (abbr === 'N' && (context.sequence !== undefined || context.n !== undefined)) {
-            dataValue = (context.sequence ?? context.n ?? 0).toString();
+            dataValue = (context.sequence ?? context.n ?? 1).toString();
           }
         }
 
@@ -203,7 +203,7 @@ const resolveMasterConfig = (
               replacement = context.originalId ? `${context.originalId}NEW` : '';
               break;
             case 'sequence':
-              replacement = (context.sequence ?? context.n ?? 0).toString();
+              replacement = (context.sequence ?? context.n ?? 1).toString();
               break;
             case 'date':
             case 'date_now':
@@ -262,8 +262,12 @@ const resolveMasterConfig = (
 
   // Legacy placeholders
   result = result.replace(/\{ID\}|\{USER\}/gi, userPart);
-  result = result.replace(/\{MHD\}|\{CONTRACT\}/gi, context.originalId || "HD0001");
-  result = result.replace(/\{N\}/gi, (context.sequence !== undefined ? context.sequence : (context.n !== undefined ? context.n : 0)).toString());
+  result = result.replace(/\{MHD\}|\{CONTRACT\}/gi, () => {
+    if (context.originalId) return context.originalId;
+    // Generate 4 random digits as fallback for {MHD} if no originalId provided
+    return Math.floor(1000 + Math.random() * 9000).toString();
+  });
+  result = result.replace(/\{N\}/gi, (context.sequence !== undefined ? context.sequence : (context.n !== undefined ? context.n : 1)).toString());
   result = result.replace(/\{DATE\}|\{NGÀY\}/gi, dateStr);
 
   return result;
@@ -450,8 +454,8 @@ export const generatePaymentContent = (type: 'SETTLE' | 'UPGRADE' | 'DISBURSE', 
   const resolved = resolveMasterConfig(template, settings, {
     userId: userId || id.slice(-4).toUpperCase(), 
     originalId: baseId || cleanId, // Use the stripped base ID if possible
-    sequence: settleType === 'PARTIAL' ? (partialCount + 1) : (extensionCount + 1),
-    n: settleType === 'PARTIAL' ? (partialCount + 1) : (extensionCount + 1),
+    sequence: (settleType === 'PARTIAL' ? (partialCount + 1) : (extensionCount + 1)),
+    n: (settleType === 'PARTIAL' ? (partialCount + 1) : (extensionCount + 1)),
     slgh: extensionCount + 1,
     slttmp: partialCount + 1,
     phone: userPhone,

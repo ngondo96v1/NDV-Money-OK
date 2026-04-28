@@ -1991,8 +1991,10 @@ const App: React.FC = () => {
       const dueDate = `${dayStr}/${monthStr}/${finalDate.getFullYear()}`;
       
       // Logic tạo Mã hợp đồng: Sử dụng hàm sinh mã duy nhất
-      const nextSeq = (user.lastLoanSeq || 0) + 1;
-      const format = getSystemFormat(settings, 'contract', 'HD-{MHD}');
+      // Quy tắc: Hậu tố N = (Số khoản vay ĐÃ TẤT TOÁN) + 1
+      const settledCount = userLoans.filter(l => l.status === 'ĐÃ TẤT TOÁN').length;
+      const nextSeq = settledCount + 1;
+      const format = getSystemFormat(settings, 'contract', '{ID}NDV{N}');
       const contractId = generateContractId(user.id, format, settings, undefined, nextSeq);
 
       const newLoan: LoanRecord = {
