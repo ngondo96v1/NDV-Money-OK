@@ -1,0 +1,7 @@
+{
+  "name": "2NDV FN26 V1 PRM New",
+  "description": "NDV123",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
