@@ -670,7 +670,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                             </div>
                           </div>
                           <div className="space-y-0.5 col-span-1">
-                            <div className="flex items-center gap-1.5"><Users size={11} className="text-[#ff8c00]/60" /><p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">Người tham chiếu</p></div>
+                            <div className="flex items-center gap-1.5"><Users size={11} className="text-[#ff8c00]/60" /><p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">Người thân (Zalo)</p></div>
                             <div className="flex items-center gap-2 pt-0.5 overflow-hidden">
                               <p className="text-[11px] font-black text-white truncate">{u.refZalo || 'CHƯA CÓ'}</p>
                               {u.refZalo && <a href={`https://zalo.me/${u.refZalo.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-blue-400"><ExternalLink size={10} /></a>}

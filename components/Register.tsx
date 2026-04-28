@@ -326,7 +326,7 @@ const Register: React.FC<RegisterProps> = ({ onBack, onRegister, onClearError, e
             <input
               type="tel"
               inputMode="numeric"
-              placeholder="ZALO THAM CHIẾU"
+              placeholder="ZALO NGƯỜI THÂN"
               className={`w-full bg-[#16161a] border rounded-xl py-3.5 pl-14 pr-3.5 text-[11px] font-bold text-white placeholder-gray-600 focus:outline-none transition-all ${tooltips.refZalo || serverFieldErrors.zalo ? 'border-red-500' : 'border-white/5 focus:border-orange-500/30'}`}
               value={formData.refZalo}
               onBlur={() => handleBlur('refZalo')}
