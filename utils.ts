@@ -418,42 +418,10 @@ export const generatePaymentContent = (type: 'SETTLE' | 'UPGRADE' | 'DISBURSE', 
   }
 
   // Use resolveMasterConfig for consistent resolution
-  // Clean the original ID from existing prefixes to avoid duplication (e.g., TTMP TTMP... -> TTMP...)
-  const cleanId = id;
-  
-  // Use originalBaseId if available, otherwise strip prefixes from current ID
-  let baseId = data.originalBaseId || '';
-  
-  if (!baseId) {
-    // Get all possible prefixes to strip them from the ID if they exist
-    const masterConfigs = Array.isArray(settings?.MASTER_CONFIGS) ? settings.MASTER_CONFIGS : [];
-    const allAbbrs = masterConfigs
-      .filter((c: any) => c.category === 'ABBREVIATION' || c.category === 'TRANSFER_CONTENT' || c.category === 'CONTRACT_NEW')
-      .map((c: any) => c.abbreviation)
-      .filter(Boolean);
-    
-    // Add some common system ones just in case
-    const systemAbbrs = ['TTMP', 'GH', 'GN', 'NH', 'TT', 'TATTOAN', 'GIAHAN', 'GIAINGAN'];
-    const stripRegex = new RegExp(`^(${[...new Set([...allAbbrs, ...systemAbbrs])].join('|')})`, 'i');
-    
-    // We only strip if the ID actually starts with one of these, to keep the core ID intact
-    const oldId = cleanId;
-    baseId = cleanId.replace(stripRegex, '').trim();
-    // Only strip trailing digits and connectors if we actually removed a system prefix (indicating it's already an extension/partial)
-    if (oldId !== baseId) {
-      // Remove common connectors like LAN, LẦN, L, # followed by digits, or just digits
-      baseId = baseId.replace(/(LAN|LẦN|L|#)\s*\d+$/i, '').replace(/\d+$/, '').trim();
-    }
-  }
-
-  // Final pass for legacy and special placeholders
-  const rankConfig = Array.isArray(settings.RANK_CONFIG) ? settings.RANK_CONFIG : [];
-  const foundRank = rankConfig.find((r: any) => r.id === targetRank);
-  const rankName = foundRank ? removeAccents(foundRank.name) : removeAccents(targetRank);
-
+  // Use the provided ID as the primary source for {ID} and {MHD} in payment content
   const resolved = resolveMasterConfig(template, settings, {
-    userId: userId || id.slice(-4).toUpperCase(), 
-    originalId: baseId || cleanId, // Use the stripped base ID if possible
+    userId: userId || id.split('NDV')[0] || id.slice(-4).toUpperCase(), 
+    originalId: id, // Use the full current ID as the originalId for payment content
     sequence: (settleType === 'PARTIAL' ? (partialCount + 1) : (extensionCount + 1)),
     n: (settleType === 'PARTIAL' ? (partialCount + 1) : (extensionCount + 1)),
     slgh: extensionCount + 1,
@@ -463,8 +431,8 @@ export const generatePaymentContent = (type: 'SETTLE' | 'UPGRADE' | 'DISBURSE', 
   });
 
   return resolved
-    .replace(/\{ID\}|\{Mã Hợp Đồng\}|\{LOAN_ID\}|\{MHD\}/gi, id)
-    .replace(/\{USER\}|\{MÃ USER\}|\{NGƯỜI DÙNG\}/gi, userId || id.slice(-4).toUpperCase())
+    .replace(/\{ID\}|\{Mã Hợp Đồng\}|\{LOAN_ID\}|\{MHD\}|\{HD\}/gi, id)
+    .replace(/\{USER\}|\{MÃ USER\}|\{NGƯỜI DÙNG\}/gi, userId || id.split('NDV')[0] || id.slice(-4).toUpperCase())
     .replace(/\{PHONE\}|\{SĐT\}|\{SDT\}|\{SỐ ĐIỆN THOẠI\}|\{SO DIEN THOAI\}/gi, userPhone)
     .replace(/\{RANK\}|\{HẠNG\}|\{HANG\}|\{TÊN HẠNG CẦN NÂNG\}|\{TEN HANG NANG CAP\}|\{TEN HANG\}|\{TÊN HẠNG\}/gi, rankName)
     .replace(/\{SỐ LẦN GIA HẠN\}|\{EXTENSION_COUNT\}|\{SLGH\}/gi, settleType === 'PRINCIPAL' ? (extensionCount + 1).toString() : '')
