@@ -379,11 +379,11 @@ END $$;`;
     JWT_SECRET: '',
     ADMIN_PHONE: '',
     ADMIN_PASSWORD: '',
-    PAYMENT_CONTENT_FULL_SETTLEMENT: 'TAT TOAN TAT CA {ID}',
-    PAYMENT_CONTENT_PARTIAL_SETTLEMENT: 'TAT TOAN 1 PHAN {ID}',
-    PAYMENT_CONTENT_EXTENSION: 'GIA HAN {SLGH}',
-    PAYMENT_CONTENT_UPGRADE: 'NANG HANG {TEN HANG}',
-    CONTRACT_CODE_FORMAT: 'HD-{MHD}',
+    PAYMENT_CONTENT_FULL_SETTLEMENT: '{ID}',
+    PAYMENT_CONTENT_PARTIAL_SETTLEMENT: 'TTMP {ID}',
+    PAYMENT_CONTENT_EXTENSION: 'GH {ID}',
+    PAYMENT_CONTENT_UPGRADE: 'NH {RANK} {ID}',
+    CONTRACT_CODE_FORMAT: '{ID}NDV{N}',
     USER_ID_FORMAT: 'US-{RANDOM}',
     LUCKY_SPIN_VOUCHERS: [
       { minProfit: 1000000, voucherValue: 50000 },
@@ -478,18 +478,18 @@ END $$;`;
         
         // ID Formats
         { id: `i1_${now}`, category: 'ID_FORMAT', originalName: 'ID User', abbreviation: 'ID', format: 'US {RD}', systemMeaning: 'user_format' },
-        { id: `i2_${now}`, category: 'ID_FORMAT', originalName: 'Mã HĐ', abbreviation: 'HD', format: 'HD {ID} {DT} {RD}', systemMeaning: 'contract_original_format' },
+        { id: `i2_${now}`, category: 'ID_FORMAT', originalName: 'Mã HĐ', abbreviation: 'HD', format: '{ID}NDV{N}', systemMeaning: 'contract_original_format' },
         
         // Contract Formats
-        { id: `h1_${now}`, category: 'CONTRACT_NEW', originalName: 'HĐ TP', abbreviation: 'H1', format: 'TTMP {LV} {HD}', systemMeaning: 'contract_partial_format' },
-        { id: `h2_${now}`, category: 'CONTRACT_NEW', originalName: 'HĐ GH', abbreviation: 'H2', format: 'GH {GH} {HD}', systemMeaning: 'contract_extension_format' },
+        { id: `h1_${now}`, category: 'CONTRACT_NEW', originalName: 'HĐ TP', abbreviation: 'H1', format: 'TTMP {HD}', systemMeaning: 'contract_partial_format' },
+        { id: `h2_${now}`, category: 'CONTRACT_NEW', originalName: 'HĐ GH', abbreviation: 'H2', format: 'GH {HD}', systemMeaning: 'contract_extension_format' },
         
         // Transfer Contents
-        { id: `t1_${now}`, category: 'TRANSFER_CONTENT', originalName: 'CK Full', abbreviation: 'T1', format: 'TT {HD}', systemMeaning: 'transfer_full' },
-        { id: `t2_${now}`, category: 'TRANSFER_CONTENT', originalName: 'CK TP', abbreviation: 'T2', format: 'TP {TP} {HD}', systemMeaning: 'transfer_partial' },
-        { id: `t3_${now}`, category: 'TRANSFER_CONTENT', originalName: 'CK GH', abbreviation: 'T3', format: 'GH {GH} {HD}', systemMeaning: 'transfer_extension' },
+        { id: `t1_${now}`, category: 'TRANSFER_CONTENT', originalName: 'CK Full', abbreviation: 'T1', format: '{HD}', systemMeaning: 'transfer_full' },
+        { id: `t2_${now}`, category: 'TRANSFER_CONTENT', originalName: 'CK TP', abbreviation: 'T2', format: 'TP {HD}', systemMeaning: 'transfer_partial' },
+        { id: `t3_${now}`, category: 'TRANSFER_CONTENT', originalName: 'CK GH', abbreviation: 'T3', format: 'GH {HD}', systemMeaning: 'transfer_extension' },
         { id: `t4_${now}`, category: 'TRANSFER_CONTENT', originalName: 'CK NH', abbreviation: 'T4', format: 'NH {RK} {ID}', systemMeaning: 'transfer_upgrade' },
-        { id: `t5_${now}`, category: 'TRANSFER_CONTENT', originalName: 'CK GN', abbreviation: 'T5', format: 'GN {LV} {HD}', systemMeaning: 'transfer_disburse' }
+        { id: `t5_${now}`, category: 'TRANSFER_CONTENT', originalName: 'CK GN', abbreviation: 'T5', format: 'GN {HD}', systemMeaning: 'transfer_disburse' }
       ];
 
       // 2. Rank Config - Professional Tiers

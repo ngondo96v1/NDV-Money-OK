@@ -255,10 +255,10 @@ const getMergedSettings = async (client: any) => {
     ],
     CONTRACT_FORMATS_CONFIG: dbSettings.CONTRACT_FORMATS_CONFIG || config.CONTRACT_FORMATS_CONFIG || [],
     TRANSFER_CONTENTS_CONFIG: dbSettings.TRANSFER_CONTENTS_CONFIG || config.TRANSFER_CONTENTS_CONFIG || [
-      { key: 'FULL_SETTLEMENT', original: 'Tất toán', abbr: 'TT', value: 'TAT TOAN {ID}' },
-      { key: 'PARTIAL_SETTLEMENT', original: 'TT 1 phần', abbr: 'TTMP', value: 'TTMP {ID} LAN {SLTTMP}' },
-      { key: 'EXTENSION', original: 'Gia hạn', abbr: 'GH', value: 'GIA HAN {ID} LAN {SLGH}' },
-      { key: 'UPGRADE', original: 'Nâng hạng', abbr: 'NH', value: 'HANG {RANK} {USER}' }
+      { key: 'FULL_SETTLEMENT', original: 'Tất toán', abbr: 'TT', value: '{ID}' },
+      { key: 'PARTIAL_SETTLEMENT', original: 'TT 1 phần', abbr: 'TTMP', value: 'TTMP {ID}' },
+      { key: 'EXTENSION', original: 'Gia hạn', abbr: 'GH', value: 'GH {ID}' },
+      { key: 'UPGRADE', original: 'Nâng hạng', abbr: 'NH', value: 'NH {RANK} {ID}' }
     ],
     SYSTEM_CONTRACT_FORMATS_CONFIG: dbSettings.SYSTEM_CONTRACT_FORMATS_CONFIG || config.SYSTEM_CONTRACT_FORMATS_CONFIG || [
       { key: 'PARTIAL_SETTLEMENT', original: 'TT 1 phần', abbr: 'TTMP', value: '{ID}TTMP{N}' },
@@ -1283,7 +1283,7 @@ const generateUserIdServer = (format = '{RANDOM 6 SỐ}', settings?: any) => {
   return resolveMasterConfigServer(format, settings, {});
 };
 
-const generateContractIdServer = (userId: string, format = 'HD-{MHD}', settings?: any, loanId?: string, seq?: number, n?: number, slgh?: number, slttmp?: number) => {
+const generateContractIdServer = (userId: string, format = '{ID}NDV{N}', settings?: any, loanId?: string, seq?: number, n?: number, slgh?: number, slttmp?: number) => {
   return resolveMasterConfigServer(format, settings, { userId, originalId: loanId, sequence: seq || n, n, slgh, slttmp });
 };
 

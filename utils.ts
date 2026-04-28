@@ -273,7 +273,7 @@ const resolveMasterConfig = (
   return result;
 };
 
-export const generateContractId = (userId: string, format = 'HD{RANDOM}', settings?: any, originalId?: string, sequence?: number, phone?: string, slgh?: number, slttmp?: number): string => {
+export const generateContractId = (userId: string, format = '{ID}NDV{N}', settings?: any, originalId?: string, sequence?: number, phone?: string, slgh?: number, slttmp?: number): string => {
   return resolveMasterConfig(format, settings, { userId, originalId, sequence, phone, slgh, slttmp });
 };
 
