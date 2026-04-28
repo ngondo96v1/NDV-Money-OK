@@ -417,7 +417,11 @@ export const generatePaymentContent = (type: 'SETTLE' | 'UPGRADE' | 'DISBURSE', 
     }
   }
 
-  // Use resolveMasterConfig for consistent resolution
+  // Final pass for legacy and special placeholders
+  const rankConfig = Array.isArray(settings.RANK_CONFIG) ? settings.RANK_CONFIG : [];
+  const foundRank = rankConfig.find((r: any) => r.id === targetRank);
+  const rankName = foundRank ? removeAccents(foundRank.name) : removeAccents(targetRank);
+
   // Use the provided ID as the primary source for {ID} and {MHD} in payment content
   const resolved = resolveMasterConfig(template, settings, {
     userId: userId || id.split('NDV')[0] || id.slice(-4).toUpperCase(), 
