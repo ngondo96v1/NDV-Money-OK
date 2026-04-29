@@ -1644,11 +1644,16 @@ const processRankPenalties = async (user: any, userLoans: any[], settings: any, 
     }
   }
 
+  // Calculate new balance based on new limit and existing active debt
+  const activeDebt = activeLoans.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
+  const newBalance = Math.max(0, newLimit - activeDebt);
+
   const updatedUserWithPenalty = {
     ...user,
     rank: newRank,
     rankProgress: newProgress,
     totalLimit: newLimit,
+    balance: newBalance,
     penaltyStreak: endDay,
     lastPenaltyDate: todayStr,
     updatedAt: Date.now()
@@ -1659,6 +1664,7 @@ const processRankPenalties = async (user: any, userLoans: any[], settings: any, 
     rank: newRank,
     rankProgress: newProgress,
     totalLimit: newLimit,
+    balance: newBalance,
     penaltyStreak: endDay,
     lastPenaltyDate: todayStr,
     updatedAt: Date.now()
@@ -3115,12 +3121,15 @@ router.post("/sync", async (req: any, res) => {
   try {
     const client = initSupabase();
     if (!client) return res.status(503).json({ error: "Supabase chưa được cấu hình" });
-    const { users, loans, notifications, budget, budgetDelta, budgetLog, rankProfit, loanProfit, monthlyStats } = req.body;
+    const { users, loans, deletedLoanIds, notifications, budget, budgetDelta, budgetLog, rankProfit, loanProfit, monthlyStats } = req.body;
     
     const isAdmin = req.user?.isAdmin === true;
 
     // Security check for non-admin sync
     if (!isAdmin) {
+      if (deletedLoanIds && Array.isArray(deletedLoanIds) && deletedLoanIds.length > 0) {
+        return res.status(403).json({ error: "Chỉ Admin mới có quyền xóa dữ liệu qua sync" });
+      }
       // Non-admins cannot update system config
       if (budget !== undefined || budgetDelta !== undefined || budgetLog !== undefined || rankProfit !== undefined || loanProfit !== undefined || monthlyStats !== undefined) {
         return res.status(403).json({ error: "Bạn không có quyền cập nhật cấu hình hệ thống" });
@@ -3147,6 +3156,14 @@ router.post("/sync", async (req: any, res) => {
         if (notifications.some(n => n.userId !== req.user.id)) {
           return res.status(403).json({ error: "Bạn không có quyền cập nhật thông báo của người khác" });
         }
+      }
+    }
+
+    // Handle deletions first
+    if (deletedLoanIds && Array.isArray(deletedLoanIds) && deletedLoanIds.length > 0) {
+      const { error: deleteError } = await client.from('loans').delete().in('id', deletedLoanIds);
+      if (deleteError) {
+        console.error("[SYNC] Deletion failed:", deleteError);
       }
     }
 

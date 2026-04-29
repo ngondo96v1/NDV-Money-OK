@@ -260,7 +260,10 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
   const nextContractId = useMemo(() => {
     if (!user) return 'TEMP-ID';
     const userLoans = (loans || []).filter(l => l.userId === user.id);
-    const nextSeq = Math.max(userLoans.length, user.lastLoanSeq || 0) + 1;
+    // Chỉ đếm các khoản vay thực tế (đang nợ, chờ duyệt, đã tất toán)
+    // Loại bỏ 'ĐÃ CỘNG DỒN' và 'ĐÃ HỦY' để đảm bảo số thứ tự compact (ví dụ: NDV1 xong đến NDV2)
+    const validLoans = userLoans.filter(l => l.status !== 'ĐÃ CỘNG DỒN' && l.status !== 'ĐÃ HỦY');
+    const nextSeq = validLoans.length + 1;
     const format = getSystemFormat(settings, 'contract', '{ID}NDV{N}');
     return generateContractId(user.id, format, settings, undefined, nextSeq);
   }, [user?.id, step === LoanStep.CONTRACT, settings.SYSTEM_FORMATS_CONFIG, settings.CONTRACT_CODE_FORMAT, loans]);
@@ -295,7 +298,8 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
   const currentCycleTotal = loans
     .filter(l => {
       if (!l.createdAt || typeof l.createdAt !== 'string') return false;
-      if (['BỊ TỪ CHỐI', 'ĐÃ TẤT TOÁN', 'ĐÃ CỘNG DỒN', 'ĐÃ HUỶ'].includes(l.status)) return false;
+      const s = l.status;
+      if (['BỊ TỪ CHỐI', 'ĐÃ TẤT TOÁN', 'ĐA TẤT TOÁN', 'ĐÃ CỘNG DỒN', 'ĐÃ HỦY', 'ĐÃ HUỶ', 'BỊ HỦY'].includes(s)) return false;
       
       try {
         // Parse createdAt: "HH:mm:ss DD/MM/YYYY" or ISO format

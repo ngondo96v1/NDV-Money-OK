@@ -73,8 +73,17 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
   const displayDueDate = earliestLoan ? earliestLoan.date : nextDueDate;
 
   const currentDebt = loans
-    .filter(l => l.status === 'ĐANG NỢ' || l.status === 'CHỜ TẤT TOÁN' || l.status === 'QUÁ HẠN')
-    .reduce((acc, curr) => acc + curr.amount, 0);
+    .filter(l => {
+      const s = l.status;
+      return s !== 'ĐÃ TẤT TOÁN' && 
+             s !== 'ĐA TẤT TOÁN' && 
+             s !== 'BỊ TỪ CHỐI' && 
+             s !== 'ĐÃ CỘNG DỒN' && 
+             s !== 'ĐÃ HỦY' && 
+             s !== 'ĐÃ HUỶ' &&
+             s !== 'BỊ HỦY';
+    })
+    .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

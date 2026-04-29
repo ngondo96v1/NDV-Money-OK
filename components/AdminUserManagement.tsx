@@ -171,7 +171,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   const getUserLoanValue = useCallback((userId: string) => {
     const userLoans = loans.filter(l => 
       l.userId === userId && 
-      ['ĐANG NỢ', 'CHỜ DUYỆT', 'ĐÃ DUYỆT', 'ĐANG GIẢI NGÂN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'].includes(l.status)
+      ['ĐANG NỢ', 'CHỜ DUYỆT', 'ĐÃ DUYỆT', 'ĐANG GIẢI NGÂN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN'].includes(l.status)
     );
     return userLoans.reduce((sum, l) => sum + l.amount, 0);
   }, [loans]);
@@ -618,6 +618,17 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
+                              if (isGlobalProcessing) return;
+                              onEditUser(u.id, {}); // Empty partial triggers a recalculation on the server/client
+                            }}
+                            className="w-8 h-8 bg-emerald-500/10 border border-emerald-500/20 rounded-lg flex items-center justify-center text-emerald-500 hover:bg-emerald-500/20 transition-all"
+                            title="Tính toán lại số dư"
+                          >
+                            <RefreshCcw size={12} className={isGlobalProcessing ? 'animate-spin' : ''} />
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setEditingUser(u);
                               setEditUserForm({ rank: u.rank, totalLimit: u.totalLimit, hasCustomLimit: u.hasCustomLimit || false });
                             }}
@@ -657,6 +668,14 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                           <div className="space-y-0.5">
                             <div className="flex items-center gap-1.5"><TrendingUp size={11} className="text-[#ff8c00]/60" /><p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">Hạn mức</p></div>
                             <p className="text-[11px] font-black text-white pt-0.5">{(u.totalLimit || 0).toLocaleString()} đ</p>
+                          </div>
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5"><AlertCircle size={11} className="text-red-500/60" /><p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">Dư nợ</p></div>
+                            <p className="text-[11px] font-black text-red-500 pt-0.5">{getUserLoanValue(u.id).toLocaleString()} đ</p>
+                          </div>
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5"><Coins size={11} className="text-emerald-500/60" /><p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">Khả dụng</p></div>
+                            <p className="text-[11px] font-black text-emerald-500 pt-0.5">{(u.balance || 0).toLocaleString()} đ</p>
                           </div>
                           <div className="space-y-0.5">
                             <div className="flex items-center gap-1.5"><Hash size={11} className="text-[#ff8c00]/60" /><p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">Số CCCD</p></div>

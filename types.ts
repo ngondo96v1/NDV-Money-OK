@@ -88,7 +88,7 @@ export interface LoanRecord {
   amount: number;
   date: string; 
   createdAt: string; 
-  status: 'CHỜ DUYỆT' | 'ĐÃ DUYỆT' | 'ĐANG GIẢI NGÂN' | 'ĐANG NỢ' | 'ĐANG ĐỐI SOÁT' | 'CHỜ TẤT TOÁN' | 'ĐÃ TẤT TOÁN' | 'BỊ TỪ CHỐI' | 'ĐÃ CỘNG DỒN' | 'ĐÃ HUỶ';
+  status: 'CHỜ DUYỆT' | 'ĐÃ DUYỆT' | 'ĐANG GIẢI NGÂN' | 'ĐANG NỢ' | 'ĐANG ĐỐI SOÁT' | 'CHỜ TẤT TOÁN' | 'ĐÃ TẤT TOÁN' | 'ĐA TẤT TOÁN' | 'BỊ TỪ CHỐI' | 'ĐÃ CỘNG DỒN' | 'ĐÃ HUỶ' | 'ĐÃ HỦY' | 'BỊ HỦY' | 'QUÁ HẠN' | 'ĐANG VAY' | 'CHỜ DUYỆT TÍNH PHÍ';
   fine?: number;
   billImage?: string;
   bankTransactionId?: string;

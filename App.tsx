@@ -452,9 +452,19 @@ const App: React.FC = () => {
   }, [adminNotifications]);
 
   const calculateUserBalance = useCallback((u: User, userLoans: LoanRecord[]) => {
-    // ONLY ĐÃ TẤT TOÁN, BỊ TỪ CHỐI, ĐÃ CỘNG DỒN and ĐÃ HUỶ are not current debt. everything else counts as debt.
+    // ONLY ĐÃ TẤT TOÁN, BỊ TỪ CHỐI, ĐÃ CỘNG DỒN and ĐÃ HỦY are not current debt. everything else counts as debt.
+    // Handling minor spelling variations to be robust
     const activeDebt = userLoans
-      .filter(l => l.status !== 'ĐÃ TẤT TOÁN' && l.status !== 'BỊ TỪ CHỐI' && l.status !== 'ĐÃ CỘNG DỒN' && l.status !== 'ĐÃ HUỶ')
+      .filter(l => {
+        const s = l.status;
+        return s !== 'ĐÃ TẤT TOÁN' && 
+               s !== 'ĐA TẤT TOÁN' && 
+               s !== 'BỊ TỪ CHỐI' && 
+               s !== 'ĐÃ CỘNG DỒN' && 
+               s !== 'ĐÃ HỦY' && 
+               s !== 'ĐÃ HUỶ' &&
+               s !== 'BỊ HỦY';
+      })
       .reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
     return Math.max(0, (Number(u.totalLimit) || 0) - activeDebt);
   }, []);
@@ -1400,7 +1410,7 @@ const App: React.FC = () => {
           targetUser = {
             ...targetUser,
             totalLimit: newLimit,
-            balance: Math.max(0, (targetUser.balance || 0) + limitDiff),
+            balance: calculateUserBalance({ ...targetUser, totalLimit: newLimit }, newLoans.filter(l => l.userId === targetUser.id)),
             updatedAt: nowTime
           };
           newUsers[userIdx] = targetUser;
@@ -1415,7 +1425,7 @@ const App: React.FC = () => {
           targetUser = {
             ...targetUser,
             totalLimit: currentRankDef.maxLimit,
-            balance: (targetUser.balance || 0) + currentRankDef.maxLimit,
+            balance: calculateUserBalance({ ...targetUser, totalLimit: currentRankDef.maxLimit }, newLoans.filter(l => l.userId === targetUser.id)),
             updatedAt: nowTime
           };
           newUsers[userIdx] = targetUser;
@@ -1492,7 +1502,7 @@ const App: React.FC = () => {
             rank: currentRank,
             rankProgress: currentProgress,
             totalLimit: newLimit,
-            balance: Math.min(newLimit, targetUser.balance),
+            balance: calculateUserBalance({ ...targetUser, totalLimit: newLimit }, newLoans.filter(l => l.userId === targetUser.id)),
             updatedAt: nowTime
           };
           usersUpdated = true;
@@ -1992,8 +2002,10 @@ const App: React.FC = () => {
       const dueDate = `${dayStr}/${monthStr}/${finalDate.getFullYear()}`;
       
       // Logic tạo Mã hợp đồng: Sử dụng hàm sinh mã duy nhất
-      // Quy tắc: Hậu tố N = (Số thứ tự lớn nhất của user) + 1 để tránh trùng ID khi đang có nợ hoặc xóa lịch sử
-      const nextSeq = Math.max(userLoans.length, user.lastLoanSeq || 0) + 1;
+      // Quy tắc: Hậu tố N = (Số khoản vay thực tế: Đang nợ, Chờ duyệt, Đã tất toán) + 1
+      // Loại bỏ các khoản 'ĐÃ CỘNG DỒN' và 'ĐÃ HỦY' để không làm tăng số thứ tự vô lý
+      const validLoans = userLoans.filter(l => l.status !== 'ĐÃ CỘNG DỒN' && l.status !== 'ĐÃ HỦY');
+      const nextSeq = validLoans.length + 1;
       const format = getSystemFormat(settings, 'contract', '{ID}NDV{N}');
       const contractId = generateContractId(user.id, format, settings, undefined, nextSeq);
 
@@ -2284,6 +2296,9 @@ const App: React.FC = () => {
       // Optimistic Consolidation Logic
       let primaryLoanInSync: LoanRecord | null = null;
       let primaryLoanId: string | null = null;
+      let deletedLoanIds: string[] = [];
+      let updatedConsolidatedLoan: LoanRecord | null = null;
+
       // Consolidate ONLY on DISBURSE if user has existing debt
       if (action === 'DISBURSE') {
         const existingActiveLoan = newLoans.find(l => 
@@ -2310,7 +2325,24 @@ const App: React.FC = () => {
           primaryLoanInSync = updatedPrimary;
           primaryLoanId = existingActiveLoan.id;
           
-          // Current loan is marked as consolidated immediately
+          // To allow reusing the same ID (e.g., NDV2) later, we RENAME the current merged loan's ID
+          // and request the server to delete the record with the old ID.
+          const oldConsolidatedId = loan.id;
+          const newConsolidatedId = `${loan.id}-GOP`;
+          
+          updatedConsolidatedLoan = {
+            ...loan,
+            id: newConsolidatedId,
+            status: 'ĐÃ CỘNG DỒN',
+            consolidatedInto: existingActiveLoan.id,
+            updatedAt: Date.now()
+          };
+          
+          // Delete the old ID from server and update local state
+          deletedLoanIds.push(oldConsolidatedId);
+          newLoans[loanIdx] = updatedConsolidatedLoan;
+          
+          // Prevent the standard status update loop from overwriting this
           newStatus = 'ĐÃ CỘNG DỒN';
         }
       }
@@ -2398,7 +2430,7 @@ const App: React.FC = () => {
         newLoans[loanIdx] = updatedLoan;
         newLoans.push(nextLoan);
       } else {
-        updatedLoan = { 
+        updatedLoan = updatedConsolidatedLoan || { 
           ...loan, 
           status: (newStatus as any), 
           rejectionReason, 
@@ -2469,7 +2501,7 @@ const App: React.FC = () => {
                rank: nextRank,
                rankProgress: nextRankProgress,
                totalLimit: nextLimit,
-               balance: rankChanged ? (nextLimit - (loanUser.totalLimit - loanUser.balance)) : updatedUser.balance,
+               balance: calculateUserBalance({ ...updatedUser, totalLimit: nextLimit }, nextUserLoans),
                isFreeUpgrade: rankChanged ? true : updatedUser.isFreeUpgrade,
                hasCustomLimit: rankChanged ? false : updatedUser.hasCustomLimit,
                fullSettlementCount: newFullSettlementCount,
@@ -2481,7 +2513,7 @@ const App: React.FC = () => {
               rank: nextRank,
               rankProgress: nextRankProgress,
               totalLimit: nextLimit,
-              balance: rankChanged ? (nextLimit - (loanUser.totalLimit - loanUser.balance)) : updatedUser.balance,
+              balance: calculateUserBalance({ ...updatedUser, totalLimit: nextLimit }, nextUserLoans),
               isFreeUpgrade: rankChanged ? true : updatedUser.isFreeUpgrade,
               hasCustomLimit: rankChanged ? false : updatedUser.hasCustomLimit
             };
@@ -2604,6 +2636,7 @@ const App: React.FC = () => {
 
       const syncData = {
         loans: syncLoans, // Only the changed loans
+        deletedLoanIds: deletedLoanIds.length > 0 ? deletedLoanIds : undefined,
         budgetDelta: (action === 'SETTLE' || action === 'DISBURSE' || isConsolidatedDisburse) ? budgetDelta : undefined,
         budgetLog: newBudgetLog,
         users: usersUpdated ? [newRegisteredUsers.find(u => u.id === loan.userId)] : undefined,
@@ -2725,7 +2758,7 @@ const App: React.FC = () => {
             ...targetUser, 
             rank: newRank, 
             totalLimit: newLimit, 
-            balance: newLimit - (targetUser.totalLimit - targetUser.balance), 
+            balance: calculateUserBalance({ ...targetUser, totalLimit: newLimit }, loans), 
             pendingUpgradeRank: null, 
             rankUpgradeBill: undefined,
             isFreeUpgrade: false,
