@@ -260,8 +260,7 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
   const nextContractId = useMemo(() => {
     if (!user) return 'TEMP-ID';
     const userLoans = (loans || []).filter(l => l.userId === user.id);
-    const settledCount = userLoans.filter(l => l.status === 'ĐÃ TẤT TOÁN').length;
-    const nextSeq = settledCount + 1;
+    const nextSeq = Math.max(userLoans.length, user.lastLoanSeq || 0) + 1;
     const format = getSystemFormat(settings, 'contract', '{ID}NDV{N}');
     return generateContractId(user.id, format, settings, undefined, nextSeq);
   }, [user?.id, step === LoanStep.CONTRACT, settings.SYSTEM_FORMATS_CONFIG, settings.CONTRACT_CODE_FORMAT, loans]);

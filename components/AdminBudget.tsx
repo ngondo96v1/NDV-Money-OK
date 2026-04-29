@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { TrendingUp, Wallet, AlertTriangle, ChevronLeft, Save, X, Check, Plus, Minus, History, Calendar, ArrowUpRight, ArrowDownLeft, Info, ChevronRight, Trash2 } from 'lucide-react';
+import { TrendingUp, Wallet, AlertTriangle, ChevronLeft, Save, X, Check, Plus, Minus, History, Calendar, ArrowUpRight, ArrowDownLeft, Info, ChevronRight, Trash2, RefreshCcw } from 'lucide-react';
 import { BudgetLog, AppSettings } from '../types';
 
 interface AdminBudgetProps {
@@ -9,11 +9,12 @@ interface AdminBudgetProps {
   logs: BudgetLog[];
   onUpdateBudget: (type: BudgetLog['type'], amount: number, note: string) => Promise<void>;
   onDeleteLog: (logId: string) => Promise<void>;
+  onSyncStats?: () => Promise<void>;
   onBack: () => void;
   settings: AppSettings;
 }
 
-const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdateBudget, onDeleteLog, onBack, settings }) => {
+const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdateBudget, onDeleteLog, onSyncStats, onBack, settings }) => {
   const [activeTab, setActiveTab] = useState<'ADD' | 'WITHDRAW' | 'INITIAL'>('ADD');
   const [inputValue, setInputValue] = useState('');
   const [numericValue, setNumericValue] = useState(0);
@@ -21,8 +22,24 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
   const [showConfirm, setShowConfirm] = useState(false);
   const [logToDelete, setLogToDelete] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
+
+  const handleSync = async () => {
+    if (!onSyncStats) return;
+    setIsSyncing(true);
+    try {
+      await onSyncStats();
+      toast.success("Đồng bộ thành công", {
+        description: "Số liệu doanh thu đã được cập nhật chính xác từ danh sách người dùng và khoản vay thực tế."
+      });
+    } catch (e) {
+      toast.error("Lỗi khi đồng bộ số liệu");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Calculate Capital Statistics
   const stats = logs.reduce((acc, log) => {
@@ -167,6 +184,18 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
         <h1 className="text-lg font-black text-white uppercase tracking-tighter leading-none">
           CẤU HÌNH NGÂN SÁCH
         </h1>
+        <div className="flex-1"></div>
+        {onSyncStats && (
+          <button 
+            onClick={handleSync}
+            disabled={isSyncing}
+            className="px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center gap-1.5 text-blue-500 active:scale-95 transition-all disabled:opacity-50"
+            title="Đồng bộ lại số liệu thực tế"
+          >
+            <RefreshCcw size={12} className={isSyncing ? 'animate-spin' : ''} />
+            <span className="text-[8px] font-black uppercase tracking-widest">Đồng bộ</span>
+          </button>
+        )}
       </div>
 
       <div className="flex flex-col gap-4 overflow-hidden flex-1">

@@ -249,6 +249,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
             <Power size={18} />
           </button>
 
+          <button 
+            onClick={onNavigateToBudget}
+            className={`w-10 h-10 border rounded-xl flex items-center justify-center transition-all active:scale-90 shadow-lg bg-white/5 border-white/5 text-gray-500 hover:text-purple-500 hover:bg-purple-500/10`}
+            title="Quản lý Ngân sách"
+          >
+            <Wallet size={18} />
+          </button>
+
           <button onClick={onLogout} className="w-10 h-10 bg-white/5 border border-white/5 rounded-xl flex items-center justify-center text-gray-500 hover:text-red-500 hover:bg-red-500/10 transition-all active:scale-90 shadow-lg">
             <LogOut size={18} />
           </button>

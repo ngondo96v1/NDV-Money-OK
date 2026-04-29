@@ -12,7 +12,8 @@ export enum AppView {
   ADMIN_USERS = 'ADMIN_USERS',
   ADMIN_LOANS = 'ADMIN_LOANS',
   ADMIN_BUDGET = 'ADMIN_BUDGET',
-  ADMIN_SYSTEM = 'ADMIN_SYSTEM'
+  ADMIN_SYSTEM = 'ADMIN_SYSTEM',
+  SYSTEM_MANUAL = 'SYSTEM_MANUAL'
 }
 
 export type UserRank = 'standard' | 'bronze' | 'silver' | 'gold' | 'diamond' | string;

@@ -878,7 +878,7 @@ router.post("/settings", async (req: any, res) => {
     'SYSTEM_NOTIFICATION', 'SHOW_SYSTEM_NOTIFICATION', 'MAINTENANCE_MODE',
     'ENABLE_PAYOS', 'ENABLE_VIETQR', 'LUCKY_SPIN_VOUCHERS', 'LUCKY_SPIN_WIN_RATE',
     'LUCKY_SPIN_PAYMENTS_REQUIRED', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE', 'CONTRACT_CLAUSES',
-    'RANK_CONFIG', 'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG',
+    'RANK_CONFIG', 'TOTAL_RANK_PROFIT', 'TOTAL_LOAN_PROFIT', 'SYSTEM_BUDGET', 'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG',
     'CONTRACT_FORMATS_CONFIG', 'TRANSFER_CONTENTS_CONFIG', 'SYSTEM_CONTRACT_FORMATS_CONFIG', 'MASTER_CONFIGS'
   ];
   
@@ -3234,70 +3234,32 @@ router.post("/sync", async (req: any, res) => {
     
     // 4. Update Loans
     if (loans && Array.isArray(loans) && loans.length > 0) {
-      // CONSOLIDATION LOGIC: If a loan is being updated to 'ĐANG NỢ' (Disbursed),
-      // we check if the user already has an active or overdue loan to merge into.
-      if (isAdmin) {
-        for (let i = 0; i < loans.length; i++) {
-          const loan = loans[i];
-          if (loan.status === 'ĐANG NỢ') {
-            const { data: existingActiveLoans } = await client
-              .from('loans')
-              .select('*')
-              .eq('userId', loan.userId)
-              .in('status', ['ĐANG NỢ', 'QUÁ HẠN'])
-              .neq('id', loan.id)
-              .limit(1);
+      // SERVER-SIDE CONSOLIDATION SAFETY: If a loan is being marked as consolidated,
+      // we ensure the primary loan's balance is correctly updated in DB.
+      for (const loan of loans) {
+        if (loan.status === 'ĐÃ CỘNG DỒN' && loan.consolidatedInto) {
+          const { data: primaryLoan } = await client
+            .from('loans')
+            .select('amount, status')
+            .eq('id', loan.consolidatedInto)
+            .single();
 
-            if (existingActiveLoans && existingActiveLoans.length > 0) {
-              const primaryLoan = existingActiveLoans[0];
-              // Use current amount from payload if available for most up-to-date calculation, otherwise use DB
-              const primaryInSync = (loans as any[]).find(l => l.id === primaryLoan.id);
-              const baseAmount = primaryInSync ? Number(primaryInSync.amount || 0) : Number(primaryLoan.amount || 0);
-              
-              const consolidatedAmount = Number(loan.amount || 0);
-              
-              // Only update if there's a real mismatch between DB+incremental and what we expect
-              const expectedAmount = Number(primaryLoan.amount || 0) + consolidatedAmount;
-              
-              if (baseAmount < expectedAmount) {
-                await client.from('loans').update({
-                  amount: expectedAmount,
-                  updatedAt: Date.now()
-                }).eq('id', primaryLoan.id);
-                
-                if (primaryInSync) {
-                  primaryInSync.amount = expectedAmount;
-                  primaryInSync.updatedAt = Date.now();
-                }
+          if (primaryLoan && (primaryLoan.status === 'ĐANG NỢ' || primaryLoan.status === 'QUÁ HẠN')) {
+            // Check if the primary loan in the current sync payload already has the updated amount
+            const primaryInPayload = loans.find(l => l.id === loan.consolidatedInto);
+            const incrementalAmount = Number(loan.amount || 0);
+            
+            if (primaryInPayload) {
+              // Ensure payload is correct (it should be if App.tsx logic is sound)
+              // But if it's lagging or somehow wrong, we enforce it here
+              const expectedTotal = Number(primaryLoan.amount) + incrementalAmount;
+              if (Number(primaryInPayload.amount) < expectedTotal) {
+                primaryInPayload.amount = expectedTotal;
               }
-
-              // 2. Mark this loan as consolidated in the payload
-              loan.status = 'ĐÃ CỘNG DỒN';
-              loan.consolidatedInto = primaryLoan.id;
-
-              // 4. Update User Balance in DB and Payload
-              const { data: userData } = await client.from('users').select('balance').eq('id', loan.userId).single();
-              if (userData) {
-                // If this is a NEW disbursement that hasn't affected balance yet
-                // (Note: Usually disburse logic in App.tsx already deducted from balance, 
-                // but we must be sure the server and client are in sync)
-                const newBalance = Math.max(0, (userData.balance || 0) - consolidatedAmount);
-                await client.from('users').update({ balance: newBalance, updatedAt: Date.now() }).eq('id', loan.userId);
-                
-                // Update User in payload if present
-                if (users && Array.isArray(users)) {
-                  const userInPayload = users.find((u: any) => u.id === loan.userId);
-                  if (userInPayload) {
-                    userInPayload.balance = newBalance;
-                    userInPayload.updatedAt = Date.now();
-                  }
-                }
-
-                const io = req.app.get("io");
-                if (io) {
-                  io.to(`user_${loan.userId}`).emit("user_updated", { id: loan.userId, balance: newBalance });
-                }
-              }
+            } else {
+              // Primary loan NOT in payload, update it directly in DB
+              const newTotal = Number(primaryLoan.amount) + incrementalAmount;
+              await client.from('loans').update({ amount: newTotal, updatedAt: Date.now() }).eq('id', loan.consolidatedInto);
             }
           }
         }

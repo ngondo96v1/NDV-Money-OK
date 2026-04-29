@@ -22,6 +22,7 @@ const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 const AdminUserManagement = lazy(() => import('./components/AdminUserManagement'));
 const AdminBudget = lazy(() => import('./components/AdminBudget'));
 const AdminSystem = lazy(() => import('./components/AdminSystem'));
+import SystemManual from './components/SystemManual';
 const NotificationModal = lazy(() => import('./components/NotificationModal'));
 const SystemNotificationDrawer = lazy(() => import('./components/SystemNotificationDrawer'));
 const LuckySpin = lazy(() => import('./components/LuckySpin'));
@@ -1991,9 +1992,8 @@ const App: React.FC = () => {
       const dueDate = `${dayStr}/${monthStr}/${finalDate.getFullYear()}`;
       
       // Logic tạo Mã hợp đồng: Sử dụng hàm sinh mã duy nhất
-      // Quy tắc: Hậu tố N = (Số khoản vay ĐÃ TẤT TOÁN) + 1
-      const settledCount = userLoans.filter(l => l.status === 'ĐÃ TẤT TOÁN').length;
-      const nextSeq = settledCount + 1;
+      // Quy tắc: Hậu tố N = (Số thứ tự lớn nhất của user) + 1 để tránh trùng ID khi đang có nợ hoặc xóa lịch sử
+      const nextSeq = Math.max(userLoans.length, user.lastLoanSeq || 0) + 1;
       const format = getSystemFormat(settings, 'contract', '{ID}NDV{N}');
       const contractId = generateContractId(user.id, format, settings, undefined, nextSeq);
 
@@ -2281,8 +2281,10 @@ const App: React.FC = () => {
         }
       }
 
-      // Optimistic Consolidation for Disbursement
+      // Optimistic Consolidation Logic
       let primaryLoanInSync: LoanRecord | null = null;
+      let primaryLoanId: string | null = null;
+      // Consolidate ONLY on DISBURSE if user has existing debt
       if (action === 'DISBURSE') {
         const existingActiveLoan = newLoans.find(l => 
           l.id !== loan.id && 
@@ -2290,14 +2292,26 @@ const App: React.FC = () => {
           (l.status === 'ĐANG NỢ' || l.status === 'QUÁ HẠN')
         );
         if (existingActiveLoan) {
-          // Merge this loan into the existing one
-          existingActiveLoan.amount += loan.amount;
-          existingActiveLoan.updatedAt = Date.now();
-          primaryLoanInSync = existingActiveLoan;
+          // Merge this loan into the existing one (CLONE object first to avoid side effects)
+          const oldAmount = Number(existingActiveLoan.amount || 0);
+          const incrementalAmount = Number(loan.amount || 0);
           
-          // Mark current loan as consolidated
+          const updatedPrimary: LoanRecord = {
+            ...existingActiveLoan,
+            amount: oldAmount + incrementalAmount,
+            updatedAt: Date.now()
+          };
+          
+          // Update in the newLoans list
+          const primaryIdx = newLoans.findIndex(l => l.id === existingActiveLoan.id);
+          if (primaryIdx !== -1) {
+            newLoans[primaryIdx] = updatedPrimary;
+          }
+          primaryLoanInSync = updatedPrimary;
+          primaryLoanId = existingActiveLoan.id;
+          
+          // Current loan is marked as consolidated immediately
           newStatus = 'ĐÃ CỘNG DỒN';
-          (loan as any).consolidatedInto = existingActiveLoan.id;
         }
       }
 
@@ -2388,6 +2402,7 @@ const App: React.FC = () => {
           ...loan, 
           status: (newStatus as any), 
           rejectionReason, 
+          consolidatedInto: primaryLoanId || (loan as any).consolidatedInto,
           updatedAt: Date.now() 
         };
         newLoans[loanIdx] = updatedLoan;
@@ -2483,7 +2498,9 @@ const App: React.FC = () => {
       let loanProfitToSync = loanProfit;
       let monthlyStatsToSync = [...monthlyStats];
 
-      if (action === 'DISBURSE') {
+      const isConsolidatedDisburse = action === 'DISBURSE' && newStatus === 'ĐÃ CỘNG DỒN';
+
+      if (action === 'DISBURSE' || isConsolidatedDisburse) {
         const amount = loan.amount * (Number(settings.PRE_DISBURSEMENT_FEE || 0) / 100);
         loanProfitToSync += amount;
         const now = new Date();
@@ -2549,17 +2566,19 @@ const App: React.FC = () => {
         return next;
       });
 
-      // Record budget log for disburse/settle
+      // Record budget log for disburse/settle/consolidated approve
       let newBudgetLog: BudgetLog | undefined = undefined;
       
-      if (action === 'DISBURSE') {
+      if (action === 'DISBURSE' || isConsolidatedDisburse) {
         const disburseAmount = (loan.amount * (1 - Number(settings.PRE_DISBURSEMENT_FEE || 0) / 100));
         newBudgetLog = {
           id: `BL${Date.now()}`,
           type: 'LOAN_DISBURSE',
           amount: disburseAmount,
           balanceAfter: calculatedBudget,
-          note: `Giải ngân khoản vay ${loan.id} cho ${loan.userName}`,
+          note: isConsolidatedDisburse 
+            ? `Giải ngân và cộng dồn khoản vay ${loan.id} vào nợ cũ của ${loan.userName}`
+            : `Giải ngân khoản vay ${loan.id} cho ${loan.userName}`,
           createdAt: new Date().toISOString()
         };
         setBudgetLogs(prev => {
@@ -2585,11 +2604,11 @@ const App: React.FC = () => {
 
       const syncData = {
         loans: syncLoans, // Only the changed loans
-        budgetDelta: (action === 'SETTLE' || action === 'DISBURSE') ? budgetDelta : undefined,
+        budgetDelta: (action === 'SETTLE' || action === 'DISBURSE' || isConsolidatedDisburse) ? budgetDelta : undefined,
         budgetLog: newBudgetLog,
         users: usersUpdated ? [newRegisteredUsers.find(u => u.id === loan.userId)] : undefined,
-        loanProfit: (action === 'SETTLE' || action === 'DISBURSE') ? loanProfitToSync : undefined,
-        monthlyStats: (action === 'SETTLE' || action === 'DISBURSE') ? monthlyStatsToSync : undefined
+        loanProfit: (action === 'SETTLE' || action === 'DISBURSE' || isConsolidatedDisburse) ? loanProfitToSync : undefined,
+        monthlyStats: (action === 'SETTLE' || action === 'DISBURSE' || isConsolidatedDisburse) ? monthlyStatsToSync : undefined
       };
 
       const response = await authenticatedFetch('/api/sync', {
@@ -3144,89 +3163,104 @@ const App: React.FC = () => {
     }
   };
 
-  // Automatic Financial Statistics Calculation
-  useEffect(() => {
+  const handleSyncStats = async () => {
     if (!registeredUsers.length || !settings.RANK_CONFIG) return;
 
-    const calculateStats = () => {
-      // 1. Calculate Rank Profit
-      // Profit is only earned when a user is ABOVE the lowest possible rank in the system
-      let derivedRankProfit = 0;
-      const upgradePercent = Number(settings.UPGRADE_PERCENT || 0);
+    // 1. Calculate Rank Profit - Accurate calculation based on real users
+    let derivedRankProfit = 0;
+    const upgradePercent = Number(settings.UPGRADE_PERCENT || 0);
+    const sortedRanks = settings.RANK_CONFIG ? [...settings.RANK_CONFIG].sort((a, b) => a.maxLimit - b.maxLimit) : [];
+    const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'standard';
+
+    registeredUsers.forEach(u => {
+      // LOẠI BỎ DỮ LIỆU RÁC: Chỉ tính lợi nhuận từ người dùng thực tế có hoạt động
+      // Loại bỏ Admin, tài khoản test và các tài khoản không có số điện thoại hợp lệ
+      if (u.isAdmin || u.phone === 'admin' || u.id === 'admin' || !u.phone || u.phone.length < 10) return;
       
-      const sortedRanks = settings.RANK_CONFIG ? [...settings.RANK_CONFIG].sort((a, b) => a.maxLimit - b.maxLimit) : [];
-      const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'standard';
+      // DISCREPANCY FIX: Loại bỏ các bản ghi ghost 150k (thường là các tài khoản test cũ như ID 5444 hoặc tương đương)
+      if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
 
-      registeredUsers.forEach(u => {
-        // ID 5444 is an exception: manually upgraded by Admin without fee
-        if (u.rank && u.rank !== lowestRankId && !u.isFreeUpgrade && u.id !== '5444') {
-          const rankConf = settings.RANK_CONFIG?.find(r => r.id === u.rank);
-          if (rankConf) {
-            derivedRankProfit += (rankConf.maxLimit * (upgradePercent / 100));
-          }
+      if (u.rank && u.rank !== lowestRankId && !u.isFreeUpgrade && u.rankApproved !== false) {
+        const rankConf = settings.RANK_CONFIG?.find(r => r.id === u.rank);
+        if (rankConf) {
+          derivedRankProfit += (rankConf.maxLimit * (upgradePercent / 100));
         }
-      });
-
-      // 2. Calculate Loan Profit (Fees & Fines)
-      let derivedLoanProfit = 0;
-      const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 0) / 100;
-      
-      loans.forEach(loan => {
-        // Fee is earned when loan is disbursed (status is active or settled)
-        if (['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'].includes(loan.status)) {
-          derivedLoanProfit += (loan.amount * feePercent);
-        }
-        
-        // Fines are earned when loan is settled
-        if (loan.status === 'ĐÃ TẤT TOÁN' && loan.fine) {
-          derivedLoanProfit += loan.fine;
-        }
-        
-        // Note: Voucher discounts are harder to track automatically without a dedicated field in LoanRecord
-        // but for now we prioritize the main fee/fine calculation which covers the user's discrepancy.
-      });
-
-      // Update local state if different (to avoid infinite loops, we check if the change is significant)
-      if (Math.abs(derivedRankProfit - rankProfit) > 1) {
-        setRankProfit(derivedRankProfit);
       }
-      if (Math.abs(derivedLoanProfit - loanProfit) > 1) {
-        setLoanProfit(derivedLoanProfit);
-      }
+    });
 
-      // 3. Update Monthly Stats for current month
+    // 2. Calculate Loan Profit - 100% precision from loan records
+    let derivedLoanProfit = 0;
+    const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 0) / 100;
+    loans.forEach(loan => {
+      // Loại bỏ các khoản vay của admin hoặc tài khoản test
+      const loanUser = registeredUsers.find(u => u.id === loan.userId);
+      if (!loanUser || loanUser.isAdmin || loanUser.phone === 'admin' || !loanUser.phone) return;
+
+      if (['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN', 'ĐANG GIẢI NGÂN'].includes(loan.status)) {
+        derivedLoanProfit += (loan.amount * feePercent);
+      }
+      if ((loan.status === 'ĐÃ TẤT TOÁN' || loan.status === 'CHỜ TẤT TOÁN') && loan.fine) {
+        derivedLoanProfit += loan.fine;
+      }
+    });
+
+    const finalLoanProfit = derivedLoanProfit;
+    const finalRankProfit = derivedRankProfit;
+    const total = finalLoanProfit + finalRankProfit;
+
+    // Update DB & Local state - No more "forcing" logic
+    try {
+      // Sync monthly stats automatically
       const now = new Date();
       const monthKey = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()}`;
-      const totalProfit = derivedRankProfit + derivedLoanProfit;
+      const nextMonthlyStats = [...monthlyStats];
+      const existingIdx = nextMonthlyStats.findIndex(s => s.month === monthKey);
       
-      setMonthlyStats(prev => {
-        const next = [...prev];
-        const existingIdx = next.findIndex(s => s.month === monthKey);
-        
-        // We only update the current month's total. 
-        // Note: This is an approximation since monthlyStats usually tracks 
-        // profit *earned in that month*, while derivedRankProfit is *total*.
-        // But for a single-user app, this keeps the chart in sync.
-        if (existingIdx !== -1) {
-          if (Math.abs(next[existingIdx].totalProfit - totalProfit) > 1) {
-            next[existingIdx] = { 
-              ...next[existingIdx], 
-              rankProfit: derivedRankProfit, 
-              loanProfit: derivedLoanProfit, 
-              totalProfit: totalProfit 
-            };
-            return next;
-          }
-        } else {
-          // Add new month if not exists
-          return [{ month: monthKey, rankProfit: derivedRankProfit, loanProfit: derivedLoanProfit, totalProfit: totalProfit }, ...prev].slice(0, 6);
-        }
-        return prev;
-      });
-    };
+      if (existingIdx !== -1) {
+        nextMonthlyStats[existingIdx] = {
+          ...nextMonthlyStats[existingIdx],
+          loanProfit: finalLoanProfit,
+          rankProfit: finalRankProfit,
+          totalProfit: total
+        };
+      } else {
+        nextMonthlyStats.unshift({
+          month: monthKey,
+          loanProfit: finalLoanProfit,
+          rankProfit: finalRankProfit,
+          totalProfit: total
+        });
+      }
 
-    calculateStats();
-  }, [registeredUsers, loans, settings.UPGRADE_PERCENT, settings.PRE_DISBURSEMENT_FEE, settings.RANK_CONFIG]);
+      await authenticatedFetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          TOTAL_RANK_PROFIT: finalRankProfit,
+          TOTAL_LOAN_PROFIT: finalLoanProfit,
+          MONTHLY_STATS: nextMonthlyStats.slice(0, 6)
+        })
+      });
+      
+      setRankProfit(finalRankProfit);
+      setLoanProfit(finalLoanProfit);
+      setMonthlyStats(nextMonthlyStats.slice(0, 6));
+      
+      localStorage.setItem('ndv_rank_profit', finalRankProfit.toString());
+      localStorage.setItem('ndv_loan_profit', finalLoanProfit.toString());
+      localStorage.setItem('ndv_monthly_stats', JSON.stringify(nextMonthlyStats.slice(0, 6)));
+      
+      setSettings(prev => ({
+        ...prev,
+        TOTAL_RANK_PROFIT: finalRankProfit,
+        TOTAL_LOAN_PROFIT: finalLoanProfit,
+        MONTHLY_STATS: nextMonthlyStats.slice(0, 6)
+      }));
+    } catch (e) {
+      console.error("Sync error:", e);
+      throw e;
+    }
+  };
 
   const handleResetRankProfit = async () => {
     setRankProfit(0);
@@ -3514,55 +3548,6 @@ const App: React.FC = () => {
         />
       );
       case AppView.REGISTER: return <Register onBack={() => setCurrentView(AppView.LOGIN)} onRegister={handleRegister} onClearError={() => setRegisterError(null)} error={registerError} settings={settings} />;
-      case AppView.DASHBOARD: 
-        return (
-          <Dashboard 
-            user={user} 
-            loans={loans.filter(l => l.userId === user?.id)} 
-            notifications={notifications}
-            systemBudget={systemBudget} 
-            onApply={() => {
-              if (!hasBankInfo(user)) {
-                setShowProfileWarning(true);
-                return;
-              }
-              setCurrentView(AppView.APPLY_LOAN);
-            }} 
-            onLogout={handleLogout} 
-            onViewAllLoans={() => {
-              if (!hasBankInfo(user)) {
-                setShowProfileWarning(true);
-                return;
-              }
-              setCurrentView(AppView.APPLY_LOAN);
-            }}
-            onSettleLoan={(loan) => {
-              setSettleLoanFromDash(loan);
-              setCurrentView(AppView.APPLY_LOAN);
-            }}
-            onPayOSSettle={(loan) => handlePayOSPayment('SETTLE', loan.id, loan.amount + (loan.fine || 0))}
-            onViewContract={(loan) => {
-              setViewLoanFromDash(loan);
-              setCurrentView(AppView.APPLY_LOAN);
-            }}
-            onMarkNotificationRead={(id) => handleMarkNotificationRead(id)}
-            onMarkAllNotificationsRead={() => {
-              if (user) {
-                const userNotifs = notifications.map(n => ({ ...n, read: true }));
-                setNotifications(userNotifs);
-                setLastSeenNotificationCount(0);
-                localStorage.setItem('ndv_last_seen_notif_count', '0');
-                authenticatedFetch('/api/notifications', {
-                  method: 'POST',
-                  body: JSON.stringify(userNotifs)
-                });
-              }
-            }}
-            onRefresh={() => fetchFullData(true)}
-            onOpenLuckySpin={handleOpenLuckySpin}
-            settings={settings}
-          />
-        );
       case AppView.APPLY_LOAN: 
         return (
           <LoanApplication 
@@ -3634,6 +3619,7 @@ const App: React.FC = () => {
             logs={budgetLogs}
             onUpdateBudget={handleUpdateBudget}
             onDeleteLog={handleDeleteBudgetLog}
+            onSyncStats={handleSyncStats}
             onBack={() => setCurrentView(AppView.ADMIN_DASHBOARD)} 
             settings={settings}
           />
@@ -3656,6 +3642,8 @@ const App: React.FC = () => {
             onSettingsUpdate={(newSettings: any) => setSettings(prev => ({ ...prev, ...newSettings }))}
           />
         );
+      case AppView.SYSTEM_MANUAL:
+        return <SystemManual onBack={() => setCurrentView(user?.isAdmin ? AppView.ADMIN_DASHBOARD : AppView.DASHBOARD)} />;
       default: 
         return (
           <Dashboard 
@@ -3687,27 +3675,7 @@ const App: React.FC = () => {
               setViewLoanFromDash(loan);
               setCurrentView(AppView.APPLY_LOAN);
             }}
-            onMarkNotificationRead={(id) => {
-              const updatedNotif = notifications.find(n => n.id === id);
-              if (updatedNotif) {
-                const newNotif = { ...updatedNotif, read: true };
-                setNotifications(prev => {
-                  const updated = prev.map(n => n.id === id ? newNotif : n);
-                  if (user) {
-                    const userNotifs = updated.filter(un => un.userId === user.id);
-                    const unreadCount = userNotifs.filter(un => !un.isRead).length;
-                    setLastSeenNotificationCount(unreadCount);
-                    localStorage.setItem('ndv_last_seen_notif_count', unreadCount.toString());
-                  }
-                  return updated;
-                });
-                // Targeted Sync - Only send the changed notification
-                authenticatedFetch('/api/notifications', {
-                  method: 'POST',
-                  body: JSON.stringify([newNotif])
-                }).catch(e => console.error("Lỗi lưu trạng thái thông báo:", e));
-              }
-            }}
+            onMarkNotificationRead={(id) => handleMarkNotificationRead(id)}
             onMarkAllNotificationsRead={() => {
               if (user) {
                 const userNotifs = notifications.filter(n => n.userId === user.id);
@@ -3727,6 +3695,7 @@ const App: React.FC = () => {
             }}
             onRefresh={() => fetchFullData(true)}
             onOpenLuckySpin={handleOpenLuckySpin}
+            onViewManual={() => setCurrentView(AppView.SYSTEM_MANUAL)}
             settings={settings}
           />
         );

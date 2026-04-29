@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { User, UserRank, LoanRecord, Notification, AppSettings } from '../types';
-import { TrendingUp, CreditCard, History, FileText, CalendarDays, Star, Activity, AlertCircle, ChevronLeft, ChevronRight, Eye, Bell, RefreshCcw, AlertTriangle, Zap, Trophy } from 'lucide-react';
+import { TrendingUp, CreditCard, History, FileText, CalendarDays, Star, Activity, AlertCircle, ChevronLeft, ChevronRight, Eye, Bell, RefreshCcw, AlertTriangle, Zap, Trophy, HelpCircle } from 'lucide-react';
 import NotificationModal from './NotificationModal';
 import { calculateFine } from '../utils';
 
@@ -20,6 +20,7 @@ interface DashboardProps {
   onMarkAllNotificationsRead?: () => void;
   onRefresh?: () => void;
   onOpenLuckySpin?: () => void;
+  onViewManual?: () => void;
   settings: AppSettings;
 }
 
@@ -38,6 +39,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
   onMarkAllNotificationsRead,
   onRefresh,
   onOpenLuckySpin,
+  onViewManual,
   settings
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
@@ -186,6 +188,13 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
               </button>
             )}
             <button 
+              onClick={onViewManual}
+              className="w-8 h-8 bg-[#111111] border border-white/5 rounded-full flex items-center justify-center text-blue-400 active:scale-90 transition-all"
+              title="Hướng dẫn"
+            >
+              <HelpCircle size={16} />
+            </button>
+            <button 
               onClick={() => {
                 setShowNotifications(true);
                 onMarkAllNotificationsRead?.();
@@ -285,7 +294,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
               <p className="text-[7px] font-bold text-gray-500 uppercase">Tổng tiền đã vay</p>
               <p className="text-base font-black text-white">
                 {loans
-                  .filter(l => l.status === 'ĐANG NỢ' || l.status === 'CHỜ TẤT TOÁN' || l.status === 'ĐÃ TẤT TOÁN' || l.status === 'ĐANG GIẢI NGÂN')
+                  .filter(l => l.status === 'ĐANG NỢ' || l.status === 'CHỜ TẤT TOÁN' || l.status === 'ĐÃ TẤT TOÁN' || l.status === 'ĐANG GIẢI NGÂN' || l.status === 'QUÁ HẠN')
                   .reduce((acc, curr) => acc + curr.amount, 0).toLocaleString()} đ
               </p>
             </div>

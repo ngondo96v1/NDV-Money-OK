@@ -798,6 +798,9 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                                       <div className="flex items-center gap-2">
                                         <div className={`px-2.5 py-1 rounded-lg text-[7px] font-black uppercase flex items-center gap-1 ${statusStyles}`}>
                                           {isOverdue ? 'QUÁ HẠN' : loan.status}
+                                          {loan.status === 'ĐÃ CỘNG DỒN' && loan.consolidatedInto && (
+                                            <span className="text-[6px] normal-case opacity-60 ml-0.5">({loan.consolidatedInto})</span>
+                                          )}
                                           {loan.status === 'CHỜ TẤT TOÁN' && (
                                             <span className={`px-1 rounded text-[6px] ml-1 ${
                                               loan.settlementType === 'ALL' ? 'bg-green-500 text-white' : 
