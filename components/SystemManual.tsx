@@ -22,10 +22,13 @@ interface ManualSection {
 
 interface SystemManualProps {
   onBack: () => void;
+  settings?: any;
 }
 
-const SystemManual: React.FC<SystemManualProps> = ({ onBack }) => {
+const SystemManual: React.FC<SystemManualProps> = ({ onBack, settings }) => {
   const [activeSection, setActiveSection] = useState<string>('USER_GUIDE');
+
+  const upgradeThreshold = settings?.MAX_ON_TIME_PAYMENTS_FOR_UPGRADE || 10;
 
   const manualData: ManualSection[] = [
     {
@@ -80,6 +83,14 @@ const SystemManual: React.FC<SystemManualProps> = ({ onBack }) => {
             'Nội dung bắt buộc: US-[Mã hợp đồng] (Ví dụ: US-1234).',
             'Gửi ảnh biên lai cho CSKH Zalo để được duyệt thủ công.'
           ]
+        },
+        {
+          subtitle: '3. Hình thức Tất toán',
+          items: [
+            'Tất toán toàn bộ: Thanh toán 100% Gốc + Phí để hoàn thành hợp đồng và khôi phục hạn mức.',
+            'TTMP (Thanh toán một phần): Trả trước một phần nợ gốc để giảm dư nợ cho kỳ sau.',
+            'Gia hạn (Gia hạn kỳ): Thanh toán phí dịch vụ để dời ngày đáo hạn sang tháng tiếp theo.'
+          ]
         }
       ]
     },
@@ -89,11 +100,19 @@ const SystemManual: React.FC<SystemManualProps> = ({ onBack }) => {
       icon: <Award size={18} />,
       content: [
         {
-          subtitle: 'Quyền lợi nâng hạng',
+          subtitle: '1. Nâng hạng tự động',
           items: [
-            'Tăng hạn mức giải ngân tối đa cho lần vay tiếp theo.',
-            'Giảm phí dịch vụ và lãi suất cho các kỳ thanh toán.',
-            'Được hỗ trợ nhanh nhất từ đội ngũ ưu tiên.'
+            'Tích lũy điểm uy tín bằng cách thanh toán đúng hạn các khoản vay.',
+            `Hệ thống tự động thăng hạng khi bạn đạt đủ ${upgradeThreshold} điểm tiến trình.`,
+            'Hạn mức và quyền lợi mới sẽ được kích hoạt ngay lập tức.'
+          ]
+        },
+        {
+          subtitle: '2. Nâng hạng thủ công',
+          items: [
+            'Dành cho thành viên muốn tăng hạn mức nhanh mà không cần chờ đợi.',
+            'Chọn gói nâng hạng mong muốn và thanh toán phí dịch vụ tương ứng.',
+            'Hồ sơ sẽ được Admin phê duyệt và nâng hạng trong vòng 5-15 phút.'
           ]
         }
       ]
@@ -165,11 +184,7 @@ const SystemManual: React.FC<SystemManualProps> = ({ onBack }) => {
         ))}
       </div>
 
-      <div className="mt-12 p-5 bg-orange-500/5 border border-orange-500/10 rounded-3xl">
-        <p className="text-[10px] font-bold text-gray-500 italic text-center leading-relaxed">
-          "Hệ thống tự động hóa 90% quy trình. Nếu gặp sự cố về số liệu, vui lòng sử dụng chức năng Đồng bộ trong bảng điều khiển Admin."
-        </p>
-      </div>
+
     </div>
   );
 };

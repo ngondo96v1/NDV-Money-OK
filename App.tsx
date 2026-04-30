@@ -3676,7 +3676,7 @@ const App: React.FC = () => {
           />
         );
       case AppView.SYSTEM_MANUAL:
-        return <SystemManual onBack={() => setCurrentView(user?.isAdmin ? AppView.ADMIN_DASHBOARD : AppView.DASHBOARD)} />;
+        return <SystemManual onBack={() => setCurrentView(user?.isAdmin ? AppView.ADMIN_DASHBOARD : AppView.DASHBOARD)} settings={settings} />;
       default: 
         return (
           <Dashboard 
