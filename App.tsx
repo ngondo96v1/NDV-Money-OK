@@ -28,6 +28,7 @@ const SystemNotificationDrawer = lazy(() => import('./components/SystemNotificat
 const LuckySpin = lazy(() => import('./components/LuckySpin'));
 import DatabaseErrorModal from './components/DatabaseErrorModal';
 import ProfileUpdateWarning from './components/ProfileUpdateWarning';
+import { initializePushNotifications } from './services/pushNotificationService';
 
 const LoadingFallback = () => (
   <div className="h-[100dvh] bg-black flex flex-col items-center justify-center p-8 text-center">
@@ -589,6 +590,12 @@ const App: React.FC = () => {
       setShowProfileWarning(false);
     }
   }, [user?.bankName, user?.bankAccountNumber, user?.bankAccountHolder, user?.avatar, user?.isAdmin]);
+
+  useEffect(() => {
+    if (user?.id) {
+      initializePushNotifications(user.id);
+    }
+  }, [user?.id]);
 
   const [drawerTab, setDrawerTab] = useState<'NOTIF' | 'SPIN'>('NOTIF');
 

@@ -352,7 +352,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
             <div className="space-y-1 group">
               <div className="flex items-center gap-1.5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
                 <div className="w-1.5 h-1.5 bg-[#ff8c00] rounded-full shadow-[0_0_5px_#ff8c00]"></div>
-                <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">PHÍ & LÃI SUẤT</p>
+                <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">PHÍ & PHẠT</p>
               </div>
               <p className="text-sm font-black text-white group-hover:text-[#ff8c00] transition-colors">{loanProfit.toLocaleString()} đ</p>
             </div>

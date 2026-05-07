@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS users (
   "penaltyStreak" INTEGER DEFAULT 0,
   "updatedAt" BIGINT,
   "hasCustomLimit" BOOLEAN DEFAULT false,
-  "isFreeUpgrade" BOOLEAN DEFAULT false
+  "isFreeUpgrade" BOOLEAN DEFAULT false,
+  "fcmToken" TEXT
 );
 
 -- 2. Loans Table
@@ -168,6 +169,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='bankBin') THEN
         ALTER TABLE users ADD COLUMN "bankBin" TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='fcmToken') THEN
+        ALTER TABLE users ADD COLUMN "fcmToken" TEXT;
     END IF;
 
     -- Loans table columns

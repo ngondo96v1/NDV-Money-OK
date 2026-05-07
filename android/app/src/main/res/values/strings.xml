@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NDV Money</string>
+    <string name="title_activity_main">NDV Money</string>
+    <string name="package_name">com.ndvmoney.app</string>
+    <string name="custom_url_scheme">com.ndvmoney.app</string>
+</resources>

@@ -8,6 +8,83 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { PayOS } from "@payos/node";
 import rateLimit from "express-rate-limit";
+import admin from "firebase-admin";
+
+// Initialize Firebase Admin for Push Notifications
+let firebaseApp: admin.app.App | null = null;
+try {
+  const saJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (saJson) {
+    let serviceAccount;
+    try {
+      // Try to parse if it's a JSON string
+      serviceAccount = JSON.parse(saJson);
+    } catch (e) {
+      // If not JSON, try to read as a file path
+      if (fs.existsSync(saJson)) {
+        serviceAccount = JSON.parse(fs.readFileSync(saJson, 'utf8'));
+      }
+    }
+    
+    if (serviceAccount && !admin.apps.length) {
+      firebaseApp = admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      console.log("[FIREBASE] Firebase Admin initialized successfully");
+    }
+  } else {
+    console.warn("[FIREBASE] FIREBASE_SERVICE_ACCOUNT_JSON not found. Push notifications will be disabled.");
+  }
+} catch (error) {
+  console.error("[FIREBASE] Failed to initialize Firebase Admin:", error);
+}
+
+// Helper to send push notification
+const sendPushNotification = async (fcmToken: string, title: string, body: string, data?: any) => {
+  if (!firebaseApp || !fcmToken) return false;
+  
+  try {
+    const message = {
+      notification: { title, body },
+      data: data || {},
+      token: fcmToken
+    };
+    
+    const response = await admin.messaging().send(message);
+    console.log(`[FIREBASE] Push sent successfully: ${response}`);
+    return true;
+  } catch (error) {
+    console.error(`[FIREBASE] Error sending push:`, error);
+    return false;
+  }
+};
+
+// Helper to trigger push notification for a specific user
+const triggerPushForUser = async (userId: string, title: string, body: string, client: any) => {
+  if (!userId || !title || !body || !client) return;
+  
+  try {
+    const { data: user, error } = await client
+      .from('users')
+      .select('fcmToken')
+      .eq('id', userId)
+      .single();
+      
+    if (error) {
+      console.error(`[PUSH] User fetch error for ${userId}:`, error);
+      return;
+    }
+    
+    if (user?.fcmToken) {
+      console.log(`[PUSH] Found token for user ${userId}, sending...`);
+      await sendPushNotification(user.fcmToken, title, body);
+    } else {
+      console.log(`[PUSH] No FCM token found for user ${userId}`);
+    }
+  } catch (err) {
+    console.error(`[PUSH] Unexpected error for user ${userId}:`, err);
+  }
+};
 
 // Load environment variables as early as possible
 dotenv.config();
@@ -1685,12 +1762,32 @@ const processRankPenalties = async (user: any, userLoans: any[], settings: any, 
       };
       await client.from('notifications').insert([notif]);
       io.to(`user_${user.id}`).emit("notification_updated", notif);
+      triggerPushForUser(user.id, notif.title, notif.message, client);
     }
     io.to(`user_${user.id}`).emit("user_updated", updatedUserWithPenalty);
   }
 
   return updatedUserWithPenalty;
 };
+
+router.post("/update-fcm-token", async (req: any, res) => {
+  const { userId, token } = req.body;
+  if (!userId || !token) return res.status(400).json({ error: "Missing data" });
+
+  try {
+    const client = initSupabase();
+    const { error } = await client
+      .from('users')
+      .update({ fcmToken: token, updatedAt: Date.now() })
+      .eq('id', userId);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e: any) {
+    console.error("Error updating FCM token:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 router.get("/data", async (req, res) => {
   try {
@@ -2356,6 +2453,7 @@ router.post("/loans", async (req: any, res) => {
                 read: false,
                 type: 'LOAN'
               }]);
+              triggerPushForUser(loan.userId, 'Khoản vay đã cộng dồn', message, client);
               
               io.to(`user_${loan.userId}`).emit("notification_updated", {
                 id: notifId,
@@ -3325,7 +3423,13 @@ router.post("/sync", async (req: any, res) => {
         io.to("admin").emit("loans_updated", loans);
       }
       if (notifications) {
-        notifications.forEach((n: any) => io.to(`user_${n.userId}`).emit("notification_updated", n));
+        notifications.forEach((n: any) => {
+          io.to(`user_${n.userId}`).emit("notification_updated", n);
+          // Only trigger push for new notifications, not updates of read status
+          if (n.userId !== 'ADMIN' && !n.read) {
+            triggerPushForUser(n.userId, n.title, n.message, client);
+          }
+        });
         io.to("admin").emit("notifications_updated", notifications);
       }
       
@@ -4116,6 +4220,7 @@ router.post("/payment/webhook", async (req, res) => {
               read: false,
               type: 'LOAN'
             }]);
+            triggerPushForUser(loan.userId, 'Thanh toán tự động thành công', detailMsg, client);
 
             // Add persistent notification for Admin
             await client.from('notifications').insert([{
@@ -4249,6 +4354,7 @@ router.post("/payment/webhook", async (req, res) => {
               read: false,
               type: 'RANK'
             }]);
+            triggerPushForUser(user.id, 'Nâng hạng thành công', `Chúc mừng! Bạn đã được nâng hạng lên ${rankLabel} thành công qua PayOS!${benefitMsg}`, client);
           }
         }
       }
