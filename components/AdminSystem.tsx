@@ -2788,7 +2788,7 @@ END $$;`;
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[7px] font-black text-gray-500 uppercase tracking-widest px-1">ĐIỀU KIỆN NÂNG HẠNG</label>
+                      <label className="text-[7px] font-black text-white uppercase tracking-widest px-1">ĐIỀU KIỆN NÂNG HẠNG</label>
                       <input 
                         type="text" 
                         inputMode="numeric"

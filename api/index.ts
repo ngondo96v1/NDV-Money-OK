@@ -183,7 +183,7 @@ const loadSystemSettings = async (client: any) => {
         'APP_URL', 'JWT_SECRET', 'ADMIN_PHONE', 'ADMIN_PASSWORD',
         'CONTRACT_CODE_FORMAT', 'USER_ID_FORMAT', 'ZALO_GROUP_LINK',
         'SYSTEM_NOTIFICATION', 'SHOW_SYSTEM_NOTIFICATION', 'MAINTENANCE_MODE',
-        'SYSTEM_BUDGET', 'TOTAL_LOAN_PROFIT', 'TOTAL_RANK_PROFIT', 'MONTHLY_STATS',
+        'SYSTEM_BUDGET', 'TOTAL_LOAN_PROFIT', 'TOTAL_FINE_PROFIT', 'TOTAL_RANK_PROFIT', 'MONTHLY_STATS',
         'ENABLE_PAYOS', 'ENABLE_VIETQR', 'LUCKY_SPIN_VOUCHERS', 'LUCKY_SPIN_WIN_RATE',
         'LUCKY_SPIN_PAYMENTS_REQUIRED', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE', 'CONTRACT_CLAUSES',
         'RANK_CONFIG', 'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG', 
@@ -196,7 +196,7 @@ const loadSystemSettings = async (client: any) => {
           } catch (e) {
             settings[item.key] = item.value;
           }
-        } else if (['SYSTEM_BUDGET', 'TOTAL_LOAN_PROFIT', 'TOTAL_RANK_PROFIT', 'UPGRADE_PERCENT', 'PRE_DISBURSEMENT_FEE', 'MAX_EXTENSIONS', 'FINE_RATE', 'MAX_FINE_PERCENT', 'MAX_LOAN_PER_CYCLE', 'MIN_SYSTEM_BUDGET', 'MAX_SINGLE_LOAN_AMOUNT', 'INITIAL_LIMIT', 'MIN_LOAN_AMOUNT', 'LUCKY_SPIN_WIN_RATE', 'LUCKY_SPIN_PAYMENTS_REQUIRED', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE'].includes(item.key)) {
+        } else if (['SYSTEM_BUDGET', 'TOTAL_LOAN_PROFIT', 'TOTAL_FINE_PROFIT', 'TOTAL_RANK_PROFIT', 'UPGRADE_PERCENT', 'PRE_DISBURSEMENT_FEE', 'MAX_EXTENSIONS', 'FINE_RATE', 'MAX_FINE_PERCENT', 'MAX_LOAN_PER_CYCLE', 'MIN_SYSTEM_BUDGET', 'MAX_SINGLE_LOAN_AMOUNT', 'INITIAL_LIMIT', 'MIN_LOAN_AMOUNT', 'LUCKY_SPIN_WIN_RATE', 'LUCKY_SPIN_PAYMENTS_REQUIRED', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE'].includes(item.key)) {
           settings[item.key] = Number(item.value);
         } else if (['ENABLE_PAYOS', 'ENABLE_VIETQR', 'SHOW_SYSTEM_NOTIFICATION', 'MAINTENANCE_MODE'].includes(item.key)) {
           settings[item.key] = item.value === true || item.value === 'true';
@@ -251,6 +251,7 @@ const getMergedSettings = async (client: any) => {
     ENABLE_VIETQR: dbSettings.ENABLE_VIETQR !== undefined ? dbSettings.ENABLE_VIETQR : (config.ENABLE_VIETQR !== undefined ? config.ENABLE_VIETQR : true),
     SYSTEM_BUDGET: dbSettings.SYSTEM_BUDGET !== undefined ? dbSettings.SYSTEM_BUDGET : 0,
     TOTAL_LOAN_PROFIT: dbSettings.TOTAL_LOAN_PROFIT !== undefined ? dbSettings.TOTAL_LOAN_PROFIT : 0,
+    TOTAL_FINE_PROFIT: dbSettings.TOTAL_FINE_PROFIT !== undefined ? dbSettings.TOTAL_FINE_PROFIT : 0,
     TOTAL_RANK_PROFIT: dbSettings.TOTAL_RANK_PROFIT !== undefined ? dbSettings.TOTAL_RANK_PROFIT : 0,
     MONTHLY_STATS: dbSettings.MONTHLY_STATS || [],
     LUCKY_SPIN_VOUCHERS: dbSettings.LUCKY_SPIN_VOUCHERS || config.LUCKY_SPIN_VOUCHERS || [
@@ -955,7 +956,7 @@ router.post("/settings", async (req: any, res) => {
     'SYSTEM_NOTIFICATION', 'SHOW_SYSTEM_NOTIFICATION', 'MAINTENANCE_MODE',
     'ENABLE_PAYOS', 'ENABLE_VIETQR', 'LUCKY_SPIN_VOUCHERS', 'LUCKY_SPIN_WIN_RATE',
     'LUCKY_SPIN_PAYMENTS_REQUIRED', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE', 'CONTRACT_CLAUSES',
-    'RANK_CONFIG', 'TOTAL_RANK_PROFIT', 'TOTAL_LOAN_PROFIT', 'SYSTEM_BUDGET', 'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG',
+    'RANK_CONFIG', 'TOTAL_RANK_PROFIT', 'TOTAL_LOAN_PROFIT', 'TOTAL_FINE_PROFIT', 'SYSTEM_START_DATE', 'SYSTEM_BUDGET', 'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG',
     'CONTRACT_FORMATS_CONFIG', 'TRANSFER_CONTENTS_CONFIG', 'SYSTEM_CONTRACT_FORMATS_CONFIG', 'MASTER_CONFIGS'
   ];
   
@@ -2780,11 +2781,13 @@ router.post("/budget-log/delete", async (req: any, res) => {
     const settings = await getMergedSettings(client);
     let currentBudget = Number(settings.SYSTEM_BUDGET || 0);
     let loanProfit = Number(settings.TOTAL_LOAN_PROFIT || 0);
+    let fineProfit = Number(settings.TOTAL_FINE_PROFIT || 0);
 
     // 3. Determine reversal impact and cascade effects
     // Log types: 'INITIAL' | 'ADD' | 'WITHDRAW' | 'LOAN_DISBURSE' | 'LOAN_REPAY' | 'ADJUSTMENT_IN' | 'ADJUSTMENT_OUT'
     let budgetDelta = 0;
     let loanProfitDelta = 0;
+    let fineProfitDelta = 0;
     let rankProfitDelta = 0;
     
     // Extract entity identifiers from note
@@ -2858,9 +2861,17 @@ router.post("/budget-log/delete", async (req: any, res) => {
             }
             await client.from('loans').update({ status: isOverdue ? 'QUÁ HẠN' : 'ĐANG NỢ', updatedAt: Date.now() }).eq('id', loanId);
             
-            // Revert profit estimate if any
+            // Reverse profit: repayment amount - loan principal
             if (log.amount > loan.amount) {
-              loanProfitDelta = -(log.amount - loan.amount);
+              fineProfitDelta = -Math.round((log.amount - loan.amount) / 1000) * 1000;
+            } else if (log.note.includes('Tất toán gốc') || log.note.includes('Tất toán một phần')) {
+              // Usually these include the fee as profit
+              const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 0) / 100;
+              if (log.note.includes('Tất toán gốc')) {
+                loanProfitDelta = -(loan.amount * feePercent);
+              } else {
+                loanProfitDelta = -(log.amount - (loan.partialAmount || 0));
+              }
             }
 
             const io = req.app.get("io");
@@ -2902,6 +2913,7 @@ router.post("/budget-log/delete", async (req: any, res) => {
     const updates: any = {};
     if (budgetDelta !== 0) updates.SYSTEM_BUDGET = Number(settings.SYSTEM_BUDGET || 0) + budgetDelta;
     if (loanProfitDelta !== 0) updates.TOTAL_LOAN_PROFIT = Math.max(0, Number(settings.TOTAL_LOAN_PROFIT || 0) + loanProfitDelta);
+    if (fineProfitDelta !== 0) updates.TOTAL_FINE_PROFIT = Math.max(0, Number(settings.TOTAL_FINE_PROFIT || 0) + fineProfitDelta);
     if (rankProfitDelta !== 0) updates.TOTAL_RANK_PROFIT = Math.max(0, Number(settings.TOTAL_RANK_PROFIT || 0) + rankProfitDelta);
 
     if (Object.keys(updates).length > 0) {
@@ -3219,7 +3231,7 @@ router.post("/sync", async (req: any, res) => {
   try {
     const client = initSupabase();
     if (!client) return res.status(503).json({ error: "Supabase chưa được cấu hình" });
-    const { users, loans, deletedLoanIds, notifications, budget, budgetDelta, budgetLog, rankProfit, loanProfit, monthlyStats } = req.body;
+    const { users, loans, deletedLoanIds, notifications, budget, budgetDelta, budgetLog, rankProfit, loanProfit, fineProfit, monthlyStats } = req.body;
     
     const isAdmin = req.user?.isAdmin === true;
 
@@ -3291,6 +3303,7 @@ router.post("/sync", async (req: any, res) => {
     }
     if (rankProfit !== undefined) configUpdates.push({ key: 'TOTAL_RANK_PROFIT', value: rankProfit });
     if (loanProfit !== undefined) configUpdates.push({ key: 'TOTAL_LOAN_PROFIT', value: loanProfit });
+    if (fineProfit !== undefined) configUpdates.push({ key: 'TOTAL_FINE_PROFIT', value: fineProfit });
     if (monthlyStats !== undefined) configUpdates.push({ key: 'MONTHLY_STATS', value: monthlyStats });
     
     if (configUpdates.length > 0) {
@@ -3994,10 +4007,10 @@ router.post("/payment/webhook", async (req, res) => {
             
           if (user && !userError) {
             // Calculate profit and budget updates
-            let profitAmount = 0;
+            let feeAmount = 0;
+            let fineAmount = Math.round((loan.fine || 0) / 1000) * 1000;
             let budgetUpdate = 0;
             const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 0) / 100;
-            const fine = loan.fine || 0;
 
             // Handle voucher usage
             let voucherDiscount = 0;
@@ -4012,21 +4025,29 @@ router.post("/payment/webhook", async (req, res) => {
             }
 
             if (settleType === 'PRINCIPAL') {
-              profitAmount = (loan.amount * feePercent) + fine;
-              budgetUpdate = profitAmount;
+              feeAmount = loan.amount * feePercent;
+              fineAmount = Math.round((loan.fine || 0) / 1000) * 1000;
+              budgetUpdate = feeAmount + fineAmount;
             } else if (settleType === 'PARTIAL') {
               const pAmount = loan.partialAmount || 0;
               const remainingPrincipal = loan.amount - pAmount;
-              profitAmount = (remainingPrincipal * feePercent) + fine;
-              budgetUpdate = pAmount + profitAmount;
+              feeAmount = remainingPrincipal * feePercent;
+              fineAmount = Math.round((loan.fine || 0) / 1000) * 1000;
+              budgetUpdate = pAmount + feeAmount + fineAmount;
             } else {
-              profitAmount = fine;
-              budgetUpdate = Math.max(0, (loan.amount + fine) - voucherDiscount);
+              // Full Settlement
+              feeAmount = 0; 
+              fineAmount = Math.round((loan.fine || 0) / 1000) * 1000;
+              budgetUpdate = Math.max(0, (loan.amount + fineAmount) - voucherDiscount);
             }
 
             // Update system stats
+            const currentTotalFeeProfit = (Number(settings.TOTAL_LOAN_PROFIT) || 0);
+            const currentTotalFineProfit = (Number(settings.TOTAL_FINE_PROFIT) || 0);
+            
             const newBudget = (Number(settings.SYSTEM_BUDGET) || 0) + budgetUpdate;
-            const newLoanProfit = (Number(settings.TOTAL_LOAN_PROFIT) || 0) + profitAmount;
+            const newLoanProfit = currentTotalFeeProfit + feeAmount;
+            const newFineProfit = currentTotalFineProfit + fineAmount;
             
             let newMonthlyStats = Array.isArray(settings.MONTHLY_STATS) ? [...settings.MONTHLY_STATS] : [];
             const now = new Date();
@@ -4035,18 +4056,28 @@ router.post("/payment/webhook", async (req, res) => {
             
             if (existingIdx !== -1) {
               const stat = { ...newMonthlyStats[existingIdx] };
-              stat.loanProfit = (Number(stat.loanProfit) || 0) + profitAmount;
-              stat.totalProfit = (Number(stat.rankProfit) || 0) + (Number(stat.loanProfit) || 0);
+              stat.loanProfit = (Number(stat.loanProfit) || 0) + feeAmount;
+              stat.fineProfit = (Number(stat.fineProfit) || 0) + fineAmount;
+              stat.totalProfit = (Number(stat.rankProfit) || 0) + (Number(stat.loanProfit) || 0) + (Number(stat.fineProfit) || 0);
               newMonthlyStats[existingIdx] = stat;
             } else {
-              newMonthlyStats = [{ month: monthKey, rankProfit: 0, loanProfit: profitAmount, totalProfit: profitAmount }, ...newMonthlyStats].slice(0, 6);
+              newMonthlyStats = [{ 
+                month: monthKey, 
+                rankProfit: 0, 
+                loanProfit: feeAmount, 
+                fineProfit: fineAmount,
+                totalProfit: feeAmount + fineAmount 
+              }, ...newMonthlyStats].slice(0, 6);
             }
 
             await client.from('config').upsert([
               { key: 'SYSTEM_BUDGET', value: newBudget.toString() },
               { key: 'TOTAL_LOAN_PROFIT', value: newLoanProfit.toString() },
+              { key: 'TOTAL_FINE_PROFIT', value: newFineProfit.toString() },
               { key: 'MONTHLY_STATS', value: JSON.stringify(newMonthlyStats) }
             ], { onConflict: 'key' });
+
+            const profitAmount = feeAmount + fineAmount;
 
             // Create Budget Log for Loan Settlement
             const budgetLogId = `BL${Date.now()}`;

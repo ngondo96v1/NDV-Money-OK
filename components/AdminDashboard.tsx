@@ -43,11 +43,13 @@ interface AdminDashboardProps {
   systemBudget: number;
   rankProfit: number;
   loanProfit: number;
+  fineProfit: number;
   monthlyStats: MonthlyStat[];
   budgetLogs: BudgetLog[];
   lastKeepAlive: string | null;
   onResetRankProfit: () => void;
   onResetLoanProfit: () => void;
+  onResetFineProfit: () => void;
   onNavigateToUsers: () => void;
   onNavigateToBudget: () => void;
   onLogout: () => void;
@@ -58,6 +60,7 @@ interface AdminDashboardProps {
   notifications: Notification[];
   onMarkNotificationRead: (id: string) => void;
   onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
+  onSyncStats?: () => void;
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({ 
@@ -67,11 +70,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
   systemBudget, 
   rankProfit, 
   loanProfit,
+  fineProfit,
   monthlyStats,
   budgetLogs,
   lastKeepAlive,
   onResetRankProfit, 
   onResetLoanProfit,
+  onResetFineProfit,
   onNavigateToUsers,
   onNavigateToBudget,
   onLogout,
@@ -81,10 +86,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
   settings,
   notifications,
   onMarkNotificationRead,
-  onUpdateSettings
+  onUpdateSettings,
+  onSyncStats
 }) => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showLoanResetConfirm, setShowLoanResetConfirm] = useState(false);
+  const [showFineResetConfirm, setShowFineResetConfirm] = useState(false);
   const [dbStatus, setDbStatus] = useState<{ connected: boolean; message?: string; error?: string } | null>(null);
   const [showDbErrorModal, setShowDbErrorModal] = useState(false);
   const [isCheckingDb, setIsCheckingDb] = useState(false);
@@ -218,6 +225,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     setShowLoanResetConfirm(false);
   };
 
+  const handleConfirmFineReset = () => {
+    onResetFineProfit();
+    setShowFineResetConfirm(false);
+  };
+
   const recentLogs = budgetLogs.slice(0, 3);
   
   return (
@@ -307,18 +319,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       {/* Main Stats Grid */}
       <div className="grid grid-cols-2 gap-4">
         {/* Total Profit Card */}
-        <div className="col-span-2 bg-gradient-to-br from-[#111111] to-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-6 relative overflow-hidden shadow-2xl">
+          <div onClick={onSyncStats} className="col-span-2 bg-gradient-to-br from-[#111111] to-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-6 relative overflow-hidden shadow-2xl active:scale-[0.98] transition-transform cursor-pointer">
           <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 blur-3xl rounded-full -mr-16 -mt-16"></div>
           <div className="relative z-10 flex justify-between items-start">
             <div className="space-y-1">
               <p className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">TỔNG DOANH THU HỆ THỐNG</p>
               <h3 className="text-3xl font-black text-[#00ffcc] tracking-tighter drop-shadow-[0_0_15px_rgba(0,255,204,0.3)]">
-                {(loanProfit + rankProfit).toLocaleString()} <span className="text-xs font-bold text-[#00ffcc]/60 uppercase ml-0.5">VND</span>
+                {(loanProfit + fineProfit + rankProfit).toLocaleString()} <span className="text-xs font-bold text-[#00ffcc]/60 uppercase ml-0.5">VND</span>
               </h3>
               <div className="flex items-center gap-2 mt-2">
                 <div className="flex items-center gap-1 bg-[#00ffcc]/10 px-2 py-0.5 rounded-full border border-[#00ffcc]/10">
                   <ArrowUpRight size={10} className="text-[#00ffcc]" />
-                  <span className="text-[8px] font-black text-[#00ffcc] uppercase tracking-widest">TĂNG TRƯỞNG ỔN ĐỊNH</span>
+                  <span className="text-[8px] font-black text-[#00ffcc] uppercase tracking-widest">ĐỒNG BỘ REAL-TIME</span>
                 </div>
               </div>
             </div>
@@ -326,7 +338,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
             <div className="bg-black/60 border border-white/10 rounded-2xl p-2.5 shadow-xl backdrop-blur-md flex items-center gap-3">
               <div className="flex flex-col gap-2 pr-3 border-r border-white/10">
                 <button 
-                  onClick={checkDbStatus}
+                  onClick={(e) => { e.stopPropagation(); checkDbStatus(); }}
                   disabled={isCheckingDb}
                   className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                 >
@@ -348,20 +360,45 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
             </div>
           </div>
           
-          <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-white/5">
-            <div className="space-y-1 group">
+          <div className="grid grid-cols-3 gap-2 mt-6 pt-6 border-t border-white/5">
+            <div className="space-y-1 group relative pb-8">
               <div className="flex items-center gap-1.5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
                 <div className="w-1.5 h-1.5 bg-[#ff8c00] rounded-full shadow-[0_0_5px_#ff8c00]"></div>
-                <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">PHÍ & PHẠT</p>
+                <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">PHÍ DỊCH VỤ</p>
               </div>
-              <p className="text-sm font-black text-white group-hover:text-[#ff8c00] transition-colors">{loanProfit.toLocaleString()} đ</p>
+              <p className="text-xs font-black text-white group-hover:text-[#ff8c00] transition-colors">{loanProfit.toLocaleString()} đ</p>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setShowLoanResetConfirm(true); }}
+                className="absolute bottom-0 left-0 text-[6px] font-black text-gray-600 hover:text-orange-500 uppercase flex items-center gap-1 p-1"
+              >
+                <RotateCcw size={8} /> Reset
+              </button>
             </div>
-            <div className="space-y-1 group">
+            <div className="space-y-1 group relative pb-8">
+              <div className="flex items-center gap-1.5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
+                <div className="w-1.5 h-1.5 bg-red-400 rounded-full shadow-[0_0_5px_#f87171]"></div>
+                <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">TIỀN PHẠT</p>
+              </div>
+              <p className="text-xs font-black text-white group-hover:text-red-400 transition-colors">{fineProfit.toLocaleString()} đ</p>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setShowFineResetConfirm(true); }}
+                className="absolute bottom-0 left-0 text-[6px] font-black text-gray-600 hover:text-red-400 uppercase flex items-center gap-1 p-1"
+              >
+                <RotateCcw size={8} /> Reset
+              </button>
+            </div>
+            <div className="space-y-1 group relative pb-8">
               <div className="flex items-center gap-1.5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
                 <div className="w-1.5 h-1.5 bg-purple-500 rounded-full shadow-[0_0_5px_#a855f7]"></div>
-                <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">DỊCH VỤ NÂNG HẠNG</p>
+                <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">NÂNG HẠNG</p>
               </div>
-              <p className="text-sm font-black text-white group-hover:text-purple-500 transition-colors">{rankProfit.toLocaleString()} đ</p>
+              <p className="text-xs font-black text-white group-hover:text-purple-500 transition-colors">{rankProfit.toLocaleString()} đ</p>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setShowResetConfirm(true); }}
+                className="absolute bottom-0 left-0 text-[6px] font-black text-gray-600 hover:text-purple-500 uppercase flex items-center gap-1 p-1"
+              >
+                <RotateCcw size={8} /> Reset
+              </button>
             </div>
           </div>
         </div>
@@ -631,6 +668,40 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
                <button 
                  onClick={handleConfirmLoanReset}
                  className="flex-1 py-3.5 bg-orange-600 rounded-xl text-[9px] font-black text-black uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/40"
+               >
+                 <Check size={12} /> ĐỒNG Ý
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFineResetConfirm && (
+        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-5 animate-in fade-in duration-300">
+          <div className="bg-[#111111] border border-red-500/20 w-full max-w-sm rounded-3xl p-6 space-y-6 relative shadow-2xl overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-red-500"></div>
+            <div className="flex flex-col items-center text-center space-y-3">
+              <div className="w-14 h-14 bg-red-500/10 rounded-full flex items-center justify-center text-red-500">
+                 <RotateCcw size={28} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-black text-white uppercase tracking-tighter">RESET TIỀN PHẠT?</h3>
+                <p className="text-[9px] font-bold text-gray-400 uppercase leading-relaxed px-3">
+                  Bạn có chắc chắn muốn đặt lại thống kê <span className="text-red-500">Tiền Phạt</span> về 0? Hành động này không ảnh hưởng đến số dư người dùng.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2.5">
+               <button 
+                 onClick={() => setShowFineResetConfirm(false)}
+                 className="flex-1 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black text-gray-500 uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
+               >
+                 <X size={12} /> HỦY BỎ
+               </button>
+               <button 
+                 onClick={handleConfirmFineReset}
+                 className="flex-1 py-3.5 bg-red-600 rounded-xl text-[9px] font-black text-white uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-900/40"
                >
                  <Check size={12} /> ĐỒNG Ý
                </button>

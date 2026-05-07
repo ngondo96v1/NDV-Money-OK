@@ -199,28 +199,6 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
       </div>
 
       <div className="flex flex-col gap-4 overflow-hidden flex-1">
-        {/* Thống kê Vốn Gốc */}
-        <div className="grid grid-cols-3 gap-2 shrink-0">
-          <div className="bg-[#111111] border border-white/5 rounded-2xl p-2.5 space-y-1">
-            <p className="text-[7px] font-black text-blue-500 uppercase tracking-widest">Vốn ban đầu</p>
-            <p className="text-sm font-black text-white tracking-tighter">
-              {stats.initial.toLocaleString()} <span className="text-[8px] text-gray-600 font-bold">đ</span>
-            </p>
-          </div>
-          <div className="bg-[#111111] border border-white/5 rounded-2xl p-2.5 space-y-1">
-            <p className="text-[7px] font-black text-green-500 uppercase tracking-widest">Đã thêm vốn</p>
-            <p className="text-sm font-black text-white tracking-tighter">
-              {stats.added.toLocaleString()} <span className="text-[8px] text-gray-600 font-bold">đ</span>
-            </p>
-          </div>
-          <div className="bg-[#111111] border border-white/5 rounded-2xl p-2.5 space-y-1">
-            <p className="text-[7px] font-black text-red-500 uppercase tracking-widest">Đã rút vốn</p>
-            <p className="text-sm font-black text-white tracking-tighter">
-              {stats.withdrawn.toLocaleString()} <span className="text-[8px] text-gray-600 font-bold">đ</span>
-            </p>
-          </div>
-        </div>
-
         {/* Tổng quan ngân sách */}
         <div className="bg-gradient-to-br from-[#111111] to-black border border-white/5 rounded-2xl p-4 relative overflow-hidden shrink-0">
           <div className="absolute top-0 right-0 p-2 opacity-10">
@@ -345,7 +323,7 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
                             {new Date(log.createdAt).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
-                        <p className="text-[9px] font-bold text-white tracking-tight line-clamp-1">{formatLogNote(log.note)}</p>
+                        <p className="text-[9px] font-bold text-white tracking-tight leading-relaxed">{formatLogNote(log.note)}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">

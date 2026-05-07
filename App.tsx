@@ -371,6 +371,10 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('ndv_loan_profit');
     return saved ? Number(saved) : 0;
   }); 
+  const [fineProfit, setFineProfit] = useState<number>(() => {
+    const saved = localStorage.getItem('ndv_fine_profit');
+    return saved ? Number(saved) : 0;
+  }); 
   const [budgetLogs, setBudgetLogs] = useState<BudgetLog[]>(() => {
     const saved = localStorage.getItem('ndv_budget_logs');
     return saved ? JSON.parse(saved) : [];
@@ -913,6 +917,10 @@ const App: React.FC = () => {
         setLoanProfit(data.loanProfit);
         localStorage.setItem('ndv_loan_profit', data.loanProfit.toString());
       }
+      if (data.fineProfit !== undefined) {
+        setFineProfit(data.fineProfit);
+        localStorage.setItem('ndv_fine_profit', data.fineProfit.toString());
+      }
       if (data.monthlyStats !== undefined) {
         const slicedStats = data.monthlyStats.slice(0, 6);
         setMonthlyStats(slicedStats);
@@ -1116,6 +1124,10 @@ const App: React.FC = () => {
             setLoanProfit(c.value);
             localStorage.setItem('ndv_loan_profit', c.value.toString());
           }
+          if (c.key === 'fineProfit' || c.key === 'TOTAL_FINE_PROFIT') {
+            setFineProfit(c.value);
+            localStorage.setItem('ndv_fine_profit', c.value.toString());
+          }
           if (c.key === 'monthlyStats' || c.key === 'MONTHLY_STATS') {
             const sliced = c.value.slice(0, 6);
             setMonthlyStats(sliced);
@@ -1139,6 +1151,7 @@ const App: React.FC = () => {
         if (data.SYSTEM_BUDGET !== undefined) setSystemBudget(data.SYSTEM_BUDGET);
         if (data.TOTAL_RANK_PROFIT !== undefined) setRankProfit(data.TOTAL_RANK_PROFIT);
         if (data.TOTAL_LOAN_PROFIT !== undefined) setLoanProfit(data.TOTAL_LOAN_PROFIT);
+        if (data.TOTAL_FINE_PROFIT !== undefined) setFineProfit(data.TOTAL_FINE_PROFIT);
         if (data.MONTHLY_STATS) setMonthlyStats(data.MONTHLY_STATS.slice(0, 6));
       }
     });
@@ -2535,6 +2548,7 @@ const App: React.FC = () => {
 
       // Calculate new stats for sync
       let loanProfitToSync = loanProfit;
+      let fineProfitToSync = fineProfit;
       let monthlyStatsToSync = [...monthlyStats];
 
       const isConsolidatedDisburse = action === 'DISBURSE' && newStatus === 'ĐÃ CỘNG DỒN';
@@ -2565,29 +2579,43 @@ const App: React.FC = () => {
           }
         }
 
-        let profitAmount = 0;
+        let feeAmount = 0;
+        let fineAmount = 0;
         const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 0) / 100;
         if (loan.settlementType === 'PRINCIPAL') {
-          profitAmount = (loan.amount * feePercent) + (loan.fine || 0);
+          feeAmount = loan.amount * feePercent;
+          fineAmount = Math.round((loan.fine || 0) / 1000) * 1000;
         } else if (loan.settlementType === 'PARTIAL') {
           const pAmount = loan.partialAmount || 0;
           const remainingPrincipal = loan.amount - pAmount;
-          profitAmount = (remainingPrincipal * feePercent) + (loan.fine || 0);
+          feeAmount = remainingPrincipal * feePercent;
+          fineAmount = Math.round((loan.fine || 0) / 1000) * 1000;
         } else {
-          profitAmount = (loan.fine || 0) - voucherDiscount;
+          feeAmount = 0;
+          fineAmount = Math.max(0, Math.round(((loan.fine || 0) - voucherDiscount) / 1000) * 1000);
         }
 
-        loanProfitToSync += profitAmount;
+        loanProfitToSync += feeAmount;
+        fineProfitToSync += fineAmount;
+        const profitAmount = feeAmount + fineAmount;
+        
         const now = new Date();
         const monthKey = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()}`;
         const existingIdx = monthlyStatsToSync.findIndex(s => s.month === monthKey);
         if (existingIdx !== -1) {
           const stat = { ...monthlyStatsToSync[existingIdx] };
-          stat.loanProfit += profitAmount;
-          stat.totalProfit = stat.rankProfit + stat.loanProfit;
+          stat.loanProfit = (stat.loanProfit || 0) + feeAmount;
+          stat.fineProfit = (stat.fineProfit || 0) + fineAmount;
+          stat.totalProfit = (stat.rankProfit || 0) + stat.loanProfit + (stat.fineProfit || 0);
           monthlyStatsToSync[existingIdx] = stat;
         } else {
-          monthlyStatsToSync = [{ month: monthKey, rankProfit: 0, loanProfit: profitAmount, totalProfit: profitAmount }, ...monthlyStatsToSync].slice(0, 6);
+          monthlyStatsToSync = [{ 
+            month: monthKey, 
+            rankProfit: 0, 
+            loanProfit: feeAmount, 
+            fineProfit: fineAmount, 
+            totalProfit: feeAmount + fineAmount 
+          }, ...monthlyStatsToSync].slice(0, 6);
         }
       }
 
@@ -2648,6 +2676,7 @@ const App: React.FC = () => {
         budgetLog: newBudgetLog,
         users: usersUpdated ? [newRegisteredUsers.find(u => u.id === loan.userId)] : undefined,
         loanProfit: (action === 'SETTLE' || action === 'DISBURSE' || isConsolidatedDisburse) ? loanProfitToSync : undefined,
+        fineProfit: (action === 'SETTLE' || action === 'DISBURSE' || isConsolidatedDisburse) ? fineProfitToSync : undefined,
         monthlyStats: (action === 'SETTLE' || action === 'DISBURSE' || isConsolidatedDisburse) ? monthlyStatsToSync : undefined
       };
 
@@ -2663,6 +2692,7 @@ const App: React.FC = () => {
       // Update local state ONLY after successful sync for Admin
       setLoans(newLoans);
       setLoanProfit(loanProfitToSync);
+      setFineProfit(fineProfitToSync);
       setMonthlyStats(monthlyStatsToSync);
       
       if (usersUpdated) {
@@ -3228,8 +3258,9 @@ const App: React.FC = () => {
       }
     });
 
-    // 2. Calculate Loan Profit - 100% precision from loan records
-    let derivedLoanProfit = 0;
+    // 2. Calculate Loan & Fine Profit - 100% precision from loan records
+    let derivedFeeProfit = 0;
+    let derivedFineProfit = 0;
     const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 0) / 100;
     loans.forEach(loan => {
       // Loại bỏ các khoản vay của admin hoặc tài khoản test
@@ -3237,16 +3268,17 @@ const App: React.FC = () => {
       if (!loanUser || loanUser.isAdmin || loanUser.phone === 'admin' || !loanUser.phone) return;
 
       if (['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN', 'ĐANG GIẢI NGÂN'].includes(loan.status)) {
-        derivedLoanProfit += (loan.amount * feePercent);
+        derivedFeeProfit += (loan.amount * feePercent);
       }
       if ((loan.status === 'ĐÃ TẤT TOÁN' || loan.status === 'CHỜ TẤT TOÁN') && loan.fine) {
-        derivedLoanProfit += loan.fine;
+        derivedFineProfit += Math.round((loan.fine || 0) / 1000) * 1000;
       }
     });
 
-    const finalLoanProfit = derivedLoanProfit;
+    const finalFeeProfit = derivedFeeProfit;
+    const finalFineProfit = derivedFineProfit;
     const finalRankProfit = derivedRankProfit;
-    const total = finalLoanProfit + finalRankProfit;
+    const total = finalFeeProfit + finalFineProfit + finalRankProfit;
 
     // Update DB & Local state - No more "forcing" logic
     try {
@@ -3259,14 +3291,16 @@ const App: React.FC = () => {
       if (existingIdx !== -1) {
         nextMonthlyStats[existingIdx] = {
           ...nextMonthlyStats[existingIdx],
-          loanProfit: finalLoanProfit,
+          loanProfit: finalFeeProfit,
+          fineProfit: finalFineProfit,
           rankProfit: finalRankProfit,
           totalProfit: total
         };
       } else {
         nextMonthlyStats.unshift({
           month: monthKey,
-          loanProfit: finalLoanProfit,
+          loanProfit: finalFeeProfit,
+          fineProfit: finalFineProfit,
           rankProfit: finalRankProfit,
           totalProfit: total
         });
@@ -3277,23 +3311,27 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           TOTAL_RANK_PROFIT: finalRankProfit,
-          TOTAL_LOAN_PROFIT: finalLoanProfit,
+          TOTAL_LOAN_PROFIT: finalFeeProfit,
+          TOTAL_FINE_PROFIT: finalFineProfit,
           MONTHLY_STATS: nextMonthlyStats.slice(0, 6)
         })
       });
       
       setRankProfit(finalRankProfit);
-      setLoanProfit(finalLoanProfit);
+      setLoanProfit(finalFeeProfit);
+      setFineProfit(finalFineProfit);
       setMonthlyStats(nextMonthlyStats.slice(0, 6));
       
       localStorage.setItem('ndv_rank_profit', finalRankProfit.toString());
-      localStorage.setItem('ndv_loan_profit', finalLoanProfit.toString());
+      localStorage.setItem('ndv_loan_profit', finalFeeProfit.toString());
+      localStorage.setItem('ndv_fine_profit', finalFineProfit.toString());
       localStorage.setItem('ndv_monthly_stats', JSON.stringify(nextMonthlyStats.slice(0, 6)));
       
       setSettings(prev => ({
         ...prev,
         TOTAL_RANK_PROFIT: finalRankProfit,
-        TOTAL_LOAN_PROFIT: finalLoanProfit,
+        TOTAL_LOAN_PROFIT: finalFeeProfit,
+        TOTAL_FINE_PROFIT: finalFineProfit,
         MONTHLY_STATS: nextMonthlyStats.slice(0, 6)
       }));
     } catch (e) {
@@ -3321,8 +3359,23 @@ const App: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({ loanProfit: 0 })
       });
+      toast.success("Đã reset doanh thu phí dịch vụ");
     } catch (e) {
-      console.error("Lỗi khi reset lợi nhuận phí và phạt:", e);
+      console.error("Lỗi khi reset lợi nhuận phí:", e);
+    }
+  };
+
+  const handleResetFineProfit = async () => {
+    setFineProfit(0);
+    try {
+      await authenticatedFetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ TOTAL_FINE_PROFIT: 0 })
+      });
+      toast.success("Đã reset doanh thu tiền phạt");
+    } catch (e) {
+      console.error("Lỗi khi reset lợi nhuận phạt:", e);
     }
   };
 
@@ -3634,11 +3687,13 @@ const App: React.FC = () => {
           systemBudget={systemBudget} 
           rankProfit={rankProfit} 
           loanProfit={loanProfit} 
+          fineProfit={fineProfit}
           monthlyStats={monthlyStats} 
           budgetLogs={budgetLogs} 
           lastKeepAlive={lastKeepAlive} 
           onResetRankProfit={handleResetRankProfit} 
           onResetLoanProfit={handleResetLoanProfit} 
+          onResetFineProfit={handleResetFineProfit}
           onNavigateToUsers={() => setCurrentView(AppView.ADMIN_USERS)} 
           onNavigateToBudget={() => setCurrentView(AppView.ADMIN_BUDGET)} 
           onLogout={handleLogout} 
@@ -3649,6 +3704,7 @@ const App: React.FC = () => {
           notifications={adminNotifications}
           onMarkNotificationRead={(id) => handleMarkNotificationRead(id)}
           onUpdateSettings={handleSaveSettings}
+          onSyncStats={handleSyncStats}
         />
       );
       case AppView.ADMIN_USERS: return <AdminUserManagement users={registeredUsers} loans={loans} isGlobalProcessing={isGlobalProcessing} onAction={handleAdminUserAction} onLoanAction={handleAdminLoanAction} onEditUser={handleAdminEditUser} onResetPassword={handleAdminResetPassword} onEditLoan={handleAdminEditLoan} onDeleteUser={handleDeleteUser} onDeleteLoan={handleDeleteLoan} onAutoCleanup={handleAutoCleanupUsers} onFetchFullData={fetchFullData} onFetchUserDetail={handleFetchUserDetail} onRefresh={() => fetchFullData(true)} onBack={() => setCurrentView(AppView.ADMIN_DASHBOARD)} totalUsers={totalUsers} totalLoans={totalLoans} onSearchUsers={(term: string) => setUserSearchTerm(term)} onSearchLoans={(term: string) => setLoanSearchTerm(term)} userRange={userRange} loanRange={loanRange} onSetUserRange={setUserRange} onSetLoanRange={setLoanRange} settings={settings} />;

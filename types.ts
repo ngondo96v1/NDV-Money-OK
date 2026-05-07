@@ -130,6 +130,7 @@ export interface MonthlyStat {
   month: string; // Format: "MM/YYYY"
   rankProfit: number;
   loanProfit: number;
+  fineProfit: number;
   totalProfit: number;
 }
 
@@ -257,4 +258,5 @@ export interface AppSettings {
   SYSTEM_CONTRACT_FORMATS_CONFIG?: GenericConfig[];
   MASTER_CONFIGS?: MasterConfig[];
   MAINTENANCE_MODE?: boolean;
+  SYSTEM_START_DATE?: string;
 }
