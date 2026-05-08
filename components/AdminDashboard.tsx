@@ -361,44 +361,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
           </div>
           
           <div className="grid grid-cols-3 gap-2 mt-6 pt-6 border-t border-white/5">
-            <div className="space-y-1 group relative pb-8">
+            <div className="space-y-1 group relative">
               <div className="flex items-center gap-1.5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
                 <div className="w-1.5 h-1.5 bg-[#ff8c00] rounded-full shadow-[0_0_5px_#ff8c00]"></div>
                 <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">PHÍ DỊCH VỤ</p>
               </div>
               <p className="text-xs font-black text-white group-hover:text-[#ff8c00] transition-colors">{loanProfit.toLocaleString()} đ</p>
-              <button 
-                onClick={(e) => { e.stopPropagation(); setShowLoanResetConfirm(true); }}
-                className="absolute bottom-0 left-0 text-[6px] font-black text-gray-600 hover:text-orange-500 uppercase flex items-center gap-1 p-1"
-              >
-                <RotateCcw size={8} /> Reset
-              </button>
             </div>
-            <div className="space-y-1 group relative pb-8">
+            <div className="space-y-1 group relative">
               <div className="flex items-center gap-1.5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
                 <div className="w-1.5 h-1.5 bg-red-400 rounded-full shadow-[0_0_5px_#f87171]"></div>
                 <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">TIỀN PHẠT</p>
               </div>
               <p className="text-xs font-black text-white group-hover:text-red-400 transition-colors">{fineProfit.toLocaleString()} đ</p>
-              <button 
-                onClick={(e) => { e.stopPropagation(); setShowFineResetConfirm(true); }}
-                className="absolute bottom-0 left-0 text-[6px] font-black text-gray-600 hover:text-red-400 uppercase flex items-center gap-1 p-1"
-              >
-                <RotateCcw size={8} /> Reset
-              </button>
             </div>
-            <div className="space-y-1 group relative pb-8">
+            <div className="space-y-1 group relative">
               <div className="flex items-center gap-1.5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
                 <div className="w-1.5 h-1.5 bg-purple-500 rounded-full shadow-[0_0_5px_#a855f7]"></div>
                 <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">NÂNG HẠNG</p>
               </div>
               <p className="text-xs font-black text-white group-hover:text-purple-500 transition-colors">{rankProfit.toLocaleString()} đ</p>
-              <button 
-                onClick={(e) => { e.stopPropagation(); setShowResetConfirm(true); }}
-                className="absolute bottom-0 left-0 text-[6px] font-black text-gray-600 hover:text-purple-500 uppercase flex items-center gap-1 p-1"
-              >
-                <RotateCcw size={8} /> Reset
-              </button>
             </div>
           </div>
         </div>
@@ -608,107 +590,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       </div>
 
       {/* Modals */}
-      {showResetConfirm && (
-        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-5 animate-in fade-in duration-300">
-          <div className="bg-[#111111] border border-orange-500/20 w-full max-w-sm rounded-3xl p-6 space-y-6 relative shadow-2xl overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-orange-500"></div>
-            <div className="flex flex-col items-center text-center space-y-3">
-              <div className="w-14 h-14 bg-orange-500/10 rounded-full flex items-center justify-center text-orange-500">
-                 <RotateCcw size={28} />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-lg font-black text-white uppercase tracking-tighter">RESET THỐNG KÊ?</h3>
-                <p className="text-[9px] font-bold text-gray-400 uppercase leading-relaxed px-3">
-                  Bạn có chắc chắn muốn đặt lại thống kê <span className="text-orange-500">Phí Nâng Hạng</span> về 0? Hành động này không ảnh hưởng đến số dư người dùng.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-2.5">
-               <button 
-                 onClick={() => setShowResetConfirm(false)}
-                 className="flex-1 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black text-gray-500 uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
-               >
-                 <X size={12} /> HỦY BỎ
-               </button>
-               <button 
-                 onClick={handleConfirmReset}
-                 className="flex-1 py-3.5 bg-orange-600 rounded-xl text-[9px] font-black text-black uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/40"
-               >
-                 <Check size={12} /> ĐỒNG Ý
-               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showLoanResetConfirm && (
-        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-5 animate-in fade-in duration-300">
-          <div className="bg-[#111111] border border-orange-500/20 w-full max-w-sm rounded-3xl p-6 space-y-6 relative shadow-2xl overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-orange-500"></div>
-            <div className="flex flex-col items-center text-center space-y-3">
-              <div className="w-14 h-14 bg-orange-500/10 rounded-full flex items-center justify-center text-orange-500">
-                 <RotateCcw size={28} />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-lg font-black text-white uppercase tracking-tighter">RESET LỢI NHUẬN?</h3>
-                <p className="text-[9px] font-bold text-gray-400 uppercase leading-relaxed px-3">
-                  Bạn có chắc chắn muốn đặt lại thống kê <span className="text-orange-500">Lợi nhuận từ Phí & Phạt</span> về 0? Hành động này không ảnh hưởng đến số dư người dùng.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-2.5">
-               <button 
-                 onClick={() => setShowLoanResetConfirm(false)}
-                 className="flex-1 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black text-gray-500 uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
-               >
-                 <X size={12} /> HỦY BỎ
-               </button>
-               <button 
-                 onClick={handleConfirmLoanReset}
-                 className="flex-1 py-3.5 bg-orange-600 rounded-xl text-[9px] font-black text-black uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/40"
-               >
-                 <Check size={12} /> ĐỒNG Ý
-               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showFineResetConfirm && (
-        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-5 animate-in fade-in duration-300">
-          <div className="bg-[#111111] border border-red-500/20 w-full max-w-sm rounded-3xl p-6 space-y-6 relative shadow-2xl overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-red-500"></div>
-            <div className="flex flex-col items-center text-center space-y-3">
-              <div className="w-14 h-14 bg-red-500/10 rounded-full flex items-center justify-center text-red-500">
-                 <RotateCcw size={28} />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-lg font-black text-white uppercase tracking-tighter">RESET TIỀN PHẠT?</h3>
-                <p className="text-[9px] font-bold text-gray-400 uppercase leading-relaxed px-3">
-                  Bạn có chắc chắn muốn đặt lại thống kê <span className="text-red-500">Tiền Phạt</span> về 0? Hành động này không ảnh hưởng đến số dư người dùng.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-2.5">
-               <button 
-                 onClick={() => setShowFineResetConfirm(false)}
-                 className="flex-1 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black text-gray-500 uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
-               >
-                 <X size={12} /> HỦY BỎ
-               </button>
-               <button 
-                 onClick={handleConfirmFineReset}
-                 className="flex-1 py-3.5 bg-red-600 rounded-xl text-[9px] font-black text-white uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-900/40"
-               >
-                 <Check size={12} /> ĐỒNG Ý
-               </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showDbErrorModal && dbStatus?.error && (
         <DatabaseErrorModal 

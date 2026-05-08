@@ -313,17 +313,17 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center bg-black border border-white/5 ${getLogTypeColor(log.type)}`}>
                         {getLogIcon(log.type)}
                       </div>
-                      <div className="space-y-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`text-[8px] font-black uppercase tracking-widest ${getLogTypeColor(log.type)}`}>
+                      <div className="space-y-0.5 flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                          <span className={`text-[8px] font-black uppercase tracking-widest shrink-0 ${getLogTypeColor(log.type)}`}>
                             {getLogTypeLabel(log.type)}
                           </span>
-                          <span className="text-[7px] font-bold text-gray-600 flex items-center gap-0.5">
+                          <span className="text-[7px] font-bold text-gray-600 flex items-center gap-0.5 whitespace-nowrap">
                             <Calendar size={7} />
                             {new Date(log.createdAt).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
-                        <p className="text-[9px] font-bold text-white tracking-tight leading-relaxed">{formatLogNote(log.note)}</p>
+                        <p className="text-[9px] font-bold text-white tracking-tight leading-relaxed break-words">{formatLogNote(log.note)}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
