@@ -25,6 +25,7 @@ import {
   Percent,
   Zap,
   ShieldCheck,
+  ShieldOff,
   History,
   ArrowRight,
   Bell,
@@ -39,7 +40,7 @@ import NotificationModal from './NotificationModal';
 interface AdminDashboardProps {
   user: User | null;
   loans: LoanRecord[];
-  registeredUsersCount: number;
+  users: User[];
   systemBudget: number;
   rankProfit: number;
   loanProfit: number;
@@ -66,7 +67,7 @@ interface AdminDashboardProps {
 const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({ 
   user, 
   loans, 
-  registeredUsersCount, 
+  users, 
   systemBudget, 
   rankProfit, 
   loanProfit,
@@ -131,28 +132,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
   }, []);
 
   // Loan Statistics
-  const { settledLoans, pendingLoans, activeLoans, overdueLoans } = useMemo(() => {
+  const { settledLoans, pendingLoans, activeLoans, overdueLoans, isolatedBadDebt } = useMemo(() => {
     const today = new Date();
+    const lockedUserIds = new Set((users || []).filter(u => u.isLocked).map(u => u.id));
+
     return {
       settledLoans: loans.filter(l => l.status === 'ĐÃ TẤT TOÁN'),
       pendingLoans: loans.filter(l => l.status === 'CHỜ DUYỆT' || l.status === 'CHỜ TẤT TOÁN'),
-      activeLoans: loans.filter(l => l.status === 'ĐANG NỢ'),
+      activeLoans: loans.filter(l => l.status === 'ĐANG NỢ' && !lockedUserIds.has(l.userId)),
       overdueLoans: loans.filter(l => {
         if ((l.status !== 'ĐANG NỢ' && l.status !== 'CHỜ TẤT TOÁN') || !l.date || typeof l.date !== 'string') return false;
+        if (lockedUserIds.has(l.userId)) return false; // Exclude locked from regular overdue
         const [d, m, y] = l.date.split('/').map(Number);
         const dueDate = new Date(y, m - 1, d);
         return dueDate < today;
-      })
+      }),
+      isolatedBadDebt: loans.filter(l => {
+        const activeStatuses = ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'];
+        return lockedUserIds.has(l.userId) && activeStatuses.includes(l.status);
+      }).reduce((sum, l) => sum + (Number(l.amount) || 0) + (Number(l.fine) || 0), 0)
     };
-  }, [loans]);
+  }, [loans, users]);
   
   // Financial Statistics
   const { totalDisbursed, totalCollected, activeDebt, collectionRate } = useMemo(() => {
     const activeStatuses = ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'];
+    const lockedUserIds = new Set((users || []).filter(u => u.isLocked).map(u => u.id));
+
     const disbursed = loans.filter(l => l.status !== 'BỊ TỪ CHỐI' && l.status !== 'CHỜ DUYỆT' && l.status !== 'ĐÃ CỘNG DỒN').reduce((acc, curr) => acc + curr.amount, 0);
     const collected = settledLoans.reduce((acc, curr) => acc + curr.amount, 0);
     const debt = loans
-      ? loans.filter((l: any) => activeStatuses.includes(l.status)).reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
+      ? loans.filter((l: any) => activeStatuses.includes(l.status) && !lockedUserIds.has(l.userId)).reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
       : 0;
     const rate = disbursed > 0 ? (collected / disbursed) * 100 : 0;
     return {
@@ -161,7 +171,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       activeDebt: debt,
       collectionRate: rate
     };
-  }, [loans, settledLoans]);
+  }, [loans, settledLoans, users]);
 
   const isBudgetAlarm = useMemo(() => systemBudget <= Number(settings.MIN_SYSTEM_BUDGET || 2000000), [systemBudget, settings.MIN_SYSTEM_BUDGET]);
   
@@ -300,16 +310,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       )}
 
       {/* Capital Management Stats Row */}
-      <div className="grid grid-cols-4 gap-2 px-1">
+      <div className="grid grid-cols-5 gap-2 px-1">
         {[
           { label: 'VỐN ĐẦU', value: capitalStats.initial, color: 'text-blue-400' },
           { label: 'THÊM VỐN', value: capitalStats.added, color: 'text-green-400' },
           { label: 'RÚT VỐN', value: capitalStats.withdrawn, color: 'text-red-400' },
+          { label: 'CÔ LẬP', value: isolatedBadDebt, color: 'text-amber-500' },
           { label: 'VỐN RÒNG', value: netCapital, color: 'text-white' }
         ].map((item, idx) => (
           <div key={idx} className="bg-[#111111] border border-white/5 rounded-2xl p-2.5 flex flex-col items-center justify-center text-center">
-            <p className="text-[6px] font-black text-gray-600 uppercase tracking-widest leading-none mb-1">{item.label}</p>
-            <p className={`text-[10px] font-black tracking-tighter ${item.color}`}>
+            <p className="text-[5px] font-black text-gray-600 uppercase tracking-widest leading-none mb-1">{item.label}</p>
+            <p className={`text-[9px] font-black tracking-tighter ${item.color}`}>
               {item.value.toLocaleString()}
             </p>
           </div>
@@ -415,11 +426,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
             </div>
             <div className="flex items-center gap-1 bg-red-500/10 px-1.5 py-0.5 rounded-md">
               <ArrowDownRight size={8} className="text-red-500" />
-              <span className="text-[6px] font-black text-red-500 uppercase">RỦI RO</span>
+              <span className="text-[6px] font-black text-red-500 uppercase">DƯ NỢ SẠCH</span>
             </div>
           </div>
           <div className="space-y-0.5">
-            <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em]">DƯ NỢ THỊ TRƯỜNG</p>
+            <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em]">DƯ NỢ THỰC TẾ</p>
             <p className="text-lg font-black text-white tracking-tight">
               {activeDebt.toLocaleString()} <span className="text-[10px] opacity-40">đ</span>
             </p>
@@ -429,6 +440,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
               className="h-full bg-red-500 transition-all duration-1000 shadow-[0_0_10px_#ef4444]" 
               style={{ width: `${Math.min(100, (activeDebt / (totalDisbursed || 1)) * 100)}%` }}
             ></div>
+          </div>
+        </div>
+
+        {/* Isolated Bad Debt Card */}
+        <div className="col-span-2 bg-black/40 border border-red-600/30 rounded-[2rem] p-5 flex items-center justify-between shadow-inner">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-red-600/10 rounded-2xl flex items-center justify-center text-red-600 border border-red-600/20">
+              <ShieldOff size={24} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-red-500 uppercase tracking-[0.2em] mb-1">NỢ XẤU CÔ LẬP (LOCKED)</p>
+              <h4 className="text-xl font-black text-white tracking-tighter">{isolatedBadDebt.toLocaleString()} đ</h4>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="px-2.5 py-1 bg-red-600/10 border border-red-600/20 rounded-lg">
+              <p className="text-[8px] font-black text-red-500 uppercase">TÁCH BIỆT HỆ THỐNG</p>
+            </div>
+            <p className="text-[7px] font-black text-gray-600 uppercase mt-2 tracking-widest">(GỐC + LÃI PHẠT ĐÃ KẾT TOÁN)</p>
           </div>
         </div>
       </div>
@@ -444,7 +474,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
           </div>
           <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 rounded-full border border-white/10">
             <Users size={10} className="text-[#ff8c00]" />
-            <span className="text-[8px] font-black text-white uppercase tracking-widest">{registeredUsersCount} THÀNH VIÊN</span>
+            <span className="text-[8px] font-black text-white uppercase tracking-widest">{users.length} THÀNH VIÊN</span>
           </div>
         </div>
 

@@ -380,7 +380,7 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
       return dueDateObj < today;
     });
 
-    const isApplyDisabled = hasOverdue || isSystemOutOfCapital || isProcessingLoan || isLimitReached || (user?.balance || 0) <= 0;
+    const isApplyDisabled = hasOverdue || isSystemOutOfCapital || isProcessingLoan || isLimitReached || (user?.balance || 0) <= 0 || user?.isLocked;
 
     return (
       <div className="w-full space-y-4 animate-in fade-in duration-500">
@@ -409,15 +409,17 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
                 : 'bg-[#ff8c00] text-black active:scale-95 shadow-orange-950/20'
             }`}
           >
-            {hasOverdue 
-              ? 'NỢ XẤU - KHÓA' 
-              : isLimitReached
-                ? `ĐẠT GIỚI HẠN ${Math.round(cycleLimit/1000000)}TR/THÁNG`
-                : isProcessingLoan 
-                  ? 'CHỜ DUYỆT KHOẢN TRƯỚC' 
-                  : isSystemOutOfCapital 
-                    ? 'BẢO TRÌ VỐN' 
-                    : 'ĐĂNG KÝ MỚI'}
+            {user?.isLocked
+              ? 'TÀI KHOẢN BỊ KHÓA'
+              : hasOverdue 
+                ? 'NỢ XẤU - KHÓA' 
+                : isLimitReached
+                  ? `ĐẠT GIỚI HẠN ${Math.round(cycleLimit/1000000)}TR/THÁNG`
+                  : isProcessingLoan 
+                    ? 'CHỜ DUYỆT KHOẢN TRƯỚC' 
+                    : isSystemOutOfCapital 
+                      ? 'BẢO TRÌ VỐN' 
+                      : 'ĐĂNG KÝ MỚI'}
           </button>
         </div>
 
@@ -973,7 +975,7 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
                           { id: 'ALL', label: 'Tất toán', icon: <Scale size={12} /> },
                           { id: 'PARTIAL', label: 'TTMP', icon: <Award size={12} /> },
                           { id: 'PRINCIPAL', label: `Gia hạn`, icon: <ShieldCheck size={12} />, sub: `(${extensionCount}/${settings.MAX_EXTENSIONS})` }
-                        ].map((type) => {
+                        ].filter(type => !user?.isLocked || type.id === 'ALL').map((type) => {
                           const isPrincipalDisabled = type.id === 'PRINCIPAL' && !canSettlePrincipal;
                           const isPartialDisabled = type.id === 'PARTIAL' && settleLoan?.amount === 1000000;
                           const isDisabled = isPrincipalDisabled || isPartialDisabled;

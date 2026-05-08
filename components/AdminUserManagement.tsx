@@ -15,6 +15,7 @@ import {
   MapPin,
   Calendar,
   ChevronLeft,
+  ShieldAlert,
   FileText,
   CheckCircle2,
   Briefcase,
@@ -57,6 +58,8 @@ interface AdminUserManagementProps {
   onEditLoan: (loanId: string, updatedData: Partial<LoanRecord>) => Promise<void>;
   onDeleteUser: (userId: string) => void;
   onDeleteLoan: (loanId: string) => void;
+  onLockUser?: (userId: string, reason: string) => Promise<void>;
+  onUnlockUser?: (userId: string) => Promise<void>;
   onAutoCleanup: () => Promise<number>;
   onFetchFullData?: () => Promise<void>;
   onRefresh?: () => void;
@@ -78,6 +81,7 @@ interface AdminUserManagementProps {
 const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ 
   users, loans, isGlobalProcessing, onAction, onLoanAction, onEditUser, onResetPassword, onEditLoan, 
   onDeleteUser, onDeleteLoan, onAutoCleanup, onFetchFullData, onRefresh, onBack, settings,
+  onLockUser, onUnlockUser,
   totalUsers = 0, totalLoans = 0, onSearchUsers, onSearchLoans, onFetchUserDetail, userRange, onSetUserRange
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -103,6 +107,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   const [rejectingLoanId, setRejectingLoanId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedSubSections, setExpandedSubSections] = useState<Record<string, Record<string, boolean>>>({});
+  const [showLockConfirm, setShowLockConfirm] = useState<{ userId: string, fullName: string } | null>(null);
+  const [lockReason, setLockReason] = useState('Vi phạm điều khoản');
 
   // Manual Edit States
   const [editingUser, setEditingUser] = useState<UserType | null>(null);
@@ -143,8 +149,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   };
 
   const getUserNotificationCount = useCallback((userId: string) => {
-    const user = users.find(u => u.id === userId);
-    const userLoans = loans.filter(l => l.userId === userId);
+    const user = (users || []).find(u => u.id === userId);
+    const userLoans = (loans || []).filter(l => l.userId === userId);
     
     let count = 0;
     // Include 'ĐÃ DUYỆT' because it needs 'DISBURSE' (Giải ngân)
@@ -162,8 +168,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   }, [users, loans]);
 
   const getLatestActivity = useCallback((userId: string) => {
-    const user = users.find(u => u.id === userId);
-    const userLoans = loans.filter(l => l.userId === userId);
+    const user = (users || []).find(u => u.id === userId);
+    const userLoans = (loans || []).filter(l => l.userId === userId);
     const loanUpdates = userLoans.map(l => l.updatedAt || 0);
     return Math.max(user?.updatedAt || 0, ...loanUpdates, 0);
   }, [users, loans]);
@@ -185,7 +191,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   };
 
   const filteredUsers = useMemo(() => {
-    return users.filter(u => {
+    return (users || []).filter(u => {
       const matchesSearch = u.fullName.toLowerCase().includes(searchTerm.toLowerCase()) || 
         u.phone.includes(searchTerm) ||
         u.id.includes(searchTerm);
@@ -382,7 +388,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
               className={`w-10 h-10 rounded-xl transition-all flex items-center justify-center relative border ${filterPendingOnly ? 'bg-[#ff8c00] border-[#ff8c00] text-black shadow-[0_0_15px_rgba(255,140,0,0.3)]' : 'bg-black/40 border-white/5 text-gray-500'}`}
             >
               <Clock size={18} />
-              {users.filter(u => getUserNotificationCount(u.id) > 0).length > 0 && !filterPendingOnly && (
+              {(users || []).filter(u => getUserNotificationCount(u.id) > 0).length > 0 && !filterPendingOnly && (
                 <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#111111] animate-pulse"></div>
               )}
             </button>
@@ -503,7 +509,13 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                     <div>
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <h3 className="text-sm font-black text-white tracking-tight uppercase leading-none">{u.fullName}</h3>
-                        {badDebt && (
+                        {u.isLocked && (
+                          <div className="flex items-center gap-1 bg-gray-600 px-1.5 py-0.5 rounded-md">
+                            <ShieldAlert size={8} className="text-white" />
+                            <span className="text-[7px] font-black text-white uppercase tracking-tighter">ĐÃ KHÓA</span>
+                          </div>
+                        )}
+                        {badDebt && !u.isLocked && (
                           <div className="flex items-center gap-1 bg-red-600 px-1.5 py-0.5 rounded-md animate-pulse">
                             <AlertTriangle size={8} className="text-white" />
                             <span className="text-[7px] font-black text-white uppercase tracking-tighter">NỢ XẤU</span>
@@ -657,6 +669,30 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                           >
                             <Trash2 size={12} />
                           </button>
+                          
+                          {u.isLocked ? (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onUnlockUser) onUnlockUser(u.id);
+                              }}
+                              className="w-8 h-8 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center justify-center text-green-500 hover:bg-green-500/20 transition-all"
+                              title="Mở khóa khách hàng"
+                            >
+                              <ShieldCheck size={12} />
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowLockConfirm({ userId: u.id, fullName: u.fullName });
+                              }}
+                              className="w-8 h-8 bg-rose-600/10 border border-rose-600/20 rounded-lg flex items-center justify-center text-rose-600 hover:bg-rose-600/20 transition-all"
+                              title="Khóa khách hàng (Nợ xấu cô lập)"
+                            >
+                              <ShieldAlert size={12} />
+                            </button>
+                          )}
                         </div>
 
                         {/* Personal Info Grid */}
@@ -1222,6 +1258,57 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
         <div className="py-20 text-center space-y-4 opacity-30">
            <AlertTriangle size={32} className="mx-auto" />
            <p className="text-[10px] font-black uppercase tracking-widest">Không tìm thấy khách hàng</p>
+        </div>
+      )}
+
+      {/* Confirm Lock User Modal */}
+      {showLockConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center px-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#111111] border border-white/5 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300">
+            <div className="p-6">
+              <div className="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4 text-red-500">
+                <ShieldAlert size={32} />
+              </div>
+              <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2 text-center">Khóa người dùng?</h3>
+              <p className="text-gray-400 text-[10px] font-bold mb-6 text-center uppercase tracking-widest leading-relaxed">
+                Tài khoản <span className="text-red-500">{showLockConfirm.fullName}</span> sẽ bị cô lập.<br/>
+                Khoản nợ sẽ bị tách riêng khỏi hệ thống.
+              </p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest block mb-2 px-1">Lý do khóa</label>
+                  <input 
+                    type="text" 
+                    value={lockReason}
+                    onChange={(e) => setLockReason(e.target.value)}
+                    className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-xs font-bold text-white focus:outline-none focus:border-[#ff8c00] transition-colors"
+                    placeholder="Nhập lý do khóa..."
+                  />
+                </div>
+
+                <div className="flex flex-col gap-3 pt-2">
+                  <button 
+                    onClick={async () => {
+                      if (onLockUser) {
+                        await onLockUser(showLockConfirm.userId, lockReason);
+                        setShowLockConfirm(null);
+                      }
+                    }}
+                    className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-black text-[10px] uppercase tracking-[0.2em] rounded-xl transition-all shadow-lg"
+                  >
+                    Xác nhận Khóa & Cô lập
+                  </button>
+                  <button 
+                    onClick={() => setShowLockConfirm(null)}
+                    className="w-full py-4 bg-white/5 hover:bg-white/10 text-gray-500 font-black text-[10px] uppercase tracking-[0.2em] rounded-xl transition-all"
+                  >
+                    Hủy bỏ
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

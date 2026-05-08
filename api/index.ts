@@ -1389,7 +1389,6 @@ router.post("/login", async (req, res) => {
       } else if (users && users.length > 0) {
         const user = users[0];
         
-        // Check password
         if (user.password && typeof user.password === 'string') {
           try {
             // Robust check for bcrypt hash
@@ -1859,7 +1858,7 @@ router.get("/data", async (req, res) => {
           // Re-attempt without missing columns if it looks like a schema issue
           if (error.code === 'PGRST204' || error.code === '42703' || (error.message && error.message.includes('column') && error.message.includes('does not exist'))) {
              console.warn("[API] Retrying users fetch without potentially missing columns...");
-             const commonNewColumns = ['payosOrderCode', 'payosCheckoutUrl', 'payosAmount', 'payosExpireAt', 'idNumber', 'refZalo', 'spins', 'vouchers', 'totalProfit', 'fullSettlementCount', 'lastPenaltyDate', 'penaltyStreak', 'hasCustomLimit', 'isFreeUpgrade', 'avatar', 'bankName', 'bankBin', 'bankAccountNumber', 'bankAccountHolder'];
+             const commonNewColumns = ['payosOrderCode', 'payosCheckoutUrl', 'payosAmount', 'payosExpireAt', 'idNumber', 'refZalo', 'spins', 'vouchers', 'totalProfit', 'fullSettlementCount', 'lastPenaltyDate', 'penaltyStreak', 'hasCustomLimit', 'isFreeUpgrade', 'avatar', 'bankName', 'bankBin', 'bankAccountNumber', 'bankAccountHolder', 'isLocked', 'lockedAt', 'lockedReason'];
              
              if (columns !== '*') {
                const columnsList = columns.split(',').map(c => c.trim());
@@ -3153,6 +3152,56 @@ router.post("/admin/reset-password", authenticateToken, async (req: any, res) =>
   }
 });
 
+router.post("/admin/user/lock", authenticateToken, async (req: any, res) => {
+  try {
+    const { userId, reason } = req.body;
+    if (!userId) return res.status(400).json({ error: "Thiếu userId" });
+    if (!req.user?.isAdmin) return res.status(403).json({ error: "Không có quyền" });
+
+    const client = initSupabase();
+    if (!client) throw new Error("Supabase error");
+
+    const { error } = await client
+      .from('users')
+      .update({ 
+        isLocked: true, 
+        lockedAt: new Date().toISOString(), 
+        lockedReason: reason || "Vi phạm điều khoản" 
+      })
+      .eq('id', userId);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post("/admin/user/unlock", authenticateToken, async (req: any, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: "Thiếu userId" });
+    if (!req.user?.isAdmin) return res.status(403).json({ error: "Không có quyền" });
+
+    const client = initSupabase();
+    if (!client) throw new Error("Supabase error");
+
+    const { error } = await client
+      .from('users')
+      .update({ 
+        isLocked: false, 
+        lockedAt: null, 
+        lockedReason: null 
+      })
+      .eq('id', userId);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Helper to filter object keys based on allowed columns
 const sanitizeData = (data: any[], allowedColumns: string[], tableName: string = 'unknown') => {
   if (!Array.isArray(data)) {
@@ -3191,7 +3240,7 @@ const USER_COLUMNS = [
   'bankAccountNumber', 'bankAccountHolder', 'hasJoinedZalo', 
   'payosOrderCode', 'payosCheckoutUrl', 'payosAmount', 'payosExpireAt', 
   'spins', 'vouchers', 'totalProfit', 'fullSettlementCount', 'lastPenaltyDate', 'penaltyStreak', 'updatedAt',
-  'hasCustomLimit', 'isFreeUpgrade'
+  'hasCustomLimit', 'isFreeUpgrade', 'isLocked', 'lockedAt', 'lockedReason'
 ];
 
 const USER_WRITE_COLUMNS = [...USER_COLUMNS, 'password'];
@@ -3200,7 +3249,7 @@ const USER_WRITE_COLUMNS = [...USER_COLUMNS, 'password'];
 const USER_SUMMARY_COLUMNS = [
   'id', 'phone', 'fullName', 'idNumber', 'balance', 'totalLimit', 'rank', 
   'rankProgress', 'isLoggedIn', 'isAdmin', 'pendingUpgradeRank', 'updatedAt', 
-  'refZalo', 'joinDate', 'avatar'
+  'refZalo', 'joinDate', 'avatar', 'isLocked', 'lockedAt', 'lockedReason'
 ];
 
 const LOAN_COLUMNS = [

@@ -28,6 +28,7 @@ const SystemNotificationDrawer = lazy(() => import('./components/SystemNotificat
 const LuckySpin = lazy(() => import('./components/LuckySpin'));
 import DatabaseErrorModal from './components/DatabaseErrorModal';
 import ProfileUpdateWarning from './components/ProfileUpdateWarning';
+import LockedUserModal from './components/LockedUserModal';
 import { initializePushNotifications } from './services/pushNotificationService';
 
 const LoadingFallback = () => (
@@ -3003,6 +3004,52 @@ const App: React.FC = () => {
     }
   };
 
+  const handleLockUser = async (userId: string, reason: string) => {
+    if (isGlobalProcessing) return;
+    setIsGlobalProcessing(true);
+    try {
+      const response = await authenticatedFetch('/api/admin/user/lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, reason })
+      });
+      if (response.ok) {
+        toast.success("Đã khóa và cô lập nợ xấu của người dùng thành công");
+        await fetchFullData(true);
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Không thể khóa người dùng");
+      }
+    } catch (e) {
+      toast.error("Lỗi kết nối máy chủ");
+    } finally {
+      setIsGlobalProcessing(false);
+    }
+  };
+
+  const handleUnlockUser = async (userId: string) => {
+    if (isGlobalProcessing) return;
+    setIsGlobalProcessing(true);
+    try {
+      const response = await authenticatedFetch('/api/admin/user/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+      if (response.ok) {
+        toast.success("Đã mở khóa người dùng thành công");
+        await fetchFullData(true);
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Không thể mở khóa người dùng");
+      }
+    } catch (e) {
+      toast.error("Lỗi kết nối máy chủ");
+    } finally {
+      setIsGlobalProcessing(false);
+    }
+  };
+
   const handleAdminEditLoan = async (loanId: string, updatedData: Partial<LoanRecord>) => {
     if (isGlobalProcessing) return;
     setIsGlobalProcessing(true);
@@ -3630,6 +3677,31 @@ const App: React.FC = () => {
       }
     }
 
+    // Locked User Enforcement
+    if (user && user.isLocked && !user.isAdmin && 
+        currentView !== AppView.LOGIN && 
+        currentView !== AppView.REGISTER && 
+        currentView !== AppView.APPLY_LOAN) {
+      return (
+        <LockedUserModal 
+          isOpen={true}
+          onClose={handleLogout}
+          user={user}
+          loans={loans.filter(l => l.userId === user.id)}
+          onSettle={() => {
+            // Find the oldest active loan to settle
+            const activeLoan = loans.find(l => 
+              l.userId === user.id && 
+              (['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'].includes(l.status))
+            );
+            setSettleLoanFromDash(activeLoan || null);
+            setCurrentView(AppView.APPLY_LOAN);
+          }}
+          zaloLink={settings.ZALO_GROUP_LINK || "https://zalo.me/g/xxxxxx"}
+        />
+      );
+    }
+
     switch (currentView) {
       case AppView.LOGIN: return (
         <Login 
@@ -3683,7 +3755,7 @@ const App: React.FC = () => {
         <AdminDashboard 
           user={user} 
           loans={loans} 
-          registeredUsersCount={registeredUsers.length} 
+          users={registeredUsers} 
           systemBudget={systemBudget} 
           rankProfit={rankProfit} 
           loanProfit={loanProfit} 
@@ -3707,7 +3779,7 @@ const App: React.FC = () => {
           onSyncStats={handleSyncStats}
         />
       );
-      case AppView.ADMIN_USERS: return <AdminUserManagement users={registeredUsers} loans={loans} isGlobalProcessing={isGlobalProcessing} onAction={handleAdminUserAction} onLoanAction={handleAdminLoanAction} onEditUser={handleAdminEditUser} onResetPassword={handleAdminResetPassword} onEditLoan={handleAdminEditLoan} onDeleteUser={handleDeleteUser} onDeleteLoan={handleDeleteLoan} onAutoCleanup={handleAutoCleanupUsers} onFetchFullData={fetchFullData} onFetchUserDetail={handleFetchUserDetail} onRefresh={() => fetchFullData(true)} onBack={() => setCurrentView(AppView.ADMIN_DASHBOARD)} totalUsers={totalUsers} totalLoans={totalLoans} onSearchUsers={(term: string) => setUserSearchTerm(term)} onSearchLoans={(term: string) => setLoanSearchTerm(term)} userRange={userRange} loanRange={loanRange} onSetUserRange={setUserRange} onSetLoanRange={setLoanRange} settings={settings} />;
+      case AppView.ADMIN_USERS: return <AdminUserManagement users={registeredUsers} loans={loans} isGlobalProcessing={isGlobalProcessing} onAction={handleAdminUserAction} onLoanAction={handleAdminLoanAction} onEditUser={handleAdminEditUser} onResetPassword={handleAdminResetPassword} onLockUser={handleLockUser} onUnlockUser={handleUnlockUser} onEditLoan={handleAdminEditLoan} onDeleteUser={handleDeleteUser} onDeleteLoan={handleDeleteLoan} onAutoCleanup={handleAutoCleanupUsers} onFetchFullData={fetchFullData} onFetchUserDetail={handleFetchUserDetail} onRefresh={() => fetchFullData(true)} onBack={() => setCurrentView(AppView.ADMIN_DASHBOARD)} totalUsers={totalUsers} totalLoans={totalLoans} onSearchUsers={(term: string) => setUserSearchTerm(term)} onSearchLoans={(term: string) => setLoanSearchTerm(term)} userRange={userRange} loanRange={loanRange} onSetUserRange={setUserRange} onSetLoanRange={setLoanRange} settings={settings} />;
       case AppView.ADMIN_BUDGET: 
         return (
           <AdminBudget 

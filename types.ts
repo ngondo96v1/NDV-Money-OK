@@ -31,6 +31,9 @@ export interface User {
   isAdmin?: boolean;
   pendingUpgradeRank?: UserRank | null;
   rankUpgradeBill?: string; // Ảnh bill nâng hạng
+  isLocked?: boolean;
+  lockedAt?: string;
+  lockedReason?: string;
   avatar?: string; // Ảnh đại diện
   address?: string;
   joinDate?: string;
@@ -107,6 +110,7 @@ export interface LoanRecord {
   payosCheckoutUrl?: string;
   payosExpireAt?: number;
   consolidatedInto?: string;
+  isUserLocked?: boolean;
   updatedAt?: number;
 }
 
