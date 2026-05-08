@@ -315,7 +315,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
           { label: 'VỐN ĐẦU', value: capitalStats.initial, color: 'text-blue-400' },
           { label: 'THÊM VỐN', value: capitalStats.added, color: 'text-green-400' },
           { label: 'RÚT VỐN', value: capitalStats.withdrawn, color: 'text-red-400' },
-          { label: 'CÔ LẬP', value: isolatedBadDebt, color: 'text-amber-500' },
+          { label: 'PHONG TỎA', value: isolatedBadDebt, color: 'text-amber-500' },
           { label: 'VỐN RÒNG', value: netCapital, color: 'text-white' }
         ].map((item, idx) => (
           <div key={idx} className="bg-[#111111] border border-white/5 rounded-2xl p-2.5 flex flex-col items-center justify-center text-center">
@@ -450,13 +450,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
               <ShieldOff size={24} />
             </div>
             <div>
-              <p className="text-[9px] font-black text-red-500 uppercase tracking-[0.2em] mb-1">NỢ XẤU CÔ LẬP (LOCKED)</p>
+              <p className="text-[9px] font-black text-red-500 uppercase tracking-[0.2em] mb-1">DƯ NỢ PHONG TỎA (LOCKED)</p>
               <h4 className="text-xl font-black text-white tracking-tighter">{isolatedBadDebt.toLocaleString()} đ</h4>
             </div>
           </div>
           <div className="text-right">
             <div className="px-2.5 py-1 bg-red-600/10 border border-red-600/20 rounded-lg">
-              <p className="text-[8px] font-black text-red-500 uppercase">TÁCH BIỆT HỆ THỐNG</p>
+              <p className="text-[8px] font-black text-red-500 uppercase">TIỀN PHẠT TÍCH LŨY</p>
             </div>
             <p className="text-[7px] font-black text-gray-600 uppercase mt-2 tracking-widest">(GỐC + LÃI PHẠT ĐÃ KẾT TOÁN)</p>
           </div>
