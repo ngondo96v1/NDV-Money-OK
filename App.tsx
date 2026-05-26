@@ -204,7 +204,11 @@ const App: React.FC = () => {
     setSystemBudget(prevBudget => {
       let nextBudget = prevBudget;
       if (type === 'INITIAL') {
-        nextBudget = amount;
+        const activeStatuses = ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'];
+        const activeDebt = loans
+          ? loans.filter((l: any) => activeStatuses.includes(l.status)).reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
+          : 0;
+        nextBudget = amount - activeDebt;
       } else if (type === 'ADD') {
         nextBudget += amount;
       } else if (type === 'WITHDRAW') {
@@ -3353,6 +3357,19 @@ const App: React.FC = () => {
         });
       }
 
+      // 3. Recalculate Working Capital (Vốn lưu động) based on all cash-flow transactions in logs to prevent drift
+      let finalBudget = systemBudget;
+      if (budgetLogs && budgetLogs.length > 0) {
+        finalBudget = budgetLogs.reduce((acc, log) => {
+          if (log.type === 'INITIAL' || log.type === 'ADD' || log.type === 'ADJUSTMENT_IN' || log.type === 'LOAN_REPAY') {
+            return acc + Number(log.amount || 0);
+          } else if (log.type === 'WITHDRAW' || log.type === 'ADJUSTMENT_OUT' || log.type === 'LOAN_DISBURSE') {
+            return acc - Number(log.amount || 0);
+          }
+          return acc;
+        }, 0);
+      }
+
       await authenticatedFetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3360,6 +3377,7 @@ const App: React.FC = () => {
           TOTAL_RANK_PROFIT: finalRankProfit,
           TOTAL_LOAN_PROFIT: finalFeeProfit,
           TOTAL_FINE_PROFIT: finalFineProfit,
+          SYSTEM_BUDGET: finalBudget,
           MONTHLY_STATS: nextMonthlyStats.slice(0, 6)
         })
       });
@@ -3367,11 +3385,13 @@ const App: React.FC = () => {
       setRankProfit(finalRankProfit);
       setLoanProfit(finalFeeProfit);
       setFineProfit(finalFineProfit);
+      setSystemBudget(finalBudget);
       setMonthlyStats(nextMonthlyStats.slice(0, 6));
       
       localStorage.setItem('ndv_rank_profit', finalRankProfit.toString());
       localStorage.setItem('ndv_loan_profit', finalFeeProfit.toString());
       localStorage.setItem('ndv_fine_profit', finalFineProfit.toString());
+      localStorage.setItem('ndv_budget', finalBudget.toString());
       localStorage.setItem('ndv_monthly_stats', JSON.stringify(nextMonthlyStats.slice(0, 6)));
       
       setSettings(prev => ({
@@ -3379,6 +3399,7 @@ const App: React.FC = () => {
         TOTAL_RANK_PROFIT: finalRankProfit,
         TOTAL_LOAN_PROFIT: finalFeeProfit,
         TOTAL_FINE_PROFIT: finalFineProfit,
+        SYSTEM_BUDGET: finalBudget,
         MONTHLY_STATS: nextMonthlyStats.slice(0, 6)
       }));
     } catch (e) {

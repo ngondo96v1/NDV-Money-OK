@@ -688,7 +688,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                                 setShowLockConfirm({ userId: u.id, fullName: u.fullName });
                               }}
                               className="w-8 h-8 bg-rose-600/10 border border-rose-600/20 rounded-lg flex items-center justify-center text-rose-600 hover:bg-rose-600/20 transition-all"
-                              title="Khóa khách hàng (Nợ xấu cô lập)"
+                              title="Khóa khách hàng (Dư nợ phong tỏa)"
                             >
                               <ShieldAlert size={12} />
                             </button>
@@ -1271,8 +1271,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
               </div>
               <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2 text-center">Khóa người dùng?</h3>
               <p className="text-gray-400 text-[10px] font-bold mb-6 text-center uppercase tracking-widest leading-relaxed">
-                Tài khoản <span className="text-red-500">{showLockConfirm.fullName}</span> sẽ bị cô lập.<br/>
-                Khoản nợ sẽ bị tách riêng khỏi hệ thống.
+                Tài khoản <span className="text-red-500">{showLockConfirm.fullName}</span> sẽ bị PHONG TỎA.<br/>
+                Khoản nợ sẽ được chuyển thành DƯ NỢ PHONG TỎA (LOCKED).
               </p>
               
               <div className="space-y-4">
@@ -1297,7 +1297,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                     }}
                     className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-black text-[10px] uppercase tracking-[0.2em] rounded-xl transition-all shadow-lg"
                   >
-                    Xác nhận Khóa & Cô lập
+                    Xác nhận KHÓA & PHONG TỎA
                   </button>
                   <button 
                     onClick={() => setShowLockConfirm(null)}

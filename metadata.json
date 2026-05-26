@@ -1,7 +1,8 @@
 {
-  "name": "2NDV FN26 V1 PRM New",
-  "description": "NDV123",
+  "name": "NDV Money - Smart Finance",
+  "description": "Hệ thống quản lý tài chính và khoản vay chuyên nghiệp với tích hợp Push Notification và PayOS.",
   "requestFramePermissions": [
     "camera"
-  ]
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

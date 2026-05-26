@@ -89,6 +89,35 @@ const AdminSystem: React.FC<AdminSystemProps> = ({ onReset, onImportSuccess, onB
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [isSendingPush, setIsSendingPush] = useState(false);
+  const [pushForm, setPushForm] = useState({ title: '', body: '', all: true });
+
+  const handleSendPush = async () => {
+    if (!pushForm.title || !pushForm.body) {
+      toast.error("Vui lòng nhập tiêu đề và nội dung thông báo");
+      return;
+    }
+
+    setIsSendingPush(true);
+    try {
+      const response = await authenticatedFetch('/api/send-push', {
+        method: 'POST',
+        body: JSON.stringify(pushForm)
+      });
+      const result = await response.json();
+      if (response.ok) {
+        toast.success(result.message || "Gửi thông báo thành công!");
+        setPushForm({ ...pushForm, title: '', body: '' });
+      } else {
+        toast.error(result.error || "Gửi thông báo thất bại");
+      }
+    } catch (e) {
+      toast.error("Lỗi kết nối máy chủ");
+    } finally {
+      setIsSendingPush(false);
+    }
+  };
+
   const [visibleFields, setVisibleFields] = useState<Record<string, boolean>>({});
   const [expandedConfigs, setExpandedConfigs] = useState<Record<string, boolean>>({});
   const [expandedMasterCategories, setExpandedMasterCategories] = useState<Record<string, boolean>>({
@@ -2653,6 +2682,42 @@ END $$;`;
                       onChange={(e) => setLocalSettings({...localSettings, SYSTEM_NOTIFICATION: e.target.value})}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[9px] font-bold text-white outline-none min-h-[60px] resize-none"
                     />
+                  </div>
+
+                  {/* Manual Push Notification Tool */}
+                  <div className="space-y-3 pt-4 border-t border-white/5 bg-[#ff8c00]/5 p-4 rounded-3xl border border-[#ff8c00]/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap size={14} className="text-[#ff8c00]" />
+                      <h6 className="text-[7px] font-black text-[#ff8c00] uppercase tracking-[0.2em]">Gửi Thông Báo Push (FCM)</h6>
+                    </div>
+                    
+                    <div className="space-y-2">
+                       <input 
+                         type="text"
+                         value={pushForm.title}
+                         onChange={(e) => setPushForm({...pushForm, title: e.target.value})}
+                         placeholder="Tiêu đề thông báo..."
+                         className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[9px] font-bold text-white outline-none focus:border-[#ff8c00]"
+                       />
+                       <textarea 
+                         value={pushForm.body}
+                         onChange={(e) => setPushForm({...pushForm, body: e.target.value})}
+                         placeholder="Nội dung thông báo chi tiết..."
+                         className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[9px] font-bold text-white outline-none min-h-[60px] resize-none focus:border-[#ff8c00]"
+                       />
+                    </div>
+
+                    <button 
+                      onClick={handleSendPush}
+                      disabled={isSendingPush}
+                      className="w-full bg-[#ff8c00] hover:bg-[#ff8c00]/90 text-black font-black py-3 rounded-xl text-[8px] uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-orange-900/20"
+                    >
+                      {isSendingPush ? <Loader2 className="animate-spin" size={12} /> : <Zap size={12} />}
+                      GỬI THÔNG BÁO TỚI TẤT CẢ THIẾT BỊ
+                    </button>
+                    <p className="text-[6px] font-bold text-gray-500 uppercase tracking-widest text-center px-2">
+                      Lưu ý: Chỉ những máy Android đã cài App APK và đăng ký nhận tin mới nhận được.
+                    </p>
                   </div>
 
                   <button 

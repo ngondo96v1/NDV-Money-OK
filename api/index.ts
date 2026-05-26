@@ -1789,6 +1789,66 @@ router.post("/update-fcm-token", async (req: any, res) => {
   }
 });
 
+router.post("/send-push", async (req: any, res) => {
+  const { userId, title, body, all } = req.body;
+  
+  if (!firebaseApp) {
+    return res.status(500).json({ error: "Firebase Admin chưa được cấu hình. Vui lòng thêm FIREBASE_SERVICE_ACCOUNT_JSON vào .env" });
+  }
+
+  try {
+    const client = initSupabase();
+    if (all) {
+      // Send to all users who have a token
+      const { data: users, error } = await client
+        .from('users')
+        .select('fcmToken, id')
+        .not('fcmToken', 'is', null);
+        
+      if (error) throw error;
+      
+      const tokens = users.map(u => u.fcmToken).filter(Boolean);
+      if (tokens.length === 0) {
+        return res.status(404).json({ error: "Không tìm thấy thiết bị nào để gửi thông báo." });
+      }
+
+      // Firebase Admin supports sending to multiple tokens (up to 500 per call)
+      const message = {
+        notification: { title, body },
+        tokens: tokens
+      };
+      
+      const response = await admin.messaging().sendEachForMulticast(message);
+      return res.json({ 
+        success: true, 
+        message: `Đã gửi thành công đến ${response.successCount} thiết bị. Thất bại: ${response.failureCount}` 
+      });
+    } else if (userId) {
+      // Send to specific user
+      const { data: user, error } = await client
+        .from('users')
+        .select('fcmToken')
+        .eq('id', userId)
+        .single();
+        
+      if (error || !user?.fcmToken) {
+        return res.status(404).json({ error: "Người dùng này chưa đăng ký nhận thông báo trên app." });
+      }
+
+      const success = await sendPushNotification(user.fcmToken, title, body);
+      if (success) {
+        return res.json({ success: true, message: "Gửi thông báo thành công!" });
+      } else {
+        return res.status(500).json({ error: "Gửi thông báo thất bại qua Firebase Admin." });
+      }
+    } else {
+      return res.status(400).json({ error: "Vui lòng chọn người dùng hoặc chọn gửi tất cả." });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/data", async (req, res) => {
   try {
     const client = initSupabase();
@@ -4348,6 +4408,7 @@ router.post("/payment/webhook", async (req, res) => {
                 balance: newBalance,
                 pendingUpgradeRank: null,
                 rankUpgradeBill: 'PAYOS_SUCCESS',
+                isFreeUpgrade: false,
                 updatedAt: Date.now()
               })
               .eq('id', user.id);
