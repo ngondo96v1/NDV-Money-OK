@@ -137,7 +137,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     const lockedUserIds = new Set((users || []).filter(u => u.isLocked).map(u => u.id));
 
     return {
-      settledLoans: loans.filter(l => l.status === 'ĐÃ TẤT TOÁN'),
+      settledLoans: loans.filter(l => l.status === 'ĐÃ TẤT TOÁN' && l.settlementType !== 'PRINCIPAL' && l.settlementType !== 'PARTIAL'),
       pendingLoans: loans.filter(l => l.status === 'CHỜ DUYỆT' || l.status === 'CHỜ TẤT TOÁN'),
       activeLoans: loans.filter(l => l.status === 'ĐANG NỢ' && !lockedUserIds.has(l.userId)),
       overdueLoans: loans.filter(l => {
@@ -159,19 +159,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     const activeStatuses = ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'];
     const lockedUserIds = new Set((users || []).filter(u => u.isLocked).map(u => u.id));
 
-    const disbursed = loans.filter(l => l.status !== 'BỊ TỪ CHỐI' && l.status !== 'CHỜ DUYỆT' && l.status !== 'ĐÃ CỘNG DỒN').reduce((acc, curr) => acc + curr.amount, 0);
-    const collected = settledLoans.reduce((acc, curr) => acc + curr.amount, 0);
+    // A loan is a rollover/extension if its ID contains renewal keywords or originalBaseId points to another loan ID
+    const isRollover = (l: LoanRecord) => {
+      const idUpper = l.id.toUpperCase();
+      return (
+        idUpper.includes('GH') || 
+        idUpper.includes('TTMP') || 
+        (l.originalBaseId && l.originalBaseId !== l.id)
+      );
+    };
+
+    // Total disbursed counts ONLY the initial/original loan capital dispatched (not renewed rollovers)
+    const originalLoans = loans.filter(l => 
+      !isRollover(l) && 
+      l.status !== 'BỊ TỪ CHỐI' && 
+      l.status !== 'CHỜ DUYỆT' && 
+      l.status !== 'ĐÃ CỘNG DỒN' &&
+      l.status !== 'ĐÃ HUỶ' &&
+      l.status !== 'ĐÃ HỦY'
+    );
+    const disbursed = originalLoans.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+
+    // Current real active debt in distribution / outstanding (includes any active rollovers)
     const debt = loans
       ? loans.filter((l: any) => activeStatuses.includes(l.status) && !lockedUserIds.has(l.userId)).reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
       : 0;
+
+    // True collected capital is the initial real money dispersed minus what is still active/outstanding
+    const collected = Math.max(0, disbursed - debt);
+    
     const rate = disbursed > 0 ? (collected / disbursed) * 100 : 0;
+    
     return {
       totalDisbursed: disbursed,
       totalCollected: collected,
       activeDebt: debt,
       collectionRate: rate
     };
-  }, [loans, settledLoans, users]);
+  }, [loans, users]);
 
   const isBudgetAlarm = useMemo(() => systemBudget <= Number(settings.MIN_SYSTEM_BUDGET || 2000000), [systemBudget, settings.MIN_SYSTEM_BUDGET]);
   
@@ -525,39 +550,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
                   <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest leading-none mb-1">ĐÃ TẤT TOÁN</p>
                   <p className="text-base font-black text-white">{settledLoans.length}</p>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Efficiency Stats */}
-          <div className="space-y-4 pt-4 border-t border-white/5">
-            <div className="flex justify-between items-end">
-              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">HIỆU SUẤT THU HỒI VỐN</p>
-              <div className="flex items-center gap-1 text-green-500">
-                <span className="text-[11px] font-black uppercase tracking-tighter">{Math.floor(collectionRate)}</span>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <div className="flex justify-between items-center px-1">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
-                  <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none">CUNG ỨNG VỐN (THỰC)</span>
-                </div>
-                <span className="text-[10px] font-black text-white">{totalDisbursed.toLocaleString()} đ</span>
-              </div>
-              <div className="flex justify-between items-center px-1">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                  <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none">THU HỒI HOÀN TẤT</span>
-                </div>
-                <span className="text-[10px] font-black text-green-500">{totalCollected.toLocaleString()} đ</span>
-              </div>
-              <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-blue-500 via-emerald-500 to-green-500 transition-all duration-1000 shadow-[0_0_10px_rgba(16,185,129,0.3)]" 
-                  style={{ width: `${collectionRate}%` }}
-                ></div>
               </div>
             </div>
           </div>

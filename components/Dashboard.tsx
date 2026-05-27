@@ -157,7 +157,10 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
 
   const sortedLoans = useMemo(() => {
     return loans
-      .filter(l => l.status !== 'ĐÃ CỘNG DỒN')
+      .filter(l => {
+        const isRolloverSettled = l.status === 'ĐÃ TẤT TOÁN' && (l.settlementType === 'PRINCIPAL' || l.settlementType === 'PARTIAL');
+        return l.status !== 'ĐÃ CỘNG DỒN' && !isRolloverSettled;
+      })
       .sort((a, b) => {
         const aIsSettled = ['ĐÃ TẤT TOÁN', 'BỊ TỪ CHỐI'].includes(a.status);
         const bIsSettled = ['ĐÃ TẤT TOÁN', 'BỊ TỪ CHỐI'].includes(b.status);

@@ -236,7 +236,10 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
 
   const sortedLoans = useMemo(() => {
     return loans
-      .filter(l => l.userId === user?.id && l.status !== 'ĐÃ CỘNG DỒN')
+      .filter(l => {
+        const isRolloverSettled = l.status === 'ĐÃ TẤT TOÁN' && (l.settlementType === 'PRINCIPAL' || l.settlementType === 'PARTIAL');
+        return l.userId === user?.id && l.status !== 'ĐÃ CỘNG DỒN' && !isRolloverSettled;
+      })
       .sort((a, b) => {
         const aIsInactive = ['ĐÃ TẤT TOÁN', 'BỊ TỪ CHỐI'].includes(a.status);
         const bIsInactive = ['ĐÃ TẤT TOÁN', 'BỊ TỪ CHỐI'].includes(b.status);
