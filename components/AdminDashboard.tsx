@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 import { User, LoanRecord, MonthlyStat, AppSettings, BudgetLog, Notification } from '../types';
 import { 
   Activity, 
@@ -30,7 +31,8 @@ import {
   ArrowRight,
   Bell,
   Power,
-  Trash2
+  Trash2,
+  Calendar
 } from 'lucide-react';
 import * as d3 from 'd3';
 
@@ -131,28 +133,100 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     checkDbStatus();
   }, []);
 
+  const [tempStartDate, setTempStartDate] = useState<string>(settings.SYSTEM_START_DATE || '');
+
+  useEffect(() => {
+    if (settings.SYSTEM_START_DATE !== undefined) {
+      setTempStartDate(settings.SYSTEM_START_DATE || '');
+    }
+  }, [settings.SYSTEM_START_DATE]);
+
+  // Helper to parse Vietnam-style date and datetime strings to standard JS Date
+  const parseDateString = (str: string | undefined | null): Date | null => {
+    if (!str) return null;
+    if (typeof str === 'number') return new Date(str);
+    const cleaned = str.trim();
+    
+    // Check if contains " " (datetime format like "HH:MM:SS DD/MM/YYYY")
+    const parts = cleaned.split(' ');
+    const datePart = parts.length > 1 ? parts[1] : parts[0];
+    const dateSubparts = datePart.split('/');
+    
+    if (dateSubparts.length === 3) {
+      const day = parseInt(dateSubparts[0], 10);
+      const month = parseInt(dateSubparts[1], 10) - 1;
+      const year = parseInt(dateSubparts[2], 10);
+      
+      let hour = 0, minute = 0, second = 0;
+      if (parts.length > 1 && parts[0].includes(':')) {
+        const timeSubparts = parts[0].split(':');
+        if (timeSubparts.length >= 2) {
+          hour = parseInt(timeSubparts[0], 10) || 0;
+          minute = parseInt(timeSubparts[1], 10) || 0;
+          second = parseInt(timeSubparts[2], 10) || 0;
+        }
+      }
+      const d = new Date(year, month, day, hour, minute, second);
+      if (!isNaN(d.getTime())) return d;
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const isAfterOrEqualMatch = (itemDateStr: string | undefined | null, boundaryDateStr: string | null) => {
+    if (!boundaryDateStr) return true;
+    const itemDate = parseDateString(itemDateStr);
+    const boundaryDate = new Date(boundaryDateStr);
+    if (!itemDate || isNaN(boundaryDate.getTime())) return true;
+    
+    const itemMidnight = new Date(itemDate.getFullYear(), itemDate.getMonth(), itemDate.getDate());
+    const boundaryMidnight = new Date(boundaryDate.getFullYear(), boundaryDate.getMonth(), boundaryDate.getDate());
+    return itemMidnight >= boundaryMidnight;
+  };
+
+  // Filtered datasets based on selected Start Date
+  const filteredLoans = useMemo(() => {
+    if (!tempStartDate) return loans;
+    const lockedUserIds = new Set((users || []).filter(u => u.isLocked).map(u => u.id));
+    return loans.filter(l => {
+      // LOẠI LOẠI TRỪ CHO KHOẢN VAY PHONG TOẢ: Luôn giữ lại để tránh bỏ sót
+      if (lockedUserIds.has(l.userId)) return true;
+      return isAfterOrEqualMatch(l.createdAt || l.date, tempStartDate);
+    });
+  }, [loans, tempStartDate, users]);
+
+  const filteredUsers = useMemo(() => {
+    if (!tempStartDate) return users;
+    return users.filter(u => isAfterOrEqualMatch(u.joinDate, tempStartDate));
+  }, [users, tempStartDate]);
+
+  const filteredBudgetLogs = useMemo(() => {
+    if (!tempStartDate) return budgetLogs;
+    return budgetLogs.filter(log => isAfterOrEqualMatch(log.createdAt, tempStartDate));
+  }, [budgetLogs, tempStartDate]);
+
   // Loan Statistics
   const { settledLoans, pendingLoans, activeLoans, overdueLoans, isolatedBadDebt } = useMemo(() => {
     const today = new Date();
     const lockedUserIds = new Set((users || []).filter(u => u.isLocked).map(u => u.id));
 
     return {
-      settledLoans: loans.filter(l => l.status === 'ĐÃ TẤT TOÁN' && l.settlementType !== 'PRINCIPAL' && l.settlementType !== 'PARTIAL'),
-      pendingLoans: loans.filter(l => l.status === 'CHỜ DUYỆT' || l.status === 'CHỜ TẤT TOÁN'),
-      activeLoans: loans.filter(l => l.status === 'ĐANG NỢ' && !lockedUserIds.has(l.userId)),
-      overdueLoans: loans.filter(l => {
+      settledLoans: filteredLoans.filter(l => l.status === 'ĐÃ TẤT TOÁN' && l.settlementType !== 'PRINCIPAL' && l.settlementType !== 'PARTIAL'),
+      pendingLoans: filteredLoans.filter(l => l.status === 'CHỜ DUYỆT' || l.status === 'CHỜ TẤT TOÁN'),
+      activeLoans: filteredLoans.filter(l => l.status === 'ĐANG NỢ' && !lockedUserIds.has(l.userId)),
+      overdueLoans: filteredLoans.filter(l => {
         if ((l.status !== 'ĐANG NỢ' && l.status !== 'CHỜ TẤT TOÁN') || !l.date || typeof l.date !== 'string') return false;
         if (lockedUserIds.has(l.userId)) return false; // Exclude locked from regular overdue
         const [d, m, y] = l.date.split('/').map(Number);
         const dueDate = new Date(y, m - 1, d);
         return dueDate < today;
       }),
-      isolatedBadDebt: loans.filter(l => {
+      isolatedBadDebt: filteredLoans.filter(l => {
         const activeStatuses = ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'];
         return lockedUserIds.has(l.userId) && activeStatuses.includes(l.status);
       }).reduce((sum, l) => sum + (Number(l.amount) || 0) + (Number(l.fine) || 0), 0)
     };
-  }, [loans, users]);
+  }, [filteredLoans, users]);
   
   // Financial Statistics
   const { totalDisbursed, totalCollected, activeDebt, collectionRate } = useMemo(() => {
@@ -170,7 +244,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     };
 
     // Total disbursed counts ONLY the initial/original loan capital dispatched (not renewed rollovers)
-    const originalLoans = loans.filter(l => 
+    const originalLoans = filteredLoans.filter(l => 
       !isRollover(l) && 
       l.status !== 'BỊ TỪ CHỐI' && 
       l.status !== 'CHỜ DUYỆT' && 
@@ -181,8 +255,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     const disbursed = originalLoans.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
 
     // Current real active debt in distribution / outstanding (includes any active rollovers)
-    const debt = loans
-      ? loans.filter((l: any) => activeStatuses.includes(l.status) && !lockedUserIds.has(l.userId)).reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
+    const debt = filteredLoans
+      ? filteredLoans.filter((l: any) => activeStatuses.includes(l.status) && !lockedUserIds.has(l.userId)).reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
       : 0;
 
     // True collected capital is the initial real money dispersed minus what is still active/outstanding
@@ -196,13 +270,63 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       activeDebt: debt,
       collectionRate: rate
     };
-  }, [loans, users]);
+  }, [filteredLoans, users]);
+
+  // Precise Dynamic Profits calculation for specified Date range filter
+  const { filteredLoanProfit, filteredFineProfit, filteredRankProfit } = useMemo(() => {
+    const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 0) / 100;
+    const upgradePercent = Number(settings.UPGRADE_PERCENT || 0);
+
+    let serviceProfit = 0;
+    let penaltyProfit = 0;
+    const activeStatuses = ['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN', 'ĐANG GIẢI NGÂN'];
+    
+    filteredLoans.forEach(loan => {
+      const loanUser = users.find(u => u.id === loan.userId);
+      if (!loanUser || loanUser.isAdmin || loanUser.phone === 'admin' || !loanUser.phone) return;
+      if (loanUser.id === '5444' || loanUser.fullName?.toLowerCase().includes('test')) return;
+
+      // Chỉ tính vào thống kê doanh thu nếu ngày của khoản vay nằm trong khoảng thời gian lọc
+      const isDateMatched = isAfterOrEqualMatch(loan.createdAt || loan.date, tempStartDate);
+      if (!isDateMatched) return;
+
+      // Khoản vay bị phong tỏa vẫn tính phí bình thường (vì đã thu phí ban đầu khi giải ngân)
+      if (activeStatuses.includes(loan.status)) {
+        serviceProfit += (loan.amount * feePercent);
+      }
+      if ((loan.status === 'ĐÃ TẤT TOÁN' || loan.status === 'CHỜ TẤT TOÁN') && loan.fine) {
+        penaltyProfit += Math.round((loan.fine || 0) / 1000) * 1000;
+      }
+    });
+
+    let rProfit = 0;
+    const sortedRanks = settings.RANK_CONFIG ? [...settings.RANK_CONFIG].sort((a, b) => a.maxLimit - b.maxLimit) : [];
+    const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'standard';
+
+    filteredUsers.forEach(u => {
+      if (u.isAdmin || u.phone === 'admin' || u.id === 'admin' || !u.phone || u.phone.length < 10) return;
+      if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
+
+      if (u.rank && u.rank !== lowestRankId && !u.isFreeUpgrade && u.rankApproved !== false) {
+        const rankConf = settings.RANK_CONFIG?.find(r => r.id === u.rank);
+        if (rankConf) {
+          rProfit += (rankConf.maxLimit * (upgradePercent / 100));
+        }
+      }
+    });
+
+    return {
+      filteredLoanProfit: serviceProfit,
+      filteredFineProfit: penaltyProfit,
+      filteredRankProfit: rProfit
+    };
+  }, [filteredLoans, filteredUsers, settings, users]);
 
   const isBudgetAlarm = useMemo(() => systemBudget <= Number(settings.MIN_SYSTEM_BUDGET || 2000000), [systemBudget, settings.MIN_SYSTEM_BUDGET]);
   
   // Capital Statistics
   const capitalStats = useMemo(() => {
-    return budgetLogs.reduce((acc, log) => {
+    return filteredBudgetLogs.reduce((acc, log) => {
       if (log.type === 'INITIAL') {
         acc.initial += log.amount;
       } else if (log.type === 'ADD' || log.type === 'ADJUSTMENT_IN') {
@@ -212,7 +336,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       }
       return acc;
     }, { initial: 0, added: 0, withdrawn: 0 });
-  }, [budgetLogs]);
+  }, [filteredBudgetLogs]);
 
   const netCapital = capitalStats.initial + capitalStats.added - capitalStats.withdrawn;
   const currentTotalValue = systemBudget + activeDebt;
@@ -265,7 +389,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     setShowFineResetConfirm(false);
   };
 
-  const recentLogs = budgetLogs.slice(0, 3);
+  const recentLogs = filteredBudgetLogs.slice(0, 3);
   
   return (
     <div className="w-full bg-[#0a0a0a] px-5 space-y-6 pt-4 pb-20 animate-in fade-in duration-700">
@@ -284,6 +408,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Bộ lọc Ngày bắt đầu thống kê thu gọn */}
+          <div className="flex items-center bg-white/5 border border-white/5 rounded-xl px-2 h-10 shadow-lg">
+            <Calendar size={14} className="text-[#ff8c00] shrink-0 mr-1" />
+            <input 
+              type="date"
+              value={tempStartDate}
+              onChange={(e) => {
+                const dateVal = e.target.value;
+                setTempStartDate(dateVal);
+                onUpdateSettings({ SYSTEM_START_DATE: dateVal });
+              }}
+              className="bg-transparent text-[8px] font-black text-white focus:outline-none w-[75px] [color-scheme:dark] shrink-0 cursor-pointer p-0 border-none uppercase"
+              title="Ngày bắt đầu"
+            />
+            {tempStartDate && (
+              <button 
+                onClick={() => {
+                  setTempStartDate('');
+                  onUpdateSettings({ SYSTEM_START_DATE: '' });
+                }}
+                className="text-gray-400 hover:text-red-400 shrink-0 ml-1 p-0.5 rounded-md hover:bg-white/10 transition-all cursor-pointer"
+                title="Tất cả thời gian"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
           <button 
             onClick={() => onUpdateSettings({ MAINTENANCE_MODE: !settings.MAINTENANCE_MODE })}
             className={`w-10 h-10 border rounded-xl flex items-center justify-center transition-all active:scale-90 shadow-lg ${
@@ -294,14 +446,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
             title={settings.MAINTENANCE_MODE ? "Tắt bảo trì" : "Bật bảo trì"}
           >
             <Power size={18} />
-          </button>
-
-          <button 
-            onClick={onNavigateToBudget}
-            className={`w-10 h-10 border rounded-xl flex items-center justify-center transition-all active:scale-90 shadow-lg bg-white/5 border-white/5 text-gray-500 hover:text-purple-500 hover:bg-purple-500/10`}
-            title="Quản lý Ngân sách"
-          >
-            <Wallet size={18} />
           </button>
 
           <button onClick={onLogout} className="w-10 h-10 bg-white/5 border border-white/5 rounded-xl flex items-center justify-center text-gray-500 hover:text-red-500 hover:bg-red-500/10 transition-all active:scale-90 shadow-lg">
@@ -355,13 +499,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       {/* Main Stats Grid */}
       <div className="grid grid-cols-2 gap-4">
         {/* Total Profit Card */}
-          <div onClick={onSyncStats} className="col-span-2 bg-gradient-to-br from-[#111111] to-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-6 relative overflow-hidden shadow-2xl active:scale-[0.98] transition-transform cursor-pointer">
+          <div className="col-span-2 bg-gradient-to-br from-[#111111] to-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-6 relative overflow-hidden shadow-2xl">
           <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 blur-3xl rounded-full -mr-16 -mt-16"></div>
           <div className="relative z-10 flex justify-between items-start">
             <div className="space-y-1">
               <p className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">TỔNG DOANH THU HỆ THỐNG</p>
               <h3 className="text-3xl font-black text-[#00ffcc] tracking-tighter drop-shadow-[0_0_15px_rgba(0,255,204,0.3)]">
-                {(loanProfit + fineProfit + rankProfit).toLocaleString()} <span className="text-xs font-bold text-[#00ffcc]/60 uppercase ml-0.5">VND</span>
+                {(filteredLoanProfit + filteredFineProfit + filteredRankProfit).toLocaleString()} <span className="text-xs font-bold text-[#00ffcc]/60 uppercase ml-0.5">VND</span>
               </h3>
               <div className="flex items-center gap-2 mt-2">
                 <div className="flex items-center gap-1 bg-[#00ffcc]/10 px-2 py-0.5 rounded-full border border-[#00ffcc]/10">
@@ -402,21 +546,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
                 <div className="w-1.5 h-1.5 bg-[#ff8c00] rounded-full shadow-[0_0_5px_#ff8c00]"></div>
                 <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">PHÍ DỊCH VỤ</p>
               </div>
-              <p className="text-xs font-black text-white group-hover:text-[#ff8c00] transition-colors">{loanProfit.toLocaleString()} đ</p>
+              <p className="text-xs font-black text-white group-hover:text-[#ff8c00] transition-colors">{filteredLoanProfit.toLocaleString()} đ</p>
             </div>
             <div className="space-y-1 group relative">
               <div className="flex items-center gap-1.5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
                 <div className="w-1.5 h-1.5 bg-red-400 rounded-full shadow-[0_0_5px_#f87171]"></div>
                 <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">TIỀN PHẠT</p>
               </div>
-              <p className="text-xs font-black text-white group-hover:text-red-400 transition-colors">{fineProfit.toLocaleString()} đ</p>
+              <p className="text-xs font-black text-white group-hover:text-red-400 transition-colors">{filteredFineProfit.toLocaleString()} đ</p>
             </div>
             <div className="space-y-1 group relative">
               <div className="flex items-center gap-1.5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
                 <div className="w-1.5 h-1.5 bg-purple-500 rounded-full shadow-[0_0_5px_#a855f7]"></div>
                 <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">NÂNG HẠNG</p>
               </div>
-              <p className="text-xs font-black text-white group-hover:text-purple-500 transition-colors">{rankProfit.toLocaleString()} đ</p>
+              <p className="text-xs font-black text-white group-hover:text-purple-500 transition-colors">{filteredRankProfit.toLocaleString()} đ</p>
             </div>
           </div>
         </div>

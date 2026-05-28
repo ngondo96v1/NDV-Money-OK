@@ -22,24 +22,8 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
   const [showConfirm, setShowConfirm] = useState(false);
   const [logToDelete, setLogToDelete] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
-
-  const handleSync = async () => {
-    if (!onSyncStats) return;
-    setIsSyncing(true);
-    try {
-      await onSyncStats();
-      toast.success("Đồng bộ thành công", {
-        description: "Số liệu doanh thu đã được cập nhật chính xác từ danh sách người dùng và khoản vay thực tế."
-      });
-    } catch (e) {
-      toast.error("Lỗi khi đồng bộ số liệu");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   // Calculate Capital Statistics
   const stats = logs.reduce((acc, log) => {
@@ -185,17 +169,6 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
           CẤU HÌNH NGÂN SÁCH
         </h1>
         <div className="flex-1"></div>
-        {onSyncStats && (
-          <button 
-            onClick={handleSync}
-            disabled={isSyncing}
-            className="px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center gap-1.5 text-blue-500 active:scale-95 transition-all disabled:opacity-50"
-            title="Đồng bộ lại số liệu thực tế"
-          >
-            <RefreshCcw size={12} className={isSyncing ? 'animate-spin' : ''} />
-            <span className="text-[8px] font-black uppercase tracking-widest">Đồng bộ</span>
-          </button>
-        )}
       </div>
 
       <div className="flex flex-col gap-4 overflow-hidden flex-1">

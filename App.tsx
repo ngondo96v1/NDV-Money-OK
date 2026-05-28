@@ -3318,6 +3318,7 @@ const App: React.FC = () => {
       const loanUser = registeredUsers.find(u => u.id === loan.userId);
       if (!loanUser || loanUser.isAdmin || loanUser.phone === 'admin' || !loanUser.phone) return;
 
+      // Khoản vay bị phong tỏa thì KHÔNG tính phí dịch vụ 15% (chỉ tính 1 lần khi chưa bị phong tỏa)
       if (['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN', 'ĐANG GIẢI NGÂN'].includes(loan.status)) {
         derivedFeeProfit += (loan.amount * feePercent);
       }
@@ -3996,7 +3997,15 @@ const App: React.FC = () => {
                 <button onClick={() => setCurrentView(AppView.ADMIN_BUDGET)} className={`flex flex-col items-center gap-1 flex-1 ${currentView === AppView.ADMIN_BUDGET ? 'text-[#ff8c00]' : 'text-gray-500'}`}><Wallet size={22} /><span className="text-[7px] font-black uppercase tracking-widest">Ngân sách</span></button>
                 <button onClick={() => setCurrentView(AppView.ADMIN_SYSTEM)} className={`flex flex-col items-center gap-1 flex-1 ${currentView === AppView.ADMIN_SYSTEM ? 'text-[#ff8c00]' : 'text-gray-500'}`}><Settings size={22} /><span className="text-[7px] font-black uppercase tracking-widest">Hệ thống</span></button>
                 <button 
-                  onClick={() => fetchFullData(true)} 
+                  onClick={async () => {
+                    try {
+                      await fetchFullData(true);
+                      await handleSyncStats();
+                      toast.success("Hệ thống đã đồng bộ toàn bộ dữ liệu & ngân sách thành công!");
+                    } catch (err: any) {
+                      toast.error("Lỗi cập nhật hoặc đồng bộ: " + (err.message || err));
+                    }
+                  }} 
                   disabled={isGlobalProcessing}
                   className="flex flex-col items-center gap-1 flex-1 text-gray-500 hover:text-white transition-all"
                 >
