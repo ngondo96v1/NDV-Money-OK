@@ -3954,6 +3954,7 @@ const App: React.FC = () => {
             authenticatedFetch={authenticatedFetch}
             settings={settings}
             onSettingsUpdate={(newSettings: any) => setSettings(prev => ({ ...prev, ...newSettings }))}
+            onRefreshData={async () => { await handleSystemRefresh(); }}
           />
         );
       case AppView.SYSTEM_MANUAL:

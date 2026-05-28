@@ -420,10 +420,18 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
         {displayedUsers.map((u) => {
           const notificationCount = getUserNotificationCount(u.id);
           const isExpanded = expandedUserId === u.id;
+          const hasActiveLoanForUser = loans.some(l => 
+            l.userId === u.id && 
+            ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG GIẢI NGÂN', 'ĐANG ĐỐI SOÁT'].includes(l.status)
+          );
           const userLoans = [...loans]
             .filter(l => {
+              if (l.userId !== u.id) return false;
+              if (l.status === 'ĐÃ CỘNG DỒN') return false;
               const isRolloverSettled = l.status === 'ĐÃ TẤT TOÁN' && (l.settlementType === 'PRINCIPAL' || l.settlementType === 'PARTIAL');
-              return l.userId === u.id && l.status !== 'ĐÃ CỘNG DỒN' && !isRolloverSettled;
+              if (isRolloverSettled) return false;
+              if (hasActiveLoanForUser && (l.status === 'ĐÃ TẤT TOÁN' || l.status === 'ĐA TẤT TOÁN')) return false;
+              return true;
             })
             .sort((a, b) => {
               // Status priority mapping (lower number = higher priority)

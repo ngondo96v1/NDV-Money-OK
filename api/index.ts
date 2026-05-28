@@ -1107,10 +1107,23 @@ router.get("/check-bank-account", async (req, res) => {
 const getFormatFromSettings = (settings: any, key: string, defaultValue: string, category?: string) => {
   if (!settings) return defaultValue;
   
+  const categoryMap: Record<string, string> = {
+    'SYSTEM_FORMATS_CONFIG': 'ID_FORMAT',
+    'SYSTEM_CONTRACT_FORMATS_CONFIG': 'CONTRACT_NEW',
+    'TRANSFER_CONTENTS_CONFIG': 'TRANSFER_CONTENT',
+    'BUSINESS_OPERATIONS_CONFIG': 'ABBREVIATION',
+    'ID_FORMAT': 'SYSTEM_FORMATS_CONFIG',
+    'CONTRACT_NEW': 'SYSTEM_CONTRACT_FORMATS_CONFIG',
+    'TRANSFER_CONTENT': 'TRANSFER_CONTENTS_CONFIG',
+    'ABBREVIATION': 'BUSINESS_OPERATIONS_CONFIG'
+  };
+
   // 1. Check in MASTER_CONFIGS if available
   if (Array.isArray(settings.MASTER_CONFIGS) && settings.MASTER_CONFIGS.length > 0) {
     const config = settings.MASTER_CONFIGS.find((f: any) => {
-      const matchCategory = category ? f.category === category : true;
+      const matchCategory = category 
+        ? (f.category === category || f.category === categoryMap[category]) 
+        : true;
       const matchKey = f.systemMeaning === key || 
                        f.originalName === key || 
                        f.abbreviation === key ||
@@ -3376,7 +3389,8 @@ const LOAN_COLUMNS = [
 
 const LOAN_SUMMARY_COLUMNS = [
   'id', 'userId', 'userName', 'amount', 'date', 'createdAt', 'status', 
-  'fine', 'rejectionReason', 'loanPurpose', 'originalBaseId', 'updatedAt'
+  'fine', 'rejectionReason', 'loanPurpose', 'originalBaseId', 'updatedAt',
+  'signature', 'settlementType', 'partialAmount', 'extensionCount', 'partialPaymentCount', 'consolidatedInto'
 ];
 
 const NOTIFICATION_COLUMNS = [
@@ -3390,6 +3404,314 @@ const NOTIFICATION_SUMMARY_COLUMNS = [
 const BUDGET_LOG_COLUMNS = [
   'id', 'type', 'amount', 'balanceAfter', 'note', 'createdAt'
 ];
+
+router.post("/admin/sync-formats", async (req: any, res) => {
+  try {
+    const client = initSupabase();
+    if (!client) return res.status(503).json({ error: "Supabase chưa được cấu hình" });
+    
+    // Security check: must be admin to trigger formatting sync
+    if (!req.user || !req.user.isAdmin) {
+      return res.status(403).json({ error: "Không có quyền thực hiện hành động này." });
+    }
+
+    // 1. Fetch config settings
+    const { data: configRows } = await client.from('config').select('key, value');
+    const settings: any = {};
+    configRows?.forEach((row: any) => {
+      settings[row.key] = row.value;
+    });
+    
+    if (typeof settings.MASTER_CONFIGS === 'string') {
+      try {
+        settings.MASTER_CONFIGS = JSON.parse(settings.MASTER_CONFIGS);
+      } catch(e) {}
+    }
+
+    // 2. Fetch all loans and users
+    const { data: loans, error: loansError } = await client.from('loans').select('*');
+    const { data: users, error: usersError } = await client.from('users').select('*');
+    
+    if (loansError || usersError || !loans || !users) {
+      return res.status(500).json({ error: "Lỗi kết nối database khi tra cứu danh sách để đồng bộ" });
+    }
+
+    // 3. Build Translation Map
+    const translationMap: Record<string, string> = {};
+
+    // Group loans by userId
+    const loansByUser: Record<string, any[]> = {};
+    loans.forEach((l: any) => {
+      if (!l.userId) return;
+      if (!loansByUser[l.userId]) {
+        loansByUser[l.userId] = [];
+      }
+      loansByUser[l.userId].push(l);
+    });
+
+    const parseVietnameseDateTime = (str: string): number => {
+      if (!str) return 0;
+      try {
+        const parts = str.split(' ');
+        if (parts.length === 2) {
+          const timeParts = parts[0].split(':');
+          const dateParts = parts[1].split('/');
+          if (timeParts.length >= 2 && dateParts.length === 3) {
+            const hh = parseInt(timeParts[0]);
+            const mm = parseInt(timeParts[1]);
+            const ss = timeParts[2] ? parseInt(timeParts[2]) : 0;
+            const d = parseInt(dateParts[0]);
+            const m = parseInt(dateParts[1]) - 1;
+            const y = parseInt(dateParts[2]);
+            return new Date(y, m, d, hh, mm, ss).getTime();
+          }
+        }
+      } catch(e) {}
+      return 0;
+    };
+
+    Object.keys(loansByUser).forEach((userId) => {
+      const userLoans = loansByUser[userId];
+      
+      // Classify base loans
+      const baseLoans = userLoans.filter((loan: any) => {
+        const isGop = loan.id.includes('-GOP');
+        const isExtension = (Number(loan.extensionCount) > 0 || 
+                             loan.id.toUpperCase().includes('GH') || 
+                             loan.id.toUpperCase().includes('GIAHAN') ||
+                             (loan.originalBaseId && loan.originalBaseId.toUpperCase().includes('GH'))) && 
+                            !isGop;
+        const isPartial = (Number(loan.partialPaymentCount) > 0 || 
+                           loan.id.toUpperCase().includes('TTMP') || 
+                           loan.id.toUpperCase().includes('TT') ||
+                           (loan.originalBaseId && loan.originalBaseId.toUpperCase().includes('TT'))) && 
+                          !isGop;
+        return !isGop && !isExtension && !isPartial;
+      });
+
+      // Sort base loans chronologically
+      baseLoans.sort((a: any, b: any) => {
+        const timeA = parseVietnameseDateTime(a.createdAt) || Number(a.updatedAt) || 0;
+        const timeB = parseVietnameseDateTime(b.createdAt) || Number(b.updatedAt) || 0;
+        if (timeA !== timeB) return timeA - timeB;
+        return a.id.localeCompare(b.id);
+      });
+
+      // Assign sequential numbers to valid base loans (exclude CỘNG DỒN / HỦY)
+      let seqCounter = 0;
+      const baseLoanSeqMap: Record<string, number> = {};
+      baseLoans.forEach((loan: any) => {
+        const isExcluded = loan.status === 'ĐÃ CỘNG DỒN' || loan.status === 'ĐÃ HỦY';
+        if (!isExcluded) {
+          seqCounter++;
+          baseLoanSeqMap[loan.id] = seqCounter;
+        } else {
+          // Cancelled or consolidated loans default to their old index or 1
+          const oldSeqMatch = loan.id.match(/NDV(\d+)/i);
+          baseLoanSeqMap[loan.id] = oldSeqMatch ? parseInt(oldSeqMatch[1]) : 1;
+        }
+      });
+
+      // Map each loan to the newly computed formatting sequence ID
+      userLoans.forEach((loan: any) => {
+        let newId = "";
+        const isGop = loan.id.includes('-GOP');
+        const isExtension = (Number(loan.extensionCount) > 0 || 
+                             loan.id.toUpperCase().includes('GH') || 
+                             loan.id.toUpperCase().includes('GIAHAN') ||
+                             (loan.originalBaseId && loan.originalBaseId.toUpperCase().includes('GH'))) && 
+                            !isGop;
+        const isPartial = (Number(loan.partialPaymentCount) > 0 || 
+                           loan.id.toUpperCase().includes('TTMP') || 
+                           loan.id.toUpperCase().includes('TT') ||
+                           (loan.originalBaseId && loan.originalBaseId.toUpperCase().includes('TT'))) && 
+                          !isGop;
+
+        if (isGop) {
+          const baseId = loan.id.split('-GOP')[0];
+          const bSeq = baseLoanSeqMap[baseId] || 1;
+          const format = getSystemFormatServer(settings, 'contract', '{ID}NDV{N}');
+          const newBaseId = resolveMasterConfigServer(format, settings, { userId: loan.userId, sequence: bSeq, n: bSeq });
+          newId = `${newBaseId}-GOP`;
+        } else if (isExtension) {
+          const baseId = loan.originalBaseId || loan.id.split('GH')[0];
+          const bSeq = baseLoanSeqMap[baseId] || 1;
+          const format = getSystemFormatServer(settings, 'contract', '{ID}NDV{N}');
+          const cleanBaseId = resolveMasterConfigServer(format, settings, { userId: loan.userId, sequence: bSeq, n: bSeq });
+          const extFormat = getSystemContractFormatServer(settings, 'EXTENSION', '{ID}GH{N}');
+          const currentExtCount = Number(loan.extensionCount) || 1;
+          newId = resolveMasterConfigServer(extFormat, settings, {
+            userId: loan.userId,
+            originalId: cleanBaseId,
+            sequence: currentExtCount,
+            n: currentExtCount,
+            slgh: currentExtCount,
+            slttmp: Number(loan.partialPaymentCount) || 0
+          });
+        } else if (isPartial) {
+          const baseId = loan.originalBaseId || loan.id.split('TTMP')[0];
+          const bSeq = baseLoanSeqMap[baseId] || 1;
+          const format = getSystemFormatServer(settings, 'contract', '{ID}NDV{N}');
+          const cleanBaseId = resolveMasterConfigServer(format, settings, { userId: loan.userId, sequence: bSeq, n: bSeq });
+          const partFormat = getSystemContractFormatServer(settings, 'PARTIAL_SETTLEMENT', '{ID}TTMP{N}');
+          const currentPartCount = Number(loan.partialPaymentCount) || 1;
+          newId = resolveMasterConfigServer(partFormat, settings, {
+            userId: loan.userId,
+            originalId: cleanBaseId,
+            sequence: currentPartCount,
+            n: currentPartCount,
+            slgh: Number(loan.extensionCount) || 0,
+            slttmp: currentPartCount
+          });
+        } else {
+          const bSeq = baseLoanSeqMap[loan.id] || 1;
+          const format = getSystemFormatServer(settings, 'contract', '{ID}NDV{N}');
+          newId = resolveMasterConfigServer(format, settings, { userId: loan.userId, sequence: bSeq, n: bSeq });
+        }
+
+        if (newId) {
+          translationMap[loan.id] = newId;
+          const baseId = loan.originalBaseId;
+          if (baseId && !translationMap[baseId]) {
+            const bSeq = baseLoanSeqMap[baseId] || 1;
+            const format = getSystemFormatServer(settings, 'contract', '{ID}NDV{N}');
+            translationMap[baseId] = resolveMasterConfigServer(format, settings, { userId: loan.userId, sequence: bSeq, n: bSeq });
+          }
+        }
+      });
+    });
+
+    // Ensure users mapping
+    users.forEach((user: any) => {
+      for (let n = 1; n <= 5; n++) {
+        const oldBase = `${user.id}NDV${n}`;
+        const format = getSystemFormatServer(settings, 'contract', '{ID}NDV{N}');
+        const newBase = resolveMasterConfigServer(format, settings, { userId: user.id, sequence: n, n: n });
+        if (!translationMap[oldBase]) translationMap[oldBase] = newBase;
+        
+        const oldGop = `${user.id}NDV${n}-GOP`;
+        if (!translationMap[oldGop]) translationMap[oldGop] = `${newBase}-GOP`;
+
+        const oldExt = `${user.id}GH${n}`;
+        const extFormat = getSystemContractFormatServer(settings, 'EXTENSION', '{ID}GH{N}');
+        const newExt = resolveMasterConfigServer(extFormat, settings, {
+          userId: user.id,
+          originalId: newBase,
+          sequence: n,
+          n,
+          slgh: n,
+          slttmp: 0
+        });
+        if (!translationMap[oldExt]) translationMap[oldExt] = newExt;
+      }
+    });
+
+    let loansUpdated = 0;
+    let budgetLogsUpdated = 0;
+    let notificationsUpdated = 0;
+
+    // 4. Perform Loans Migrations (insert new -> delete old to handle PK renamed safely)
+    for (const loan of loans) {
+      const newId = translationMap[loan.id];
+      if (newId && newId !== loan.id) {
+        const updatedOriginalBaseId = translationMap[loan.originalBaseId] || loan.originalBaseId;
+        const updatedConsolidatedInto = loan.consolidatedInto ? (translationMap[loan.consolidatedInto] || loan.consolidatedInto) : null;
+        
+        const nextLoanPayload = {
+           ...loan,
+           id: newId,
+           originalBaseId: updatedOriginalBaseId,
+           consolidatedInto: updatedConsolidatedInto,
+           updatedAt: Date.now()
+        };
+
+        const { error: insertError } = await client.from('loans').upsert([nextLoanPayload], { onConflict: 'id' });
+        if (!insertError) {
+           await client.from('loans').delete().eq('id', loan.id);
+           loansUpdated++;
+        }
+      }
+    }
+
+    // 5. Update remaining reference columns of loans
+    const { data: remainingLoans } = await client.from('loans').select('id, originalBaseId, consolidatedInto');
+    if (remainingLoans) {
+      for (const rem of remainingLoans) {
+        const updatedBase = translationMap[rem.originalBaseId];
+        const updatedConsolidated = rem.consolidatedInto ? translationMap[rem.consolidatedInto] : null;
+
+        if (updatedBase || updatedConsolidated) {
+           await client.from('loans').update({
+             originalBaseId: updatedBase || rem.originalBaseId,
+             consolidatedInto: updatedConsolidated || rem.consolidatedInto,
+             updatedAt: Date.now()
+           }).eq('id', rem.id);
+        }
+      }
+    }
+
+    // 6. Substring replace in `budget_logs` notes
+    const { data: budgetLogs } = await client.from('budget_logs').select('*');
+    if (budgetLogs) {
+      for (const log of budgetLogs) {
+        if (!log.note) continue;
+        let updatedNote = log.note;
+        let hasChange = false;
+        
+        Object.entries(translationMap).forEach(([oldId, newId]) => {
+           if (updatedNote.includes(oldId)) {
+              updatedNote = updatedNote.split(oldId).join(newId);
+              hasChange = true;
+           }
+        });
+
+        if (hasChange) {
+           await client.from('budget_logs').update({ note: updatedNote }).eq('id', log.id);
+           budgetLogsUpdated++;
+        }
+      }
+    }
+
+    // 7. Substring replace in `notifications` text
+    const { data: notifications } = await client.from('notifications').select('*');
+    if (notifications) {
+      for (const n of notifications) {
+        let updatedTitle = n.title || "";
+        let updatedContent = n.content || "";
+        let hasChange = false;
+
+        Object.entries(translationMap).forEach(([oldId, newId]) => {
+           if (updatedTitle.includes(oldId)) {
+              updatedTitle = updatedTitle.split(oldId).join(newId);
+              hasChange = true;
+           }
+           if (updatedContent.includes(oldId)) {
+              updatedContent = updatedContent.split(oldId).join(newId);
+              hasChange = true;
+           }
+        });
+
+        if (hasChange) {
+           await client.from('notifications').update({
+              title: updatedTitle,
+              content: updatedContent
+           }).eq('id', n.id);
+           notificationsUpdated++;
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Đồng bộ định dạng mã mới thành công! Đã xử lý ${loansUpdated} hợp đồng, ${budgetLogsUpdated} nhật ký ngân sách và ${notificationsUpdated} thông báo.`,
+      stats: { loansUpdated, budgetLogsUpdated, notificationsUpdated }
+    });
+
+  } catch(e: any) {
+    console.error("[API SYNC FORMATS ERROR]", e);
+    res.status(500).json({ error: "Lỗi đồng bộ định dạng mã hợp đồng: " + e.message });
+  }
+});
 
 router.post("/sync", async (req: any, res) => {
   try {

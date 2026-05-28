@@ -235,10 +235,18 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
   const itemsPerPage = 5;
 
   const sortedLoans = useMemo(() => {
+    const hasActiveLoan = loans.some(l => 
+      l.userId === user?.id && 
+      ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG GIẢI NGÂN', 'ĐANG ĐỐI SOÁT'].includes(l.status)
+    );
     return loans
       .filter(l => {
+        if (l.userId !== user?.id) return false;
+        if (l.status === 'ĐÃ CỘNG DỒN') return false;
         const isRolloverSettled = l.status === 'ĐÃ TẤT TOÁN' && (l.settlementType === 'PRINCIPAL' || l.settlementType === 'PARTIAL');
-        return l.userId === user?.id && l.status !== 'ĐÃ CỘNG DỒN' && !isRolloverSettled;
+        if (isRolloverSettled) return false;
+        if (hasActiveLoan && (l.status === 'ĐÃ TẤT TOÁN' || l.status === 'ĐA TẤT TOÁN')) return false;
+        return true;
       })
       .sort((a, b) => {
         const aIsInactive = ['ĐÃ TẤT TOÁN', 'BỊ TỪ CHỐI'].includes(a.status);

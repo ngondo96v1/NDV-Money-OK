@@ -244,7 +244,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     };
 
     // Total disbursed counts ONLY the initial/original loan capital dispatched (not renewed rollovers)
-    const originalLoans = filteredLoans.filter(l => 
+    const originalLoans = loans.filter(l => 
       !isRollover(l) && 
       l.status !== 'BỊ TỪ CHỐI' && 
       l.status !== 'CHỜ DUYỆT' && 
@@ -255,8 +255,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     const disbursed = originalLoans.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
 
     // Current real active debt in distribution / outstanding (includes any active rollovers)
-    const debt = filteredLoans
-      ? filteredLoans.filter((l: any) => activeStatuses.includes(l.status) && !lockedUserIds.has(l.userId)).reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
+    const debt = loans
+      ? loans.filter((l: any) => activeStatuses.includes(l.status) && !lockedUserIds.has(l.userId)).reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
       : 0;
 
     // True collected capital is the initial real money dispersed minus what is still active/outstanding
@@ -270,7 +270,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       activeDebt: debt,
       collectionRate: rate
     };
-  }, [filteredLoans, users]);
+  }, [loans, users]);
 
   // Precise Dynamic Profits calculation for specified Date range filter
   const { filteredLoanProfit, filteredFineProfit, filteredRankProfit } = useMemo(() => {
@@ -290,7 +290,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       const isDateMatched = isAfterOrEqualMatch(loan.createdAt || loan.date, tempStartDate);
       if (!isDateMatched) return;
 
-      // Khoản vay bị phong tỏa vẫn tính phí bình thường (vì đã thu phí ban đầu khi giải ngân)
       if (activeStatuses.includes(loan.status)) {
         serviceProfit += (loan.amount * feePercent);
       }

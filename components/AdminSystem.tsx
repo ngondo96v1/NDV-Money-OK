@@ -51,6 +51,7 @@ interface AdminSystemProps {
   authenticatedFetch: (url: string, options?: RequestInit) => Promise<Response>;
   settings: any;
   onSettingsUpdate: (newSettings: any) => void;
+  onRefreshData?: () => Promise<void>;
 }
 
 const ICON_COLORS = [
@@ -66,11 +67,12 @@ const ICON_COLORS = [
   { name: 'Cam', color: '#f97316' },
 ];
 
-const AdminSystem: React.FC<AdminSystemProps> = ({ onReset, onImportSuccess, onBack, authenticatedFetch, settings, onSettingsUpdate }) => {
+const AdminSystem: React.FC<AdminSystemProps> = ({ onReset, onImportSuccess, onBack, authenticatedFetch, settings, onSettingsUpdate, onRefreshData }) => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isMigratingUnified, setIsMigratingUnified] = useState(false);
+  const [isSyncingFormats, setIsSyncingFormats] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
@@ -475,6 +477,12 @@ END $$;`;
     };
   });
 
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   useEffect(() => {
     if (settings) {
       const merged = { ...defaultSettings, ...settings };
@@ -763,9 +771,7 @@ END $$;`;
     }
   };
 
-  const handleMigrateUnified = async () => {
-    if (!window.confirm("Bạn có chắc chắn muốn hợp nhất toàn bộ cấu hình? Hệ thống sẽ tự động chuyển đổi dữ liệu cũ sang cấu trúc mới.")) return;
-    
+  const handleMigrateUnifiedExecute = async () => {
     setIsMigratingUnified(true);
     try {
       const response = await authenticatedFetch('/api/migrate-unified-config', { method: 'POST' });
@@ -784,6 +790,47 @@ END $$;`;
     } finally {
       setIsMigratingUnified(false);
     }
+  };
+
+  const handleMigrateUnified = () => {
+    setConfirmDialog({
+      title: "HỢP NHẤT CẤU HÌNH?",
+      message: "Bạn có chắc chắn muốn hợp nhất toàn bộ cấu hình? Hệ thống sẽ tự động chuyển đổi dữ liệu cũ sang cấu trúc mới.",
+      onConfirm: handleMigrateUnifiedExecute
+    });
+  };
+
+  const handleSyncFormatsExecute = async () => {
+    setIsSyncingFormats(true);
+    setMigrationStatus({ type: 'info', message: 'Đang bắt đầu đồng bộ định dạng mã hợp đồng...' });
+    try {
+      const response = await authenticatedFetch('/api/admin/sync-formats', { method: 'POST' });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        toast.success(result.message);
+        setMigrationStatus({ type: 'success', message: result.message });
+        if (onRefreshData) {
+          await onRefreshData().catch(e => console.error("Lỗi làm mới dữ liệu sau đồng bộ:", e));
+        }
+      } else {
+        const errMsg = result.error || 'Lỗi bất ngờ xảy ra khi đồng bộ';
+        toast.error(errMsg);
+        setMigrationStatus({ type: 'error', message: errMsg });
+      }
+    } catch (e: any) {
+      toast.error('Lỗi kết nối khi thực hiện đồng bộ');
+      setMigrationStatus({ type: 'error', message: e.message || 'Lỗi kết nối máy chủ' });
+    } finally {
+      setIsSyncingFormats(false);
+    }
+  };
+
+  const handleSyncFormats = () => {
+    setConfirmDialog({
+      title: "ĐỒNG BỘ ĐỊNH DẠNG MÃ?",
+      message: "Bạn có muốn đồng bộ định dạng mã mới cho tất cả các khoản vay & lịch sử giao dịch hiện tại không? Hành động này sẽ cập nhật toàn bộ cơ sở dữ liệu đồng loạt.",
+      onConfirm: handleSyncFormatsExecute
+    });
   };
 
   const handleAddMasterConfig = (category: string = 'ABBREVIATION') => {
@@ -1493,6 +1540,28 @@ END $$;`;
                 {migrationStatus.message}
               </div>
             )}
+          </div>
+
+          {/* Format Sync Section */}
+          <div className="pt-2">
+            <button 
+              onClick={handleSyncFormats}
+              disabled={isSyncingFormats}
+              className="w-full bg-[#ff8c00]/10 border border-[#ff8c00]/20 rounded-2xl p-4 flex items-center justify-between hover:bg-[#ff8c00]/20 active:scale-95 transition-all disabled:opacity-50 group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#ff8c00]/20 rounded-xl flex items-center justify-center text-[#ff8c00] group-hover:scale-110 transition-transform">
+                  {isSyncingFormats ? <Loader2 className="animate-spin" size={20} /> : <RefreshCw size={20} />}
+                </div>
+                <div className="text-left">
+                  <h5 className="text-[9px] font-black text-white uppercase tracking-widest">ĐỒNG BỘ ĐỊNH DẠNG MÃ HỢP ĐỒNG</h5>
+                  <p className="text-[7px] font-bold text-gray-500 uppercase mt-1">Cập nhật toàn bộ mã hợp đồng & lịch sử theo thiết lập mới</p>
+                </div>
+              </div>
+              <div className="w-8 h-8 rounded-lg bg-[#ff8c00]/10 flex items-center justify-center text-[#ff8c00]">
+                <ChevronRight size={16} />
+              </div>
+            </button>
           </div>
 
           {importMessage && (
@@ -2329,14 +2398,18 @@ END $$;`;
                           <div className="flex items-center gap-2">
                             <button 
                               onClick={() => {
-                                if (window.confirm("Bạn có chắc chắn muốn đồng bộ lại toàn bộ điều khoản từ phác thảo? Hành động này sẽ ghi đè nội dung hiện tại.")) {
-                                  setLocalSettings({
-                                    ...localSettings,
-                                    CONTRACT_CLAUSES: defaultSettings.CONTRACT_CLAUSES
-                                  });
-                                  setHasChanges(true);
-                                  toast.success("Đã đồng bộ nội dung chuyên nghiệp!");
-                                }
+                                setConfirmDialog({
+                                  title: "ĐỒNG BỘ ĐIỀU KHOẢN?",
+                                  message: "Bạn có chắc chắn muốn đồng bộ lại toàn bộ điều khoản từ phác thảo? Hành động này sẽ ghi đè nội dung hiện tại.",
+                                  onConfirm: () => {
+                                    setLocalSettings({
+                                      ...localSettings,
+                                      CONTRACT_CLAUSES: defaultSettings.CONTRACT_CLAUSES
+                                    });
+                                    setHasChanges(true);
+                                    toast.success("Đã đồng bộ nội dung chuyên nghiệp!");
+                                  }
+                                });
                               }}
                               className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#ff8c00]/10 text-[#ff8c00] text-[6px] font-black uppercase hover:bg-[#ff8c00]/20 transition-all border border-[#ff8c00]/20"
                             >
@@ -3302,6 +3375,45 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;`, 'rpc_sql')}
                >
                  <Check size={12} /> ĐỒNG Ý RESET
                </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup xác nhận tuỳ chỉnh thay thế cho window.confirm bị trình duyệt chặn */}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-[110] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 animate-in zoom-in duration-200">
+          <div className="bg-[#111111] border border-[#ff8c00]/30 w-full max-w-sm rounded-3xl p-6 space-y-5 relative shadow-2xl overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-[#ff8c00]"></div>
+            <div className="flex flex-col items-center text-center space-y-3">
+              <div className="w-12 h-12 bg-[#ff8c00]/15 rounded-full flex items-center justify-center text-[#ff8c00] animate-pulse">
+                <AlertCircle size={24} />
+              </div>
+              <div className="space-y-1.5">
+                <h4 className="text-sm font-black text-white uppercase tracking-wider">{confirmDialog.title}</h4>
+                <p className="text-[10px] font-bold text-gray-300 leading-relaxed px-1">
+                  {confirmDialog.message}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2.5 pt-1">
+              <button 
+                onClick={() => setConfirmDialog(null)}
+                className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black text-gray-400 hover:text-white uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-1.5"
+              >
+                <X size={11} /> HUỶ BỎ
+              </button>
+              <button 
+                onClick={() => {
+                  const onConfirm = confirmDialog.onConfirm;
+                  setConfirmDialog(null);
+                  onConfirm();
+                }}
+                className="flex-1 py-3 bg-[#ff8c00] rounded-xl text-[9px] font-black text-black uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-1.5 hover:bg-[#ff8c00]/95 shadow-md shadow-[#ff8c00]/10"
+              >
+                <Check size={11} /> XÁC NHẬN
+              </button>
             </div>
           </div>
         </div>
