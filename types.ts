@@ -263,4 +263,6 @@ export interface AppSettings {
   MASTER_CONFIGS?: MasterConfig[];
   MAINTENANCE_MODE?: boolean;
   SYSTEM_START_DATE?: string;
+  ENABLE_SIMULATION?: boolean;
+  SIMULATION_INTERVAL?: number;
 }

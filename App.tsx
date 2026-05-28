@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense, lazy } from 'react';
 import { AppView, User, UserRank, LoanRecord, Notification, MonthlyStat, AppSettings, Voucher, BudgetLog } from './types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User as UserIcon, Home, Briefcase, Medal, LayoutGrid, Users, Wallet, AlertTriangle, X, Database, Settings, RefreshCcw, Loader2 } from 'lucide-react';
+import { User as UserIcon, Home, Briefcase, Medal, LayoutGrid, Users, Wallet, AlertTriangle, X, Database, Settings, RefreshCcw, Loader2, Sparkles, Check, CreditCard } from 'lucide-react';
 import { compressImage, generateContractId, generateUserId, uploadToImgBB, getSystemFormat, getSystemContractFormat, getBusinessOp, calculateFine } from './utils';
 import { io, Socket } from 'socket.io-client';
 import { Toaster, toast } from 'sonner';
@@ -453,7 +453,9 @@ const App: React.FC = () => {
       { id: 'diamond', name: 'KIM CƯƠNG', minLimit: 1000000, maxLimit: 10000000, color: '#60a5fa', features: ['Hạn mức 1 - 10 triệu', 'Duyệt lệnh tức thì'] }
     ],
     SYSTEM_CONTRACT_FORMATS_CONFIG: [],
-    MASTER_CONFIGS: []
+    MASTER_CONFIGS: [],
+    ENABLE_SIMULATION: true,
+    SIMULATION_INTERVAL: 15
   });
 
 
@@ -478,6 +480,128 @@ const App: React.FC = () => {
       .reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
     return Math.max(0, (Number(u.totalLimit) || 0) - activeDebt);
   }, []);
+
+  // --- SMART TRANSACTION SIMULATION SYSTEM (PHƯƠNG ÁN 1) ---
+  const [simulatedNotifications, setSimulatedNotifications] = useState<any[]>([]);
+
+  useEffect(() => {
+    // Only simulate if enabled, and user is logged in, and user is not admin
+    if (!settings.ENABLE_SIMULATION || !user || user.isAdmin) {
+      setSimulatedNotifications([]);
+      return;
+    }
+
+    const generateSimulatedNotif = () => {
+      const names = [
+        "Nguyễn Văn Tuấn", "Trần Hoàng Nam", "Lê Minh Đức", "Phạm Quốc Anh", "Vũ Huy Hoàng",
+        "Đỗ Minh Khang", "Phan Minh Triết", "Đặng Minh Trí", "Nguyễn Tiến Đạt", "Trần Thanh Sơn",
+        "Lê Anh Tuấn", "Phạm Quốc Bảo", "Đỗ Duy Mạnh", "Phan Văn Trị", "Đặng Hoàng Nam",
+        "Vũ Minh Khôi", "Nguyễn Hải Đăng", "Trần Văn Hải", "Lê Hoàng Long", "Phạm Gia Bảo",
+        "Đỗ Hoàng Bách", "Phan Quốc Khánh", "Đặng Quang Huy", "Vũ Quốc Trung", "Nguyễn Mạnh Hùng",
+        "Trần Đức Toàn", "Lê Hồng Quân", "Phạm Hữu Hoàng", "Đỗ Quốc Bảo", "Phan Huy Hoàng",
+        "Đặng Hữu Đạt", "Vũ Hoàng Long", "Nguyễn Minh Quân", "Trần Việt Anh", "Lê Minh Triết",
+        "Phạm Duy Khánh", "Đỗ Tiến Dũng", "Phan Thanh Trực", "Đặng Thanh Hải", "Vũ Văn Thanh",
+        "Nguyễn Trung Kiên", "Trần Bảo Nam", "Lê Trường Giang", "Nguyễn Văn Hùng", "Trần Anh Kiệt",
+        "Lê Văn Nam", "Nguyễn Huy Vũ", "Trần Quang Minh"
+      ];
+      const banks = ["MB Bank", "Vietcombank", "Techcombank", "Agribank", "BIDV", "VietinBank", "ACB", "TPBank", "VPBank"];
+      const types = ['LOAN_CREATED', 'LOAN_DISBURSED', 'LOAN_EXTENDED', 'LOAN_PARTIAL_SETTLED', 'LOAN_FULL_SETTLED', 'RANK_UPGRADED'];
+      
+      const type = types[Math.floor(Math.random() * types.length)];
+      const name = names[Math.floor(Math.random() * names.length)];
+      const bank = banks[Math.floor(Math.random() * banks.length)];
+      
+      // Số tiền tròn triệu từ Min 1tr đến Max 10tr
+      const rawAmount = (Math.floor(Math.random() * 10) + 1) * 1000000;
+      const formattedAmount = rawAmount.toLocaleString('vi-VN');
+      
+      let title = "";
+      let message = "";
+      
+      switch (type) {
+        case 'LOAN_CREATED':
+          title = "Đăng ký thành công";
+          message = `${name} đăng ký hạn mức ${formattedAmount}đ.`;
+          break;
+        case 'LOAN_DISBURSED':
+          title = "Giải ngân thành công";
+          message = `Đã giải ngân ${formattedAmount}đ về ${bank} cho ${name}.`;
+          break;
+        case 'LOAN_EXTENDED':
+          title = "Gia hạn hợp đồng";
+          message = `${name} gia hạn gói vay ${formattedAmount}đ thành công.`;
+          break;
+        case 'LOAN_PARTIAL_SETTLED':
+          title = "Thanh toán một phần";
+          // Giảm nợ tròn triệu từ 1tr đến 5tr
+          const partialAmount = (Math.floor(Math.random() * 5) + 1) * 1000000;
+          message = `${name} thanh toán ${partialAmount.toLocaleString('vi-VN')}đ giảm nợ.`;
+          break;
+        case 'LOAN_FULL_SETTLED':
+          title = "Tất toán toàn bộ";
+          message = `${name} tất toán hoàn toàn khoản vay ${formattedAmount}đ.`;
+          break;
+        case 'RANK_UPGRADED':
+          const defaultRanks = ["ĐỒNG", "BẠC", "VÀNG", "BẠCH KIM", "KIM CƯƠNG"];
+          let rankList = defaultRanks;
+          if (settings?.RANK_CONFIG && settings.RANK_CONFIG.length > 0) {
+            const configuredNames = settings.RANK_CONFIG
+              .filter((r: any) => r.id !== 'standard')
+              .map((r: any) => r.name.toUpperCase());
+            if (configuredNames.length > 0) {
+              rankList = configuredNames;
+            }
+          }
+          const rank = rankList[Math.floor(Math.random() * rankList.length)];
+          const isAutoUpgrade = Math.random() > 0.5;
+
+          if (isAutoUpgrade) {
+            title = "Nâng hạng tự động";
+            message = `${name} tự động lên hạng ${rank} thành công.`;
+          } else {
+            title = "Nâng hạng hội viên";
+            message = `${name} được duyệt lên hạng ${rank} thành công.`;
+          }
+          break;
+      }
+      
+      return {
+        id: `sim-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        type,
+        title,
+        message,
+        time: "vừa xong"
+      };
+    };
+
+    const intervalSeconds = Number(settings.SIMULATION_INTERVAL) || 15;
+    
+    const triggerSimulation = () => {
+      const newNotif = generateSimulatedNotif();
+      setSimulatedNotifications(prev => {
+        const updated = [...prev, newNotif];
+        if (updated.length > 2) {
+          updated.shift(); // Max 2 notifications at a time to keep UI pristine
+        }
+        return updated;
+      });
+
+      // Dismiss after 5.5 seconds
+      setTimeout(() => {
+        setSimulatedNotifications(prev => prev.filter(n => n.id !== newNotif.id));
+      }, 5500);
+    };
+
+    // Trigger one initially after 3 seconds
+    const initialTimer = setTimeout(triggerSimulation, 3000);
+
+    const intervalTimer = setInterval(triggerSimulation, intervalSeconds * 1000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(intervalTimer);
+    };
+  }, [settings.ENABLE_SIMULATION, settings.SIMULATION_INTERVAL, user?.id, user?.isAdmin]);
 
   useEffect(() => {
     const fetchPublicSettings = async () => {
@@ -4120,6 +4244,78 @@ const App: React.FC = () => {
             />
           )}
         </AnimatePresence>
+
+        {/* Floating Simulated Transactions (Phương án 1) */}
+        {user && !user.isAdmin && !settings.MAINTENANCE_MODE && simulatedNotifications.length > 0 && (
+          <div className="fixed bottom-24 left-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none max-w-md mx-auto">
+            <AnimatePresence>
+              {simulatedNotifications.map((notif) => {
+                let iconEl;
+                let colorClass = "";
+                let bgCircleClass = "";
+                
+                switch (notif.type) {
+                  case 'LOAN_CREATED':
+                    iconEl = <Sparkles size={14} />;
+                    colorClass = "text-[#ff8c00]";
+                    bgCircleClass = "bg-[#ff8c00]/10 border-[#ff8c00]/20";
+                    break;
+                  case 'LOAN_DISBURSED':
+                    iconEl = <CreditCard size={14} />;
+                    colorClass = "text-green-400";
+                    bgCircleClass = "bg-green-500/10 border-green-500/20";
+                    break;
+                  case 'LOAN_EXTENDED':
+                    iconEl = <RefreshCcw size={14} className="animate-spin" style={{ animationDuration: '3s' }} />;
+                    colorClass = "text-blue-400";
+                    bgCircleClass = "bg-blue-500/10 border-blue-500/20";
+                    break;
+                  case 'LOAN_PARTIAL_SETTLED':
+                    iconEl = <Wallet size={14} />;
+                    colorClass = "text-cyan-400";
+                    bgCircleClass = "bg-cyan-500/10 border-cyan-500/20";
+                    break;
+                  case 'LOAN_FULL_SETTLED':
+                    iconEl = <Check size={14} />;
+                    colorClass = "text-[#ff8c00]";
+                    bgCircleClass = "bg-[#ff8c00]/10 border-[#ff8c00]/20";
+                    break;
+                  case 'RANK_UPGRADED':
+                    iconEl = <Medal size={14} />;
+                    colorClass = "text-yellow-400";
+                    bgCircleClass = "bg-yellow-500/10 border-yellow-500/20";
+                    break;
+                  default:
+                    iconEl = <Sparkles size={14} />;
+                    colorClass = "text-yellow-400";
+                    bgCircleClass = "bg-yellow-500/10 border-yellow-500/20";
+                }
+
+                return (
+                  <motion.div
+                    key={notif.id}
+                    initial={{ opacity: 0, y: 50, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                    className="w-full bg-[#111111]/95 backdrop-blur-md border border-white/10 rounded-2xl p-3.5 shadow-xl shadow-black/40 flex items-start gap-3 pointer-events-auto"
+                  >
+                    <div className={`w-8 h-8 rounded-xl border flex items-center justify-center flex-none ${bgCircleClass} ${colorClass}`}>
+                      {iconEl}
+                    </div>
+                    <div className="flex-1 space-y-0.5 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`text-[9px] font-black uppercase tracking-wider ${colorClass}`}>{notif.title}</span>
+                        <span className="text-[7px] font-mono font-black text-gray-500 uppercase tracking-widest">{notif.time}</span>
+                      </div>
+                      <p className="text-[9px] font-bold text-gray-300 leading-normal">{notif.message}</p>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
     </Suspense>
   </ErrorBoundary>

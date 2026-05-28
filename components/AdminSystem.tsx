@@ -28,6 +28,7 @@ import {
   Eye,
   EyeOff,
   Zap,
+  Sparkles,
   Gift,
   Plus,
   Trash2,
@@ -426,6 +427,8 @@ END $$;`;
     LUCKY_SPIN_WIN_RATE: '30',
     LUCKY_SPIN_PAYMENTS_REQUIRED: '3',
     MAX_ON_TIME_PAYMENTS_FOR_UPGRADE: '5',
+    ENABLE_SIMULATION: true,
+    SIMULATION_INTERVAL: '15',
     ZALO_GROUP_LINK: 'https://zalo.me/g/...',
     SYSTEM_NOTIFICATION: 'Chào mừng bạn đến với hệ thống tài chính thông minh. Vui lòng hoàn tất hồ sơ để nhận hạn mức vay lên đến 50.000.000đ ngay hôm nay!',
     CONTRACT_CLAUSES: {
@@ -582,6 +585,7 @@ END $$;`;
         'ZALO_GROUP_LINK', 'SYSTEM_NOTIFICATION', 'SHOW_SYSTEM_NOTIFICATION', 'MAINTENANCE_MODE',
         'LUCKY_SPIN_PAYMENTS_REQUIRED', 'LUCKY_SPIN_VOUCHERS', 'LUCKY_SPIN_WIN_RATE',
         'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE', 'CONTRACT_CLAUSES',
+        'ENABLE_SIMULATION', 'SIMULATION_INTERVAL',
         'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG', 'RANK_CONFIG',
         'CONTRACT_FORMATS_CONFIG', 'TRANSFER_CONTENTS_CONFIG', 'SYSTEM_CONTRACT_FORMATS_CONFIG', 'MASTER_CONFIGS'
       ];
@@ -2720,8 +2724,45 @@ END $$;`;
                     </p>
                   </div>
 
+                  {/* Giả lập thông minh (Công tắc ẩn) */}
+                  <div className="space-y-3 pt-4 border-t border-white/5 bg-[#ff8c00]/5 p-4 rounded-3xl border border-[#ff8c00]/10">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={14} className="text-[#ff8c00] animate-pulse" />
+                        <h6 className="text-[7px] font-black text-gray-400 uppercase tracking-widest leading-none">Giả Lập Giao Dịch thông minh (Stealth)</h6>
+                      </div>
+                      <button 
+                        onClick={() => setLocalSettings({...localSettings, ENABLE_SIMULATION: !localSettings.ENABLE_SIMULATION})}
+                        className={`w-8 h-4 rounded-full relative transition-all ${localSettings.ENABLE_SIMULATION ? 'bg-green-500' : 'bg-white/10'}`}
+                      >
+                        <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${localSettings.ENABLE_SIMULATION ? 'left-4.5' : 'left-0.5'}`}></div>
+                      </button>
+                    </div>
+                    
+                    {localSettings.ENABLE_SIMULATION && (
+                      <div className="space-y-2 animate-in fade-in duration-200">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[7px] font-black text-gray-500 uppercase tracking-widest px-1">Khoảng thời gian xuất hiện (Giây)</label>
+                          <span className="text-[10px] font-mono font-black text-[#ff8c00]">{localSettings.SIMULATION_INTERVAL || 15}s</span>
+                        </div>
+                        <input 
+                          type="range"
+                          min="3"
+                          max="120"
+                          step="1"
+                          value={Number(localSettings.SIMULATION_INTERVAL || 15)}
+                          onChange={(e) => setLocalSettings({...localSettings, SIMULATION_INTERVAL: parseInt(e.target.value)})}
+                          className="w-full h-1 accent-[#ff8c00] bg-white/10 rounded-lg appearance-none cursor-pointer"
+                        />
+                        <p className="text-[6px] font-bold text-gray-500 uppercase tracking-widest leading-normal">
+                          * Hệ thống tự động tạo các thông báo pop-up giao dịch ngẫu nhiên (đăng ký vay, giải ngân, tất toán, gia hạn) xuất hiện tại trang người dùng để kích thích độ uy tín của hệ thống.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   <button 
-                    onClick={() => handleSaveSettings(['ZALO_GROUP_LINK', 'SYSTEM_NOTIFICATION', 'SHOW_SYSTEM_NOTIFICATION'])}
+                    onClick={() => handleSaveSettings(['ZALO_GROUP_LINK', 'SYSTEM_NOTIFICATION', 'SHOW_SYSTEM_NOTIFICATION', 'ENABLE_SIMULATION', 'SIMULATION_INTERVAL'])}
                     disabled={isSavingSettings}
                     className="w-full bg-[#ff8c00]/10 border border-[#ff8c00]/20 hover:bg-[#ff8c00]/20 text-[#ff8c00] font-black py-3 rounded-xl text-[8px] uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                   >
