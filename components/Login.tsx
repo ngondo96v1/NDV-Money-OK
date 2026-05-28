@@ -18,6 +18,58 @@ const Login: React.FC<LoginProps> = ({ onLogin, onNavigateRegister, error, remem
   const [showPassTooltip, setShowPassTooltip] = useState(false);
   const [phoneErrorMsg, setPhoneErrorMsg] = useState('SỐ ZALO PHẢI ĐỦ 10 KÝ TỰ');
 
+  // Forgot Password modal states
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetModalMessage, setResetModalMessage] = useState('');
+  const [resetStatus, setResetStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [resetErrorText, setResetErrorText] = useState('');
+
+  const handleForgotPasswordClick = () => {
+    setResetStatus('idle');
+    setResetErrorText('');
+    
+    // Validate phone input
+    if (phone === '') {
+      setPhoneErrorMsg('VUI LÒNG NHẬP SỐ ZALO VÀO Ô ĐĂNG NHẬP');
+      setShowPhoneTooltip(true);
+      return;
+    } else if (phone.length < 10) {
+      setPhoneErrorMsg('SỐ ZALO PHẢI ĐỦ 10 KÝ TỰ');
+      setShowPhoneTooltip(true);
+      return;
+    }
+
+    setResetModalMessage(`Bạn có chắc chắn muốn khôi phục mật khẩu tài khoản ${phone} về mật khẩu mặc định là 123456 không?`);
+    setShowResetModal(true);
+  };
+
+  const handleConfirmReset = async () => {
+    setResetStatus('loading');
+    setResetErrorText('');
+    
+    try {
+      const response = await fetch('/api/public/reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ phone })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setResetStatus('success');
+      } else {
+        setResetStatus('error');
+        setResetErrorText(data.error || 'Có lỗi xảy ra khi khôi phục.');
+      }
+    } catch (err: any) {
+      setResetStatus('error');
+      setResetErrorText('Lỗi kết nối máy chủ. Thử lại sau.');
+    }
+  };
+
   // Reset tooltips when user types
   useEffect(() => {
     if (showPhoneTooltip) setShowPhoneTooltip(false);
@@ -161,6 +213,13 @@ const Login: React.FC<LoginProps> = ({ onLogin, onNavigateRegister, error, remem
             </div>
             <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-gray-400 transition-colors">Ghi nhớ đăng nhập</span>
           </label>
+          <button
+            type="button"
+            onClick={handleForgotPasswordClick}
+            className="text-[9px] font-bold text-gray-400 uppercase tracking-widest hover:text-[#ff8c00] transition-colors"
+          >
+            Quên mật khẩu?
+          </button>
         </div>
 
         {/* Global Error Message from System */}
@@ -189,6 +248,79 @@ const Login: React.FC<LoginProps> = ({ onLogin, onNavigateRegister, error, remem
       <div className="mt-auto pb-8">
         <p className="text-[8px] font-bold text-gray-800 tracking-widest uppercase">Secured by NDV Money Financial Group</p>
       </div>
+
+      {showResetModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-[#121214] border border-[#ff8c00]/20 rounded-2xl w-full max-w-xs overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-5 flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-orange-500/15 text-[#ff8c00] rounded-full flex items-center justify-center mb-3">
+                <ShieldCheck size={24} />
+              </div>
+              
+              <h3 className="text-sm font-black text-white uppercase tracking-wider mb-2">
+                {resetStatus === 'success' ? 'Đặt lại thành công' : 'Xác nhận khôi phục'}
+              </h3>
+              
+              {resetStatus === 'idle' && (
+                <p className="text-[10px] font-semibold text-gray-400 tracking-wide leading-relaxed">
+                  {resetModalMessage}
+                </p>
+              )}
+
+              {resetStatus === 'loading' && (
+                <div className="flex flex-col items-center py-4">
+                  <div className="w-6 h-6 border-2 border-[#ff8c00] border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-[10px] font-bold text-gray-500 tracking-widest uppercase mt-3">Đang cập nhật mật khẩu...</span>
+                </div>
+              )}
+
+              {resetStatus === 'success' && (
+                <p className="text-[10px] font-semibold text-green-400 tracking-wide leading-relaxed">
+                  Mật khẩu tài khoản <span className="text-white font-bold">{phone}</span> đã được khôi phục thành công về <span className="text-white font-bold">123456</span>. Vui lòng sử dụng mật khẩu này để đăng nhập!
+                </p>
+              )}
+
+              {resetStatus === 'error' && (
+                <p className="text-[10px] font-semibold text-red-400 tracking-wide leading-relaxed">
+                  Khôi phục thất bại:<br />
+                  <span className="text-white font-bold">{resetErrorText}</span>
+                </p>
+              )}
+            </div>
+
+            <div className="flex border-t border-white/5">
+              {resetStatus === 'idle' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowResetModal(false)}
+                    className="flex-1 py-3 text-[10px] font-black tracking-widest text-[#9ca3af] hover:bg-white/5 hover:text-white border-r border-white/5 transition-colors cursor-pointer"
+                  >
+                    HỦY BỎ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmReset}
+                    className="flex-1 py-3 text-[10px] font-black tracking-widest text-[#ff8c00] hover:bg-orange-500/10 transition-colors cursor-pointer"
+                  >
+                    XÁC NHẬN
+                  </button>
+                </>
+              )}
+
+              {(resetStatus === 'success' || resetStatus === 'error') && (
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(false)}
+                  className="w-full py-3 text-[10px] font-black tracking-widest text-white hover:bg-white/5 transition-colors cursor-pointer"
+                >
+                  ĐÓNG
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

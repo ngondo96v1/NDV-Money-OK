@@ -101,7 +101,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   const [selectedContract, setSelectedContract] = useState<{ loan: LoanRecord, owner: UserType } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteLoanId, setConfirmDeleteLoanId] = useState<string | null>(null);
-  const [confirmResetPasswordId, setConfirmResetPasswordId] = useState<string | null>(null);
   const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
   const [cleanupResultCount, setCleanupResultCount] = useState<number | null>(null);
   const [rejectingLoanId, setRejectingLoanId] = useState<string | null>(null);
@@ -633,17 +632,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (isGlobalProcessing) return;
-                              onEditUser(u.id, {}); // Empty partial triggers a recalculation on the server/client
-                            }}
-                            className="w-8 h-8 bg-emerald-500/10 border border-emerald-500/20 rounded-lg flex items-center justify-center text-emerald-500 hover:bg-emerald-500/20 transition-all"
-                            title="Tính toán lại số dư"
-                          >
-                            <RefreshCcw size={12} className={isGlobalProcessing ? 'animate-spin' : ''} />
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
                               setEditingUser(u);
                               setEditUserForm({ rank: u.rank, totalLimit: u.totalLimit, hasCustomLimit: u.hasCustomLimit || false });
                             }}
@@ -651,16 +639,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                             title="Sửa thông tin"
                           >
                             <Pencil size={12} />
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setConfirmResetPasswordId(u.id);
-                            }}
-                            className="w-8 h-8 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center justify-center text-amber-500 hover:bg-amber-500/20 transition-all"
-                            title="Reset mật khẩu về 111111"
-                          >
-                            <RefreshCcw size={12} />
                           </button>
                           <button 
                             onClick={(e) => {
@@ -1310,45 +1288,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                   </button>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirmation Modal for Password Reset */}
-      {confirmResetPasswordId && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-[#111111] border border-amber-600/20 w-full max-w-sm rounded-[2.5rem] p-8 space-y-8 relative shadow-2xl overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-amber-600"></div>
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="w-16 h-16 bg-amber-600/10 rounded-full flex items-center justify-center text-amber-600">
-                 <RefreshCcw size={32} />
-              </div>
-              <div className="space-y-3">
-                <h3 className="text-xl font-black text-white uppercase tracking-tighter">RESET MẬT KHẨU?</h3>
-                <p className="text-[10px] font-bold text-gray-400 uppercase leading-relaxed px-4">
-                  Bạn có chắc chắn muốn đặt lại mật khẩu của người dùng này về mặc định <span className="text-amber-500 font-black">111111</span>?
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-               <button 
-                 onClick={() => setConfirmResetPasswordId(null)}
-                 className="flex-1 py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black text-gray-500 uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
-               >
-                 <X size={14} /> HỦY BỎ
-               </button>
-               <button 
-                 onClick={async () => {
-                   const id = confirmResetPasswordId;
-                   setConfirmResetPasswordId(null);
-                   await onResetPassword(id);
-                 }}
-                 className="flex-1 py-4 bg-amber-600 rounded-2xl text-[10px] font-black text-black uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-900/40"
-               >
-                 <CheckCircle size={14} /> XÁC NHẬN
-               </button>
             </div>
           </div>
         </div>

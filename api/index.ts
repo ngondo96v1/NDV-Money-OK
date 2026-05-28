@@ -1492,6 +1492,57 @@ router.post("/login", async (req, res) => {
   }
 });
 
+router.post("/public/reset-password", async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ error: "Vui lòng nhập số điện thoại Zalo." });
+    }
+
+    const client = initSupabase();
+    if (!client) {
+      return res.status(503).json({ error: "Hệ thống cơ sở dữ liệu chưa sẵn sàng." });
+    }
+
+    // Find the user by phone
+    const { data: users, error: selectError } = await client
+      .from('users')
+      .select('id, phone')
+      .eq('phone', phone)
+      .limit(1);
+
+    if (selectError) {
+      console.error("[RESET PASSWORD] Error finding user:", selectError);
+      return res.status(500).json({ error: "Lỗi hệ thống khi tìm kiếm người dùng." });
+    }
+
+    if (!users || users.length === 0) {
+      return res.status(404).json({ error: "Số điện thoại Zalo này chưa được đăng ký trong hệ thống." });
+    }
+
+    const user = users[0];
+
+    // Reset password to "123456"
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash('123456', salt);
+
+    const { error: updateError } = await client
+      .from('users')
+      .update({ password: hashedPassword })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error("[RESET PASSWORD] Error updating password:", updateError);
+      return res.status(500).json({ error: "Lỗi hệ thống khi cập nhật mật khẩu." });
+    }
+
+    return res.json({ success: true, message: "Đặt lại mật khẩu thành công về 123456." });
+  } catch (e: any) {
+    console.error("[RESET PASSWORD FATAL ERROR]:", e);
+    res.status(500).json({ error: "Lỗi máy chủ nội bộ", message: e.message });
+  }
+});
+
 router.post("/register", async (req, res) => {
   try {
     const client = initSupabase();
