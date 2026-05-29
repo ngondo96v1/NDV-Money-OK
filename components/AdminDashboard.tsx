@@ -323,9 +323,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
 
   const isBudgetAlarm = useMemo(() => systemBudget <= Number(settings.MIN_SYSTEM_BUDGET || 2000000), [systemBudget, settings.MIN_SYSTEM_BUDGET]);
   
-  // Capital Statistics
+  // Capital Statistics - ALWAYS computed from the unfiltered list of budgetLogs 
+  // to ensure that global capital indicators (Vốn đầu, Thêm vốn, Rút vốn, Vốn ròng) 
+  // and system profit (currentTotalProfit) remain mathematically stable and accurate 
+  // even when looking at a specific date sub-range for other details.
   const capitalStats = useMemo(() => {
-    return filteredBudgetLogs.reduce((acc, log) => {
+    return budgetLogs.reduce((acc, log) => {
       if (log.type === 'INITIAL') {
         acc.initial += log.amount;
       } else if (log.type === 'ADD' || log.type === 'ADJUSTMENT_IN') {
@@ -335,7 +338,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       }
       return acc;
     }, { initial: 0, added: 0, withdrawn: 0 });
-  }, [filteredBudgetLogs]);
+  }, [budgetLogs]);
 
   const netCapital = capitalStats.initial + capitalStats.added - capitalStats.withdrawn;
   const currentTotalValue = systemBudget + activeDebt;

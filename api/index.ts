@@ -188,7 +188,7 @@ const loadSystemSettings = async (client: any) => {
         'LUCKY_SPIN_PAYMENTS_REQUIRED', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE', 'CONTRACT_CLAUSES',
         'RANK_CONFIG', 'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG', 
         'CONTRACT_FORMATS_CONFIG', 'TRANSFER_CONTENTS_CONFIG', 'SYSTEM_CONTRACT_FORMATS_CONFIG', 'MASTER_CONFIGS', 'lastKeepAlive',
-        'ENABLE_SIMULATION', 'SIMULATION_INTERVAL'
+        'ENABLE_SIMULATION', 'SIMULATION_INTERVAL', 'SYSTEM_START_DATE'
       ];
       if (systemKeys.includes(item.key)) {
         if (['MONTHLY_STATS', 'PAYMENT_ACCOUNT', 'LUCKY_SPIN_VOUCHERS', 'RANK_CONFIG', 'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG', 'CONTRACT_FORMATS_CONFIG', 'TRANSFER_CONTENTS_CONFIG', 'SYSTEM_CONTRACT_FORMATS_CONFIG', 'MASTER_CONFIGS', 'CONTRACT_CLAUSES'].includes(item.key)) {
@@ -345,7 +345,8 @@ const getMergedSettings = async (client: any) => {
       { key: 'PARTIAL_SETTLEMENT', original: 'TT 1 phần', abbr: 'TTMP', value: '{ID}TTMP{N}' },
       { key: 'EXTENSION', original: 'Gia hạn', abbr: 'GH', value: '{ID}GH{N}' }
     ],
-    MASTER_CONFIGS: dbSettings.MASTER_CONFIGS || config.MASTER_CONFIGS || []
+    MASTER_CONFIGS: dbSettings.MASTER_CONFIGS || config.MASTER_CONFIGS || [],
+    SYSTEM_START_DATE: dbSettings.SYSTEM_START_DATE !== undefined ? dbSettings.SYSTEM_START_DATE : (config.SYSTEM_START_DATE !== undefined ? config.SYSTEM_START_DATE : "")
   };
 };
 
@@ -2108,7 +2109,7 @@ router.get("/data", async (req, res) => {
           .order('createdAt', { ascending: false });
         
         if (!isBackup) {
-          query = query.limit(30); // Reduced from 50 to 30 for faster initial load
+          query = query.limit(2000); // Increased from 30 to 2000 for accurate capital statistics
         }
         
         const { data, count, error } = await query;
@@ -2132,11 +2133,29 @@ router.get("/data", async (req, res) => {
     const endFetch = Date.now();
     console.log(`[API] Data fetch took ${endFetch - startFetch}ms. Users: ${userRes.data.length}, Loans: ${loanRes.data.length}`);
 
-    const budget = Number(config?.find(c => c.key === 'SYSTEM_BUDGET')?.value || config?.find(c => c.key === 'budget')?.value) || 0;
+    let budget = Number(config?.find(c => c.key === 'SYSTEM_BUDGET')?.value || config?.find(c => c.key === 'budget')?.value) || 0;
     const rankProfit = Number(config?.find(c => c.key === 'TOTAL_RANK_PROFIT')?.value || config?.find(c => c.key === 'rankProfit')?.value) || 0;
     const loanProfit = Number(config?.find(c => c.key === 'TOTAL_LOAN_PROFIT')?.value || config?.find(c => c.key === 'loanProfit')?.value) || 0;
     const monthlyStats = config?.find(c => c.key === 'MONTHLY_STATS')?.value || config?.find(c => c.key === 'monthlyStats')?.value || [];
     const lastKeepAlive = config?.find(c => c.key === 'lastKeepAlive')?.value || null;
+
+    // Server-side robust verification: always calculate budget from logs to prevent manual or front-end sync drift
+    if (isAdmin && logRes.data && logRes.data.length > 0) {
+      const calculatedBudget = logRes.data.reduce((acc: number, log: any) => {
+        const amt = Number(log.amount || 0);
+        if (log.type === 'INITIAL' || log.type === 'ADD' || log.type === 'ADJUSTMENT_IN' || log.type === 'LOAN_REPAY') {
+          return acc + amt;
+        } else if (log.type === 'WITHDRAW' || log.type === 'ADJUSTMENT_OUT' || log.type === 'LOAN_DISBURSE') {
+          return acc - amt;
+        }
+        return acc;
+      }, 0);
+
+      if (budget !== calculatedBudget) {
+        console.log(`[BUDGET SANITY] Overriding stale budget ${budget} with calculated ${calculatedBudget}`);
+        budget = calculatedBudget;
+      }
+    }
 
     const payload = {
       users: userRes.data,
