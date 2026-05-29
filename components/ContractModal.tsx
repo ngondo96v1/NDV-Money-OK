@@ -59,6 +59,54 @@ const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, 
 
   const partialDetails = getPartialPaymentDetails();
 
+  const getMode2Details = () => {
+    // 1. If currently in pending queue
+    if (contract.status === 'CHỜ TẤT TOÁN') {
+      if (contract.settlementType === 'PRINCIPAL') {
+        const nextGH = (contract.extensionCount || 0) + 1;
+        return {
+          title: `NGÀY XÁC LẬP Gia Hạn Lần ${nextGH}`,
+          sub: "Đang chờ hệ thống phê duyệt hồ sơ cập nhật"
+        };
+      }
+      if (contract.settlementType === 'PARTIAL') {
+        const nextTTMP = (contract.partialPaymentCount || 0) + 1;
+        return {
+          title: `NGÀY XÁC LẬP Tất Toán Một Phần Lần ${nextTTMP}`,
+          sub: "Đang chờ hệ thống phê duyệt giảm trừ dư nợ"
+        };
+      }
+    }
+
+    // 2. Already active/completed record with historical values
+    const partialCount = contract.partialPaymentCount || 0;
+    const extensionCount = contract.extensionCount || 0;
+
+    const isIdTTMP = contract.id.toUpperCase().includes('TTMP');
+    const isIdGH = contract.id.toUpperCase().includes('GH');
+
+    if (isIdTTMP || (partialCount > 0 && !isIdGH)) {
+      return {
+        title: `NGÀY XÁC LẬP Tất Toán Một Phần Lần ${partialCount || 1}`,
+        sub: `Hệ thống ghi nhận giảm trừ nợ gốc`
+      };
+    }
+
+    if (isIdGH || extensionCount > 0) {
+      return {
+        title: `NGÀY XÁC LẬP Gia Hạn Lần ${extensionCount || 1}`,
+        sub: `Gia hạn thời gian tất toán thành công`
+      };
+    }
+
+    return {
+      title: "NGÀY XÁC LẬP Hợp Đồng Gốc",
+      sub: "Mốc khởi tạo hồ sơ gốc"
+    };
+  };
+
+  const mode2Details = getMode2Details();
+
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in slide-in-from-bottom-5 duration-500 overflow-hidden">
       <div className="w-full p-3 flex items-center justify-between bg-black text-white border-b border-white/5 flex-none">
@@ -112,19 +160,17 @@ const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, 
             {/* Song song Hai mốc thời gian */}
             <div className="grid grid-cols-2 gap-3 bg-gray-50 border border-gray-100 rounded-xl p-3 shadow-xs relative z-10 flex-none text-left">
               <div className="space-y-1 border-r border-gray-200/50 pr-3">
-                <span className="text-[6px] font-black text-gray-400 uppercase tracking-widest block">Mốc 1: Ngày Giao Kết Gốc</span>
+                <span className="text-[6.5px] font-black text-gray-400 uppercase tracking-widest block">NGÀY KÝ HĐ</span>
                 <span className="text-[9.5px] font-black text-gray-900 block">{getContractDate(contract)}</span>
                 <span className="text-[5.5px] text-gray-400 font-bold block">Thời gian thiết lập hồ sơ vay ban đầu</span>
               </div>
               <div className="space-y-1 pl-1">
-                <span className="text-[6px] font-black text-orange-500 uppercase tracking-widest block">Mốc 2: Cập Nhật Dư Nợ Cuối</span>
+                <span className="text-[6.5px] font-black text-orange-500 uppercase tracking-widest block">{mode2Details.title}</span>
                 <span className="text-[9.5px] font-black text-orange-600 block">
                   {contract.updatedAt ? new Date(contract.updatedAt).toLocaleDateString('vi-VN') : getContractDate(contract)}
                 </span>
                 <span className="text-[5.5px] text-orange-400 font-bold block leading-none">
-                  {contract.principalPaymentCount && contract.principalPaymentCount > 0 
-                    ? `Chu kỳ mới sau ${contract.principalPaymentCount} lần cập nhật`
-                    : "Hợp đồng nguyên bản chưa qua cập nhật"}
+                  {mode2Details.sub}
                 </span>
               </div>
             </div>
