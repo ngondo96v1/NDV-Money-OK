@@ -1441,6 +1441,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
           user={selectedContract.owner} 
           onClose={() => setSelectedContract(null)} 
           settings={settings}
+          loans={loans}
         />
       )}
 

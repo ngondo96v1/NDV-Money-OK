@@ -61,6 +61,25 @@ export const calculateFine = (amount: number, dueDateStr: string, fineRate = 0.0
   return Math.ceil(finalFine / 1000) * 1000;
 };
 
+export const getContractDate = (contract: any): string => {
+  if (contract?.createdAt) {
+    try {
+      const parts = contract.createdAt.trim().split(' ');
+      if (parts.length === 2 && parts[1].includes('/')) {
+        return parts[1];
+      } else {
+        const d = new Date(contract.createdAt);
+        if (!isNaN(d.getTime())) {
+          return d.toLocaleDateString('vi-VN');
+        }
+      }
+    } catch (e) {
+      console.error("Error parsing contractDate:", e);
+    }
+  }
+  return new Date().toLocaleDateString('vi-VN');
+};
+
 export const replaceContractPlaceholders = (text: string, user: any, contract: any): string => {
   if (!text) return "";
   
@@ -77,7 +96,7 @@ export const replaceContractPlaceholders = (text: string, user: any, contract: a
     '{BANK_ACCOUNT}': user?.bankAccountNumber || '................',
     '{CONTRACT_ID}': contract?.id || '................',
     '{RANK}': user?.rank ? user.rank.toUpperCase() : 'STANDARD',
-    '{DATE_NOW}': new Date().toLocaleDateString('vi-VN'),
+    '{DATE_NOW}': getContractDate(contract),
   };
 
   Object.entries(replacements).forEach(([placeholder, value]) => {

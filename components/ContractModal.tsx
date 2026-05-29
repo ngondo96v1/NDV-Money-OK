@@ -2,16 +2,63 @@
 import React from 'react';
 import { User, LoanRecord, AppSettings } from '../types';
 import { X, ShieldCheck, Download, Calendar, Award, Scale, AlertCircle, ShieldAlert, FileCheck, Landmark, ArrowDownToLine, Lock } from 'lucide-react';
-import { replaceContractPlaceholders } from '../utils';
+import { replaceContractPlaceholders, getContractDate } from '../utils';
 
 interface ContractModalProps {
   contract: LoanRecord;
   user: User | null;
   onClose: () => void;
   settings: AppSettings;
+  loans?: LoanRecord[];
 }
 
-const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, settings }) => {
+const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, settings, loans }) => {
+  // Determine if this loan has any parent partial payments in loans history
+  const getPartialPaymentDetails = () => {
+    // 1. Check if the current contract has pending partial payment
+    if (contract.settlementType === 'PARTIAL' && contract.partialAmount && contract.partialAmount > 0) {
+      return {
+        isPartial: true,
+        date: contract.updatedAt 
+          ? new Date(contract.updatedAt).toLocaleDateString('vi-VN') 
+          : new Date().toLocaleDateString('vi-VN'),
+        amount: contract.partialAmount
+      };
+    }
+
+    // 2. Scan loans history to find previous approved partial payment that led here
+    if (contract.partialPaymentCount && contract.partialPaymentCount > 0 && loans) {
+      const previousPartialLoan = loans.find(l => 
+        l.userId === contract.userId && 
+        (l.status === 'ĐÃ TẤT TOÁN' || l.status === 'ĐA TẤT TOÁN') &&
+        l.settlementType === 'PARTIAL' &&
+        l.partialAmount && l.partialAmount > 0 &&
+        (l.originalBaseId === contract.originalBaseId || l.id === contract.originalBaseId || l.id === contract.id.replace(/TTMP\d+.*$/, ''))
+      );
+
+      if (previousPartialLoan) {
+        return {
+          isPartial: true,
+          date: previousPartialLoan.updatedAt 
+            ? new Date(previousPartialLoan.updatedAt).toLocaleDateString('vi-VN') 
+            : getContractDate(previousPartialLoan),
+          amount: previousPartialLoan.partialAmount
+        };
+      }
+      
+      // Fallback
+      return {
+        isPartial: true,
+        date: contract.updatedAt ? new Date(contract.updatedAt).toLocaleDateString('vi-VN') : getContractDate(contract),
+        amount: 0
+      };
+    }
+
+    return { isPartial: false, date: "", amount: 0 };
+  };
+
+  const partialDetails = getPartialPaymentDetails();
+
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in slide-in-from-bottom-5 duration-500 overflow-hidden">
       <div className="w-full p-3 flex items-center justify-between bg-black text-white border-b border-white/5 flex-none">
@@ -62,6 +109,48 @@ const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, 
 
           <div className="flex-1 min-h-0 relative z-10 overflow-y-auto pr-1 custom-scrollbar py-2 space-y-4">
             
+            {/* Song song Hai mốc thời gian */}
+            <div className="grid grid-cols-2 gap-3 bg-gray-50 border border-gray-100 rounded-xl p-3 shadow-xs relative z-10 flex-none text-left">
+              <div className="space-y-1 border-r border-gray-200/50 pr-3">
+                <span className="text-[6px] font-black text-gray-400 uppercase tracking-widest block">Mốc 1: Ngày Giao Kết Gốc</span>
+                <span className="text-[9.5px] font-black text-gray-900 block">{getContractDate(contract)}</span>
+                <span className="text-[5.5px] text-gray-400 font-bold block">Thời gian thiết lập hồ sơ vay ban đầu</span>
+              </div>
+              <div className="space-y-1 pl-1">
+                <span className="text-[6px] font-black text-orange-500 uppercase tracking-widest block">Mốc 2: Cập Nhật Dư Nợ Cuối</span>
+                <span className="text-[9.5px] font-black text-orange-600 block">
+                  {contract.updatedAt ? new Date(contract.updatedAt).toLocaleDateString('vi-VN') : getContractDate(contract)}
+                </span>
+                <span className="text-[5.5px] text-orange-400 font-bold block leading-none">
+                  {contract.principalPaymentCount && contract.principalPaymentCount > 0 
+                    ? `Chu kỳ mới sau ${contract.principalPaymentCount} lần cập nhật`
+                    : "Hợp đồng nguyên bản chưa qua cập nhật"}
+                </span>
+              </div>
+            </div>
+
+            {/* Thông báo cập nhật dư nợ sau Thanh toán một phần (TTMP) */}
+            {partialDetails.isPartial && (
+              <div className="bg-amber-50/80 border border-amber-200/50 rounded-xl p-3 shadow-xs flex items-start gap-2 animate-in fade-in slide-in-from-top-1 text-left">
+                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1 flex-shrink-0 animate-pulse"></div>
+                <div className="text-[8.5px] font-bold text-amber-900 leading-normal">
+                  <span className="font-black uppercase text-[6px] text-amber-700 block mb-0.5 tracking-wider">Thông báo biến động dư nợ gốc:</span>
+                  Số dư nợ gốc đã được cập nhật giảm dần sau giao dịch thanh toán một phần ngày{' '}
+                  <span className="font-extrabold underline text-amber-950">{partialDetails.date}</span>
+                  {partialDetails.amount > 0 ? (
+                    <>
+                      {' '}với số tiền gốc là{' '}
+                      <span className="font-black underline text-red-600 text-[10.5px]">
+                        {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(partialDetails.amount)}
+                      </span>
+                    </>
+                  ) : (
+                    <> được ghi nhận giảm dứt điểm thực tế trên hệ thống.</>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Nội dung các điều khoản động */}
             {(settings.CONTRACT_CLAUSES?.clauses || [
               { title: 'Các bên giao kết', content: 'Bên A (Bên cho vay): HỆ THỐNG TÀI CHÍNH NDV FINANCIAL\nBên B (Bên vay): CÁ NHÂN ĐỊNH DANH' },
@@ -101,7 +190,7 @@ const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, 
                         user.phone,
                         user.address,
                         contract.id,
-                        new Date().toLocaleDateString('vi-VN'),
+                        getContractDate(contract),
                         '................'
                       ].filter(Boolean);
 

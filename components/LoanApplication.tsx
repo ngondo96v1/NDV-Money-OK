@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { User, LoanRecord, AppSettings } from '../types';
 import { Wallet, X, Eye, FileText, CheckCircle2, ShieldCheck, Eraser, ChevronLeft, CreditCard, CircleHelp, Info, Award, Landmark, FileCheck, AlertCircle, AlertTriangle, ShieldAlert, ChevronRight, History, Calendar, Scale, Check, Loader2, MessageCircle, ArrowUpCircle, ArrowDownToLine, Copy, Camera, Download } from 'lucide-react';
 import ContractModal from './ContractModal';
-import { compressImage, generateContractId, uploadToImgBB, getSystemFormat, generatePaymentContent, replaceContractPlaceholders } from '../utils';
+import { compressImage, generateContractId, uploadToImgBB, getSystemFormat, generatePaymentContent, replaceContractPlaceholders, getContractDate } from '../utils';
 import { BANK_BINS } from '../constants';
 
 interface LoanApplicationProps {
@@ -677,6 +677,7 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
               if (initialLoanToView) onBack();
             }} 
             settings={settings}
+            loans={loans}
           />
         )}
       </div>
@@ -1478,7 +1479,7 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
                           user.phone,
                           user.address,
                           nextContractId,
-                          new Date().toLocaleDateString('vi-VN'),
+                          getContractDate({ id: nextContractId, amount: selectedAmount, loanPurpose, date: dueDate }),
                           '................'
                         ].filter(Boolean);
 
