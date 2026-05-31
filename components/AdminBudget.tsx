@@ -29,9 +29,9 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
   const stats = logs.reduce((acc, log) => {
     if (log.type === 'INITIAL') {
       acc.initial += log.amount;
-    } else if (log.type === 'ADD' || log.type === 'ADJUSTMENT_IN') {
+    } else if (log.type === 'ADD') {
       acc.added += log.amount;
-    } else if (log.type === 'WITHDRAW' || log.type === 'ADJUSTMENT_OUT') {
+    } else if (log.type === 'WITHDRAW') {
       acc.withdrawn += log.amount;
     }
     return acc;

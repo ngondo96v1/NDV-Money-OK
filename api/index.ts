@@ -2139,24 +2139,6 @@ router.get("/data", async (req, res) => {
     const monthlyStats = config?.find(c => c.key === 'MONTHLY_STATS')?.value || config?.find(c => c.key === 'monthlyStats')?.value || [];
     const lastKeepAlive = config?.find(c => c.key === 'lastKeepAlive')?.value || null;
 
-    // Server-side robust verification: always calculate budget from logs to prevent manual or front-end sync drift
-    if (isAdmin && logRes.data && logRes.data.length > 0) {
-      const calculatedBudget = logRes.data.reduce((acc: number, log: any) => {
-        const amt = Number(log.amount || 0);
-        if (log.type === 'INITIAL' || log.type === 'ADD' || log.type === 'ADJUSTMENT_IN' || log.type === 'LOAN_REPAY') {
-          return acc + amt;
-        } else if (log.type === 'WITHDRAW' || log.type === 'ADJUSTMENT_OUT' || log.type === 'LOAN_DISBURSE') {
-          return acc - amt;
-        }
-        return acc;
-      }, 0);
-
-      if (budget !== calculatedBudget) {
-        console.log(`[BUDGET SANITY] Overriding stale budget ${budget} with calculated ${calculatedBudget}`);
-        budget = calculatedBudget;
-      }
-    }
-
     const payload = {
       users: userRes.data,
       loans: loanRes.data,
@@ -3818,8 +3800,14 @@ router.post("/sync", async (req: any, res) => {
       settingsCache = null;
     }
 
-    // 2. Update Budget Log
+    // 2. Update Budget Log (Ensure balanceAfter matches server-side authoritative budget strictly)
     if (budgetLog) {
+      if (finalPayloadBudget !== undefined) {
+        budgetLog.balanceAfter = finalPayloadBudget;
+      } else {
+        const { data: dbBudget } = await client.from('config').select('value').eq('key', 'SYSTEM_BUDGET').single();
+        budgetLog.balanceAfter = Number(dbBudget?.value || 0);
+      }
       const sanitizedLog = sanitizeData([budgetLog], BUDGET_LOG_COLUMNS)[0];
       if (sanitizedLog) {
         const { error } = await client.from('budget_logs').upsert(sanitizedLog, { onConflict: 'id' });

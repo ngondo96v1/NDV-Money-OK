@@ -3482,18 +3482,8 @@ const App: React.FC = () => {
         });
       }
 
-      // 3. Recalculate Working Capital (Vốn lưu động) based on all cash-flow transactions in logs to prevent drift
-      let finalBudget = systemBudget;
-      if (budgetLogs && budgetLogs.length > 0) {
-        finalBudget = budgetLogs.reduce((acc, log) => {
-          if (log.type === 'INITIAL' || log.type === 'ADD' || log.type === 'ADJUSTMENT_IN' || log.type === 'LOAN_REPAY') {
-            return acc + Number(log.amount || 0);
-          } else if (log.type === 'WITHDRAW' || log.type === 'ADJUSTMENT_OUT' || log.type === 'LOAN_DISBURSE') {
-            return acc - Number(log.amount || 0);
-          }
-          return acc;
-        }, 0);
-      }
+      // 3. Keep Working Capital (Vốn lưu động) based on database systemBudget as the single source of truth
+      const finalBudget = systemBudget;
 
       await authenticatedFetch('/api/settings', {
         method: 'POST',
