@@ -1112,7 +1112,18 @@ const App: React.FC = () => {
     initialFetch();
 
     // Socket.io initialization
-    const socket = io(window.location.origin);
+    const isSpecialOrigin = 
+      window.location.protocol === 'capacitor:' || 
+      window.location.protocol === 'file:' || 
+      (window.location.hostname === 'localhost' && window.location.port !== '3000');
+    
+    // Choose dynamic backend Url based on context
+    const envApiUrl = (import.meta.env && import.meta.env.VITE_API_URL) || (import.meta.env && import.meta.env.VITE_APP_URL);
+    const resolvedSocketHost = isSpecialOrigin
+      ? (envApiUrl || "https://ais-pre-uk7oku3rrlicfza6it3qfz-139884708089.asia-southeast1.run.app")
+      : window.location.origin;
+
+    const socket = io(resolvedSocketHost);
     socketRef.current = socket;
 
     socket.on('connect', () => {
@@ -4020,7 +4031,7 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <Suspense fallback={<LoadingFallback />}>
-        <Toaster position="top-center" richColors />
+        <Toaster position="bottom-center" richColors toastOptions={{ style: { marginBottom: showNavbar ? '68px' : '0px' } }} />
         <div className="h-[100dvh] bg-black text-white flex flex-col max-w-md mx-auto relative overflow-hidden">
         {storageFull && !user?.isAdmin && (
           <div className="fixed inset-0 z-[1000] bg-black flex flex-col items-center justify-center p-8 text-center space-y-6">
@@ -4238,7 +4249,7 @@ const App: React.FC = () => {
 
         {/* Floating Simulated Transactions (Phương án 1) */}
         {user && !user.isAdmin && !settings.MAINTENANCE_MODE && simulatedNotifications.length > 0 && (
-          <div className="fixed top-4 left-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none max-w-md mx-auto">
+          <div className={`fixed ${showNavbar ? 'bottom-[80px]' : 'bottom-6'} left-4 right-4 z-[9999] flex flex-col-reverse gap-2 pointer-events-none max-w-md mx-auto`}>
             <AnimatePresence>
               {simulatedNotifications.map((notif) => {
                 let iconEl;
@@ -4285,9 +4296,9 @@ const App: React.FC = () => {
                 return (
                   <motion.div
                     key={notif.id}
-                    initial={{ opacity: 0, y: -50, scale: 0.9 }}
+                    initial={{ opacity: 0, y: 50, scale: 0.9 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                    exit={{ opacity: 0, y: 20, scale: 0.95 }}
                     transition={{ type: "spring", stiffness: 300, damping: 25 }}
                     className="w-full bg-[#111111]/95 backdrop-blur-md border border-white/10 rounded-2xl p-3.5 shadow-xl shadow-black/40 flex items-start gap-3 pointer-events-auto"
                   >
