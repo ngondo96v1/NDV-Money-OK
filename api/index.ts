@@ -2715,6 +2715,15 @@ router.post("/notifications", async (req: any, res) => {
       return res.status(400).json({ error: "Không có dữ liệu hợp lệ để lưu" });
     }
 
+    // Capture existing notification IDs to identify newly created ones
+    const incomingIds = sanitizedNotifs.map(n => n.id);
+    const { data: existingNotifs } = await client
+      .from('notifications')
+      .select('id')
+      .in('id', incomingIds);
+    
+    const existingIds = new Set((existingNotifs || []).map((e: any) => e.id));
+
     // Bulk upsert
     const { error } = await client.from('notifications').upsert(sanitizedNotifs, { onConflict: 'id' });
     if (error) {
@@ -2726,6 +2735,14 @@ router.post("/notifications", async (req: any, res) => {
         hint: error.hint || "Hãy đảm bảo bạn đã chạy SQL schema trong Supabase SQL Editor."
       });
     }
+
+    // Trigger push notifications for brand new, unread notifications on devices
+    sanitizedNotifs.forEach(n => {
+      if (!existingIds.has(n.id) && n.userId !== 'ADMIN' && !n.read) {
+        console.log(`[PUSH] Triggering push notification for newly created notification ${n.id} to user ${n.userId}`);
+        triggerPushForUser(n.userId, n.title, n.message, client);
+      }
+    });
     
     // Emit real-time update
     const io = req.app.get("io");

@@ -1,151 +1,203 @@
-# TÀI LIỆU KHẢO SÁT & ĐẶC TẢ HỆ THỐNG NDV MONEY (VNV LOAN)
-## DÀNH RIÊNG CHO SỰ PHÁT TRIỂN & TÁI TẠO ỨNG DỤNG ANDROID PHẲNG NATIVE
-
-Tài liệu này tổng hợp toàn bộ cấu trúc cơ sở dữ liệu, logic luồng nghiệp vụ, giao diện người dùng và cơ chế thanh toán tự động nâng cao của hệ thống **NDV Money** hiện tại. Bạn có thể sao chép toàn bộ nội dung tài liệu này và cung cấp trực tiếp vào ô chat của các hệ thống AI để tái tạo ứng dụng Android hoàn hảo 100% giống ứng dụng gốc cực kỳ nhanh chóng.
-
----
-
-## I. MỤC TIÊU & TÍNH CHẤT ỨNG DỤNG
-*   **Tên ứng dụng:** NDV Money (Hệ thống xác thực tài chính & Quản lý dư nợ tiêu dùng nhanh).
-*   **Màu sắc chủ đạo:** Cosmic Dark UI (Nền đen sẫm hoặc xám cực sâu `#0D0E12`, chữ trắng, điểm nhấn là màu vàng hổ phách tươi sáng `#F59E0B` hoặc cam rực rỡ, mang phong cách ứng dụng tài chính ngân hàng tối tân và bảo mật cao).
-*   **Phân quyền hệ thống:** Có 2 vai trò chính:
-    1.  **Khách hàng (User):** Đăng ký, đăng nhập, nạp hồ sơ KYC đầy đủ, ký hợp đồng điện tử trực tiếp bằng màn hình cảm ứng (Canvas Draw), gửi yêu cầu vay tiền, gia hạn khoản vay bằng PayOS hoặc chuyển khoản tay, nâng cấp Rank VIP/Hạn mức bằng bill chuyển khoản hoặc tự động qua cổng PayOS.
-    2.  **Quản trị viên (Admin):** Quản lý dòng ngân sách trực tuyến, xem lịch sử thu chi chi tiết (Budget logs), duyệt hồ sơ KYC/vào hạn mức, phê duyệt giải ngân, điều chỉnh thủ công nợ, quản lý khóa/mở khóa tài khoản, cấu hình toàn bộ tham số hệ thống không cần sửa code.
+# BẢN ĐẶC TẢ HỆ THỐNG CHI TIẾT & HƯỚNG DẪN PROMPT AI STUDIO
+## PHÁT TRIỂN VÀ NÂNG CẤP ỨNG DỤNG DI ĐỘNG NDV MONEY (.APK CYCLIP/CAPACITOR)
+*Tài liệu kỹ thuật được tối ưu hóa 100% để ra lệnh trực tiếp cho Google AI Studio phát triển màn hình, API, cơ sở dữ liệu và các tính năng di động gốc.*
 
 ---
 
-## II. THÔNG SỐ CẤU HÌNH HỆ THỐNG (SETTINGS)
-Toàn bộ hệ thống được vận hành động qua các tham số mà Admin có thể sửa đổi trong trang Quản Trị:
-1.  **PRE_DISBURSEMENT_FEE (15%):** Phí xử lý hồ sơ và giải ngân. Khoản phí này được trừ thẳng vào số tiền khách nhận thực tế hoặc cộng dồn chu kỳ nợ tùy cấu hình.
-2.  **INITIAL_LIMIT (Hạn mức cơ sở ban đầu):** Thường là `2,000,000 đ` cho tài khoản ban đầu khi chưa kiểm duyệt sâu.
-3.  **MAX_LOAN_PER_CYCLE (1):** Tối đa số khoản vay đang có nợ cùng thời điểm (tránh nợ xấu chồng chéo).
-4.  **FINE_RATE (Phí phạt quá hạn):** Lãi suất phạt quá hạn theo ngày tính trên tổng dư nợ gốc.
-5.  **ENABLE_PAYOS (Bật/Tắt PayOS):** Cấu hình cổng thanh toán tự động PayOS để thanh toán dư nợ, gia hạn nợ hoặc thanh toán phí nâng hạng VIP tự động gạch nợ 24/7.
-6.  **ZALO_GROUP_LINK:** Đường dẫn nút Hỗ trợ khách hàng qua Zalo hoặc Hotline CSKH.
-7.  **RANK_CONFIG:** Bảng cấu hình cấp bậc khách hàng (Standard, Bronze, Silver, Gold, Diamond) tương ứng với từng khoảng hạn mức cho phép và quyền lợi đặc trưng.
+## I. KIẾN TRÚC TỔNG THỂ & THẾ MẠNH DIAGRAM
+
+Ứng dụng **NDV Money** được xây dựng theo mô thức **Hybrid Native** sử dụng React + Vite + Tailwind CSS làm tầng trải nghiệm UI di động, kết hợp với bộ công cụ **Capacitor** để biên dịch trực tiếp và khai thác 100% phần cứng Android (Camera chụp ảnh CCCD, Push Notification, local storage bảo mật).
+
+*   **Platform Hướng Đích:** Android App (.apk) thông qua Capacitor 5+
+*   **Theme Thiết Kế:** Cosmic Dark UI – Tone màu `#0D0E12` (sâu thẳm), hổ phách hỗ trợ hoặc cam sáng quý phái (`#F59E0B`) làm điểm nhấn hành động.
+*   **Database chính:** Supabase / Firestore (lưu trữ đồng bộ thời gian thực).
+*   **Tích hợp phần cứng gốc:**
+    1.  **Capacitor Camera plugin** để chụp ảnh KYC hai mặt rõ nét.
+    2.  **Firebase Messaging/Push Notification** để đăng ký token đẩy và thông báo trạng thái khoản vay tự động.
+    3.  **HTML5 Canvas API** để ghi chữ ký tay trực tiếp của khách hàng khi ký hợp đồng tín dụng.
 
 ---
 
-## III. CHI TIẾT CƠ SỞ DỮ LIỆU CHUẨN (SUPABASE / FIRESTORE SCHEMA)
+## II. ĐỊNH NGHĨA DỮ LIỆU ĐỒNG BỘ TRONG TYPESCRIPT (TYPES SPECIFICATION)
 
-### 1. Bảng `users` (Quản lý khách hàng)
-*   `id`: Chuỗi định danh hoặc Số thứ tự định dạng đặc thù (VD: "2690").
-*   `phone`: Số điện thoại đăng nhập (Zalo).
-*   `fullName`: Họ và tên khách hàng (In hoa không dấu).
-*   `idNumber`: Số CCCD/CMND.
-*   `password`: Mật khẩu băm an toàn.
-*   `balance`: Hạn mức vay khả dụng hiện tại (Ví dụ: `5,000,000 đ`).
-*   `totalLimit`: Tổng hạn mức tín dụng được duyệt cấp tối đa (Ví dụ: `20,000,000 đ`).
-*   `rank`: Cấp bậc hiện tại (`standard`, `bronze`, `silver`, `gold`, `diamond`).
-*   `pendingUpgradeRank`: Cấp bậc đang chờ phê duyệt nâng hạng (khi người dùng thanh toán/gửi bill nâng VIP thủ công).
-*   `rankUpgradeBill`: Ảnh biên lai chuyển khoản phí nâng hạng (nếu chọn hình thức thủ công).
-*   `isLocked`: Trạng thái khóa tài khoản (`true` / `false`).
-*   `lockedReason`: Lý do khóa hiển thị trực tiếp cho người dùng.
-*   `bankName`, `bankAccountNumber`, `bankAccountHolder`, `bankBin`: Thông tin tài khoản nhận tiền đã kiểm thực (Admin đối chiếu khi giải ngân).
-*   `idFront`, `idBack`: Ảnh hai mặt CCCD phục vụ định danh KYC.
-*   `refZalo`, `relationship`: Số Zalo người thân và quan hệ nhân thân để liên hệ đối soát tín dụng khẩn cấp.
-*   `spins`: Số lượt quay may mắn được tặng mỗi khi thanh toán đúng hạn.
+Để đảm bảo hiệu năng và không lỗi kiểu dữ liệu (Type-Safety) khi AI Studio biên dịch ứng dụng, hãy cung cấp định nghĩa Type sau vào hệ thống dữ liệu:
 
-### 2. Bảng `loans` (Quản lý khoản vay & Dư nợ)
-*   `id`: Mã hợp đồng vay duy nhất (Format động: `[ID_Người_Dùng] [Ký_Hiệu_Chu_Kỳ]`, ví dụ: `6745 NDV2` - Người dùng 6745, chu kỳ vay đợt 2).
-*   `userId`: Định danh người vay.
-*   `userName`: Họ tên người vay.
-*   `amount`: Số tiền giải ngân gốc (Số tiền đăng ký vay).
-*   `date`: Ngày tạo khoản vay hoặc ngày ký kết nợ định dạng chuẩn `DD/MM/YYYY`.
-*   `status`: Quản lý chặt chẽ theo các trạng thái sau:
-    *   `CHỜ DUYỆT`: Khách đã gửi yêu cầu, đang đợi Admin thẩm định.
-    *   `ĐANG GIẢI NGÂN`: Hợp đồng được phê duyệt, chuyển sang phòng ban giải ngân tiền mặt.
-    *   `ĐANG NỢ`: Giải ngân thành công, khách đang ôm dư nợ cần thanh toán.
-    *   `QUÁ HẠN`: Khoản vay quá hạn thanh toán quy định, hệ thống tự động/Admin tính phí phạt.
-    *   `CHỜ TẤT TOÁN`: Người dùng bấm tất toán thủ công tải bill chuyển khoản lên đợi duyệt.
-    *   `ĐANG ĐỐI SOÁT`: Hệ thống đang trong quy trình rà soát giao dịch ngân hàng khớp lệnh.
-    *   `ĐÃ TẤT TOÁN`: Hợp đồng hoàn thành xuất sắc, dư nợ trở về 0, khôi phục lại hạn mức tài khoản.
-    *   `ĐÃ CỘNG DỒN`: Đại diện hợp đồng nợ cũ đã được hệ thống nhập gốc + lãi dồn tích trực tiếp sang hợp đồng hợp cộng mới.
-    *   `BỊ TỪ CHỐI` / `ĐÃ HỦY`: Yêu cầu vay không hợp lệ bị bãi bỏ.
-*   `signature`: Ảnh nét vẽ chữ ký của khách hàng (Lưu dạng URL ảnh Base64/ImgBB).
-*   `loanPurpose`: Lý do vay (ví dụ: Tiêu dùng cá nhân, Kinh doanh nhỏ).
-*   `fine`: Số tiền phạt quá hạn tích lũy (VND).
-*   `partialAmount`: Số tiền gốc khách hàng đã thanh toán một phần (để giảm trừ dư nợ gốc trực tiếp).
+```typescript
+// src/types.ts
 
-### 3. Bảng `budget_logs` (Quản lý dòng tiền ngân sách Admin)
-Lưu trữ nhật ký thu/chi thực tế của hệ thống để phân tích dòng lời lỗ:
-*   `id`: Khóa chính ngẫu nhiên.
-*   `type`: Loại nghiệp vụ tài chính (`INITIAL` - Khởi tạo, `ADD` - Bơm quỹ, `WITHDRAW` - Rút quỹ tiêu dùng, `LOAN_DISBURSE` - Chi giải ngân, `LOAN_REPAY` - Thu hồi nợ/Gia hạn nợ).
-*   `amount`: Số tiền giao dịch phát sinh.
-*   `balanceAfter`: Số dư quỹ hệ thống sau khi áp dụng giao dịch.
-*   `note`: Nội dung giải trình chi tiết giao dịch (ví dụ: *"Giải ngân khoản vay 6745 NDV2 cho HUYNH NGOC TUAN"*).
-*   `createdAt`: Thời điểm diễn ra giao nghiệp dưới múi giờ chuẩn.
+export type LoanStatus = 
+  | 'CHỜ DUYỆT' 
+  | 'ĐANG GIẢI NGÂN' 
+  | 'ĐANG NỢ' 
+  | 'QUÁ HẠN' 
+  | 'CHỜ TẤT TOÁN' 
+  | 'ĐANG ĐỐI SOÁT' 
+  | 'ĐÃ TẤT TOÁN' 
+  | 'ĐÃ CỘNG DỒN' 
+  | 'BỊ TỪ CHỐI' 
+  | 'ĐÃ HỦY';
 
----
+export type BudgetLogType = 
+  | 'INITIAL'       // Khởi tạo dòng tiền
+  | 'ADD'           // Bơm thêm quỹ
+  | 'WITHDRAW'      // Rút tiền khỏi quỹ
+  | 'LOAN_DISBURSE' // Thực tế chi giải ngân
+  | 'LOAN_REPAY';   // Thực tế thu hồi nợ/lãi/phí gia hạn
 
-## IV. LOGIC NGHIỆP VỤ ĐẶC THÙ & QUY TẮC CẮT NỢ (BUSINESS LOGIC)
+export interface RankConfig {
+  name: string;      // Standard, Bronze, Silver, Gold, Diamond
+  minLimit: number;  // Hạn mức tối thiểu được duyệt
+  maxLimit: number;  // Hạn mức tối đa được duyệt
+  perks: string[];   // Quyền lợi đi kèm
+  feeDiscount: number; // Mức giảm phần trăm phí giải ngân
+}
 
-### 1. Phép cộng dồn nợ tự động (Loan Consolidation)
-Một trong những logic đặc thù và cốt lõi nhất của hệ thống NDV Money:
-*   **Tình huống:** Người dùng đang có một khoản vay ở trạng thái `ĐANG NỢ` (VD: mã `6745 NDV2` trị giá `10,000,000 đ`) nhưng muốn vay thêm một khoản mới trị giá `5,000,000 đ`.
-*   **Quy trình hợp nhất:** Khi Admin phê duyệt yêu cầu vay mới:
-    *   Hợp đồng nợ cũ sẽ chuyển trạng thái từ `ĐANG NỢ` sang `ĐÃ CỘNG DỒN` (Mục đích: Không cho hiển thị ở phần nợ thanh toán trực tiếp của khách để tránh nhầm lẫn, nhưng vẫn lưu lịch sử).
-    *   Một hợp đồng nợ mới sẽ tự động được sinh ra với mã con là `6745 NDV4-GOP` (Hợp đồng cộng dồn nợ) gộp cả dư nợ cũ và sáp nhập nợ mới (Tổng dư nợ mới ví dụ: `15,000,000 đ`).
-    *   Mọi thông số thanh toán, lịch sử gia hạn, hay mức phí phạt sau này sẽ liên kết trực tiếp ứng xử với thực thể nợ gộp mới này.
+export interface User {
+  id: string;                      // ID duy nhất định dạng số (VD: "3562")
+  phone: string;                   // Số ĐT đăng ký (kiêm tài khoản Zalo)
+  fullName: string;                // Họ tên đầy đủ (In hoa, không dấu)
+  idNumber: string;                // Số CCCD
+  passwordHash: string;            // Mật khẩu băm an toàn
+  balance: number;                 // Hạn mức vay khả dụng hiện tại (VND)
+  totalLimit: number;              // Tổng hạn mức được cấp duyệt tối đa (VND)
+  rank: 'standard' | 'bronze' | 'silver' | 'gold' | 'diamond';
+  pendingUpgradeRank?: string;     // Hạng VIP đang chờ xét duyệt
+  rankUpgradeBill?: string;        // URL ảnh hóa đơn/bill nâng hạng chuyển khoản tay
+  isLocked: boolean;               // Có bị khóa hay không
+  lockedReason?: string;           // Lý do khóa hiển thị trực quan cho người dùng
+  bankName: string;                // Tên ngân hàng nhận giải ngân
+  bankAccountNumber: string;       // Số tài khoản ngân hàng
+  bankAccountHolder: string;       // Tên chủ sở hữu thẻ (In hoa không dấu)
+  bankBin: string;                 // Mã ngân hàng phục vụ tự động gạch nợ
+  idFront: string;                 // URL ảnh CCCD Mặt trước
+  idBack: string;                  // URL ảnh CCCD Mặt sau
+  refZalo: string;                 // SĐT Zalo người thân tham chiếu
+  relationship: string;            // Mối quan hệ thân nhân
+  spins: number;                   // Số lượt quay may mắn khả dụng
+  fcmToken?: string;               // Token nhận Push Notification từ Firebase trên di động
+  createdAt: string;
+}
 
-### 2. Logic thanh toán & gia hạn tự động qua PayOS
-*   Hệ thống tích hợp thư viện của PayOS để tạo QRCode thanh toán chuẩn VietQR:
-    *   **Tất toán toàn bộ (Full Settlement):** Tạo mã QRCode tương ứng trị giá tổng nợ (Gốc + Phạt). Khi webhook PayOS phản hồi `Thành công`, trạng thái khoản vay sẽ tự động chuyển sang `ĐÃ TẤT TOÁN`, giải phóng hạn mức cho User.
-    *   **Gia hạn khoản vay (Loan Extension):** Người dùng muốn tạm hoãn ngày trả nợ bằng cách đóng phí gia hạn (Ví dụ đóng `600,000 đ`). PayOS sinh mã quét QR riêng, khi thanh toán thành công, hạn trả nợ tức thì kéo dài thêm 1 chu kỳ, tạo bản ghi log gia hạn tự động.
-    *   **Thanh toán một phần (Partial Repayment):** Khách hàng đóng một khoản tiền tùy ý lớn hơn mức quy định. Cổng thanh toán trừ thẳng vào số nợ gốc thực tế, tính toán lại % lãi cho chu kỳ tiếp theo dựa trên số tiền còn lại sau giảm trừ.
+export interface Loan {
+  id: string;                      // Định dạng động: `USERID-NDV[CYCLE]` (v.d: "3562-NDV1")
+  userId: string;                  // ID người vay
+  userName: string;                // Họ và tên người vay
+  amount: number;                  // Tổng số tiền nợ gốc của hợp đồng vay này (VND)
+  date: string;                    // Ngày tạo, ký nhận nợ (DD/MM/YYYY)
+  dueDate: string;                 // Hạn cuối trả nợ (DD/MM/YYYY)
+  status: LoanStatus;              // Trạng thái vận hành hợp đồng
+  signature: string;               // Base64 URI nét vẽ chữ ký điện tử của khách hàng
+  loanPurpose: string;             // Mục đích sử dụng khoản tiền
+  fine: number;                    // Số dư tiền phạt quá hạn tích lũy hiện hành (VND)
+  partialAmount: number;           // Tổng số tiền đã được giảm trừ vào nợ gốc (VND)
+  createdAt: string;
+}
 
----
+export interface BudgetLog {
+  id: string;
+  type: BudgetLogType;
+  amount: number;                  // Số tiền của giao dịch
+  balanceAfter: number;            // Số dư quỹ của Admin sau khi kết toán giao dịch này
+  note: string;                    // Ghi chú nghiệp cụ chi tiết
+  createdAt: string;
+}
 
-## V. CƠ CẤU GIAO DIỆN PHẲNG (UI/UX) CHO PHẦN CỨNG DI ĐỘNG
-
-### 1. Phân luồng User (Mobile Client)
-*   **Màn hình Đăng nhập (Login):**
-    *   Phần header hiển thị logo NDV Money rực rỡ với dòng chữ hiệu suất cực cao: "HỆ THỐNG XÁC THỰC LỚP VIÊN V1.26".
-    *   Ô nhập số điện thoại (Hệ thống liên kết trực quan Zalo).
-    *   Ô nhập mật khẩu có nút hiển thị/ẩn mật khẩu bằng Icon con mắt tinh tế.
-    *   Thông báo lỗi trực quan ngay dưới nút bấm nếu sai mật khẩu hoặc tài khoản đang bị khóa tạm thời.
-*   **Màn hình Đăng ký (Register):**
-    *   Đăng ký nhanh với Họ tên, Số điện thoại, và thiết lập Mật khẩu. Khi đăng ký xong sẽ chuyển tiếp đến màn hình nạp hồ sơ định danh KYC đầy đủ.
-*   **Màn hình Trang chủ (Dashboard):**
-    *   Vòng tròn động (Circle Progress) hiển thị tỷ trọng: "Hạn mức khả dụng / Tổng hạn mức được cấp".
-    *   Banner hiển thị thông báo nghiệp vụ khẩn cập chạy ngang (Marquee text) từ quản trị viên.
-    *   Khu vực chức năng bento grid:
-        *   Nút **ĐĂNG KÝ VAY**: Gửi yêu cầu vay mới nếu chưa có dư nợ hoặc muốn yêu cầu nợ gộp.
-        *   Nút **VÒNG QUAY MAY MẮN (Lucky Spin)**: Sử dụng lượt quay thưởng để kiếm Voucher giảm trừ phí đóng nợ.
-        *   Nút **NÂNG VIP / RANK**: Gửi hồ sơ nâng hạn mức để nâng cấp tối ưu quyền lợi tiêu dùng.
-        *   Khung Hợp đồng / Lịch sử nợ: Liệt kê chi tiết toàn bộ các hợp đồng cũ, ngày giải ngân, trạng thái khoản vay thời gian thực rất rõ ràng kèm mã QR đóng tiền tức thì.
-*   **Màn hình Đăng ký khoản vay & Ký hợp đồng điện tử (Apply Loan):**
-    *   Thanh trượt chọn số tiền đăng ký vay trực quan (Tiền nhảy sinh động kèm chữ bằng tiếng Việt, ví dụ: `5.000.000 đ` -> Năm triệu đồng chẵn).
-    *   Khung hiển thị điều khoản hợp đồng tín dụng bảo mật tuyệt đối.
-    *   **Khung canvas vẽ chữ ký tay:** Khách hàng bắt buộc phải dùng ngón tay ký trực tiếp lên vùng canvas để ghi dấu hợp đồng điện tử trước khi gửi yêu cầu lên máy chủ.
-
-### 2. Phân luồng Admin (Mobile Admin View)
-Để thuận tiện cho Admin dùng trên điện thoại di động:
-*   **Trang tổng quan ngân sách:**
-    *   Thống kê 6 chỉ số lớn dạng thẻ card lơ lửng: **Gốc ngân sách hiện có, Lợi nhuận giải ngân tổng, Tổng thu tiền phạt, Lợi nhuận thu phí nâng VIP, Dự nợ đang hoạt động ngoài hệ thống, Số lượng khách nợ**.
-    *   Đồ thị biểu diễn phân bổ chi tiêu hàng tháng (Dùng biểu đồ D3 / Recharts thu nhỏ tương thích tốt trên mobile).
-*   **Trang Danh Sách Người Dùng (Admin Users):**
-    *   Có thanh tìm kiếm nhanh theo số điện thoại hoặc Tên.
-    *   Có bộ nút lọc nhanh trạng thái tài khoản: Đang nợ, Đang rảnh, Bị khóa.
-    *   Có nút bấm hành động khẩn cấp: Khóa / Mở khóa tài khoản vĩnh viễn, Nâng/Hạ thứ hạng VIP thủ công, Điều chỉnh hạn mức sử dụng theo từng cá nhân bất kỳ.
-*   **Trang Danh Sách Khoản Vay (Admin Loans):**
-    *   Nơi hiển thị toàn bộ hồ sơ đang chờ xét duyệt. admin có thể nhấn vào xem thông tin tài khoản ngân hàng của khách, hình ảnh CCCD sắc nét, chữ ký tay điện tử.
-    *   Hai nút lựa chọn chính: **TỪ CHỐI** (yêu cầu điền lý do rõ ràng gửi về thông báo của user) hoặc **PHÊ DUYỆT** (Tự động tính phí dịch vụ 15%, trừ tiền từ ngân sách hệ thống, tạo nợ mới và gửi thông báo về máy khách hàng).
+export interface SystemConfig {
+  preDisbursementFee: number;      // Tỷ lệ phí dịch vụ trước giải ngân (Ví dụ: 15%)
+  initialLimit: number;            // Hạn mức cấp mặc định ban đầu (Ví dụ: 2,000,000đ)
+  maxLoansPerCycle: number;        // Số hợp đồng nợ hoạt bát tối đa đồng thời (Mặc định: 1)
+  fineRatePerDay: number;          // Tỷ số phạt quá hạn mỗi ngày ví dụ: 0.5%
+  enablePayOS: boolean;            // Cho phép sử dụng cổng VietQR của PayOS
+  zaloGroupLink: string;           // Link group hỗ trợ online
+}
+```
 
 ---
 
-## VI. BẢN SAO CHO TRÌNH TẠO ỨNG DỤNG ANDROID NATIVE CỦA AI STUDIO
-*(Hãy Copy toàn bộ đoạn lệnh/hướng dẫn chi tiết dưới đây bỏ vào phiên AI Studio Android của bạn)*
+## III. LOGIC THẨM ĐỊNH & THỦ THUẬT NGHIỆP VỤ NHẠY CẢM
 
-> **Yêu cầu xây dựng ứng dụng:**
-> Xây dựng một ứng dụng tài chính cá nhân chạy trên Android (sử dụng Kotlin / Jetpack Compose hoặc React Native / Capacitor tùy biến nền tảng di động) theo phong cách thiết kế Cosmic Dark UI siêu sang trọng.
->
-> **1. Yêu cầu giao diện (UI):**
-> * Toàn bộ ứng dụng sử dụng theme tối sâu `#0D0E12`, các chữ viết và nhãn tuân thủ độ tương phản tuyệt đối cao để tránh mỏi mắt. Cạnh các thẻ bo góc mịn màng, phủ bóng viền hổ phách mờ rất cao cấp.
-> * Trang chủ của người dùng có biểu đồ tiến trình hình tròn (Hạn mức còn lại / Tổng hạn mức). Có các nút thao tác lưới bao gồm: Đăng ký vay nhanh, Nâng cấp Rank thành viên VIP bằng cách quét VietQR tự động, Vòng quay may mắn (Lucky Spin) trúng voucher và nút hỗ trợ trực tuyến kết nối Zalo.
-> * Form đăng ký khoản vay bắt buộc tích hợp **khung canvas vẽ ký tên thủ công** của khách hàng và tính năng tải lên ảnh gốc thẻ hai mặt CCCD hỗ trợ chụp trực tiếp từ camera.
->
-> **2. Logical dữ liệu đặc thù:**
-> * Cấu hình đầy đủ quyền hạn Khách hàng và Admin điều hành toàn quyền.
-> * Áp dụng cơ chế **Cộng dồn dư nợ giải ngân (Consolidation)**: Khi Admin đồng ý giải ngân khoản vay mới của người dùng đang có nợ, chuyển trạng thái khoản nợ cũ thành `ĐÃ CỘNG DỒN` để ẩn khỏi danh tác nợ hiện hữu và sinh ra hợp đồng nợ tích hợp gộp mới của cả gốc lẫn nợ mới có mã `[ID]-GOP`.
-> * Tích hợp webhook tự động hoặc liên kết PayOS thanh toán hóa đơn gốc/phí gia hạn hoặc phí nâng Rank VIP cập nhật trạng thái cơ sở dữ liệu thời gian thực không độ trễ.
+### 1. Phép Cộng Dồn & Hoán Đổi Hợp Đồng Nợ (Debt Consolidation Engine)
+Quy trình này xuất hiện khi khách hàng **đang có nợ hiện hữu** (VD: Khoản vay gốc đang ở trạng thái `ĐANG NỢ`, trị giá `10,000,000 đ`) nhưng nộp hồ sơ xin giải ngân tiếp khoản vay mới trị giá `5,000,000 đ`.
+
+Khi Admin ấn phê duyệt yêu cầu vay mới này, hệ thống **bắt buộc** thực hiện logic đóng nợ cũ và tạo hợp đồng gộp như sau:
+1.  **Duyệt nợ mới:** Khởi tạo yêu cầu nợ thặng dư.
+2.  **Khóa vết hợp đồng cũ:** Trạng thái của hợp đồng nợ cũ được đổi từ `ĐANG NỢ` hoặc `QUÁ HẠN` thành `ĐÃ CỘNG DỒN`. Thao tác này ẩn hợp đồng cũ khỏi danh sách nợ cần thanh toán chủ động ở màn hình người dùng nhưng giữ nguyên dữ liệu gốc cho bảng kiểm toán dòng tiền.
+3.  **Tạo thực thể gộp:** Sinh ra một hợp đồng vay hoàn toàn mới với hậu tố định dạng `[MÃ_USER]-NDV[MÃ_CŨ]-GOP`. 
+    *   **Công thức gốc mới:** `Tổng nợ mới = Nợ gốc hợp đồng cũ còn lại + Phí phạt cũ (nếu có) + Khoản vay đăng ký mới`.
+    *   **Tổng số tiền thực tế giải ngân:** Thực tế chuyển khoản cho người dùng chỉ bằng số tiền họ đăng ký vay thêm sau khi trừ thẳng phí dịch vụ xử lý (ví dụ: `15%`).
+4.  Tính toán lại ngày đáo hạn mới cách thời điểm gộp nợ thêm 1 chu kỳ hoàn chỉnh.
+
+### 2. Định Danh & Liên Kết Cảnh Báo Android Native (Push Notification Alerts)
+*   **Liên kết Thiết bị (Token Registry):** Khi người dùng duyệt đăng nhập trên hệ điều hành Android, ứng dụng tự động kiểm tra quyền thông báo trên máy. Khi có sự đồng ý, token FCM đăng ký sẽ lập tức được gửi ngược về cập nhật vào trường `fcmToken` của hồ sơ `users`.
+*   **Trình Đẩy Tin Tự Động:** Mọi thay đổi trạng thái của bảng `loans` từ trang quản trị Administrator cần lập tức kích hoạt hàm đẩy tin nhắn (Push API) gửi về thông báo cho máy khách:
+    *   `DUYỆT GIẢI NGÂN`: *"Hạn mức NDV Money đã được chuyển vào TK Ngân hàng của bạn!"*
+    *   `KHI CHUYỂN QUÁ HẠN`: *"Cảnh báo: Khoản vay của bạn đã chuyển sang trạng thái QUÁ HẠN. Hãy đóng phí để tránh ảnh hưởng nợ xấu tín dụng!"*
+    *   `XÁC THỰC VIETQR`: *"Hệ thống đã nhận được tiền tất toán. Trạng thái nợ trở lại Bình Thường!"*
+
+---
+
+## IV. ĐẶC TẢ CHI TIẾT MÀN HÌNH NATIVE DI ĐỘNG (DIỆP DIỆN MOBILE UX)
+
+### Màn hình 1: Đăng nhập / Đăng ký Trực quan
+*   **Visual:** Nền đen sẫm `#0D0E12`, các thẻ nhập liệu bao viền hổ phách mỏng nhẹ, sang trọng.
+*   **Bảo mật:** Nhập số điện thoại (tự động kiểm tra định dạng độ dài), trường mật khẩu có icon ẩn hiện tiện dụng (Eye-slash).
+*   **Chức năng:** Nút Đăng ký liên kết mượt mà sang form nhập thông tin cá nhân cơ bản. Có trang thông báo chi tiết nếu tài khoản của User bị khóa (Hiển thị trường `lockedReason`).
+
+### Màn hình 2: KYC - Đăng ký hồ sơ định danh thông minh (Profile Matrix)
+*   **Bắt buộc:** Khung điền thông tin ngân hàng nhận tiền cực kỳ trực quan (Bank Name, chủ TK nhận phải đồng bộ tự động viết hoa không dấu trùng khớp với trường Họ và tên khách hàng).
+*   **Khối chụp ảnh thẻ CCCD:** Thiết kế 2 khung hình ảo chuyên dụng định dạng sẵn tỷ lệ Thẻ thông minh để người dùng căn chỉnh:
+    *   Hỗ trợ tương tác chọn File hoặc kích hoạt camera của thiết bị Android (thông qua `Capacitor Camera plugin`) chụp ảnh chân thực không rung, mờ.
+    *   Có chế độ nén ảnh Client-side xuống độ rộng tối đa `1280px` trước khi tải lên để tránh hao hụt băng thông 3G/4G trên điện thoại di động.
+
+### Màn hình 3: Dashboard Trung tâm Người Dùng (Client Dashboard)
+*   **Gây ấn tượng trực quan:** Vòng tròn tiến trình (Circular Progress Area) làm trung tâm, hiển thị dung lượng tài chính hiện hữu. 
+    *   Ví dụ: Số tiền trung tâm có chữ "Hạn mức khả dụng" – `3.200.000 đ` bên dưới hiển thị thanh nhỏ chứa tổng hạn mức được phê duyệt `12.000.000 đ`.
+*   **Dòng tin khẩn (Marquee Text):** Dòng chữ chạy hoạt cảnh ngang màu vàng hổ phách truyền tải thông tin cảnh báo nợ xấu hoặc thời gian bảo trì gạch nợ tự động của ngân hàng.
+*   **Lưới Điều Hướng Tiện Ích (Bento Icons Grid - 4 Nút Lớn):**
+    1.  **Đăng Ký Vay Trực Tuyến:** Đi thẳng tới form chọn hạn mức.
+    2.  **Vòng Quay May Mắn:** Màn hình trò chơi may mắn (Lucky Spin) tăng tương tác, chứa các phần thưởng giảm trừ nợ gốc hoặc quà đặc biệt.
+    3.  **Tăng Hạng VIP (Nâng Rank):** Xem mức Rank hiện tại, chọn nâng hạng VIP để gia tốc hạn mức, thanh toán khoản phí nâng cấp bằng tự động quét VietQR qua PayOS hoặc tải bill chụp chuyển khoản ngân hàng nếu thanh toán thủ công.
+    4.  **Hỗ Trợ Nhanh:** Kết nối trực tuyến thẳng sang Hotline hoặc group Zalo CSKH từ xa.
+
+### Màn hình 4: Màn hình Vay vốn & Chữ ký Điện Tử (Contract Signing Frame)
+*   **Bộ trượt chọn mức tiền (Slider Value Input):** Tầm giá chọn từ `2,000,000 đ` đến `50,000,000 đ` tùy theo cấp Rank VIP hiện hữu. Khi kéo trượt, phần mệnh giá tự động phân rã thành văn bản dạng chữ tiếng Việt sinh động dưới thanh kéo.
+*   **Legal Contract Box:** Hộp văn bản dài chứa đầy đủ các điều khoản nợ cam kết, bảo mật thông tin và lịch trình trả nợ.
+*   **Canvas Điện Tử (Electronic Wet-ink Signature Canvas):** Khay Canvas chuyên biệt đón chạm đa điểm của hệ điều hành Android. Người dùng bắt buộc hoàn thành nét vẽ chữ ký tay hợp lệ mới mở khóa được nút **GỬI YÊU CẦU DUYỆT**. Chữ ký sau khi hoàn tất được bóc tách định dạng Base64 và đính kèm vào hợp đồng.
+
+### Màn hình 5: Quản trị viên Di Động di động 100% (Mobile Admin Panel)
+*   **Bộ Thẻ Thống Kê Tổng Quan (Quick Metrics Dashboard):**
+    *   Tổng hợp quỹ và lợi nhuận hệ thống thời gian thực.
+    *   Biểu đồ cấu trúc nhỏ gọn biểu diễn trạng thái tài chính (D3 / Recharts được nén tối ưu tương thích màn hình dọc, có thể vuốt ngang để xem chi tiết tháng).
+*   **Hàng Đợi Bài Viết Chờ Thẩm Định (Loan Queue & KYC Evaluator):**
+    *   Bộ lọc nhanh các khoản vay trạng thái `CHỜ DUYỆT`, `CHO TẤT TOÁN`, `NÂNG VIP CHỜ DUYỆT`.
+    *   Khi Admin nhấn vào một hàng đợi, một bảng cấu trúc chi tiết nổi lên (Drawer bottom-sheet phong cách di động) hiển thị: Thông tin cá nhân, ảnh CCCD 2 mặt zoom lớn được, nét chữ ký tay bằng hình ảnh của khách và lịch sử số lần vay quá hạn trong quá khứ.
+    *   Nút tác vụ **Từ Chối** (buộc nhập lý do) hoặc **Chấp Thuận Giải Ngân** tích hợp tính toán tự động khấu trừ phí dịch vụ tức thì.
+*   **Bảng Điều Khiển Cấu Hình Nhanh:** Sửa trực tiếp các cài đặt hệ thống (Settings) bất cứ lúc nào trên giao diện di động mà không cần can thiệp mã nguồn.
+
+---
+
+## V. FRAMEWORK CÁC BƯỚC PROMPT TỔNG LỰC ĐỂ PHÁT TRIỂN TRÊN AI STUDIO
+
+Khi bạn tiến hành xây dựng ứng dụng này bằng chính AI Studio, hãy áp dụng quy trình ra lệnh (Prompting Sequence) 3 giai đoạn sau để đạt hiệu suất thông tin cao nhất:
+
+### Giai đoạn 1: Khởi tạo Kiến trúc và Database
+> **PROMPT GỬI AI STUDIO:**
+> *"Hãy xây dựng và cấu hình phần khung xương của ứng dụng tài chính cá nhân NDV Money theo cấu trúc mã nguồn phẳng bằng TypeScript và Tailwind CSS:
+> 1. Đọc và hiện thực hóa toàn bộ các Type giao diện được định nghĩa trong `/src/types.ts` bao gồm các trường dữ liệu định dạng người dùng (User), chi tiết hợp đồng vay (Loan), lịch sử quỹ ngân sách hệ thống (BudgetLog), và bảng cấu hình (SystemConfig) một cách kiên cố, chính xác.
+> 2. Hãy thiết lập một dịch vụ API mô phỏng (hoặc tích hợp Firestore/Supabase Client thực tùy cài đặt) để vận hành các thao tác nạp thông tin, lấy số dư tài khoản của người dùng, và danh sách các hợp đồng tín dụng hiện thời dựa trên các Type đã khai báo."*
+
+### Giai đoạn 2: Phát triển Toàn bộ Giao diện Di động (Client-Flow & Canvas Chữ Ký)
+> **PROMPT GỬI AI STUDIO:**
+> *"Hãy tiến hành thiết kế và triển khai giao diện người dùng (Client Core UI) theo phong cách thiết kế Cosmic Dark UI `#0D0E12` và điểm nhấn màu cam ấm vàng `#F59E0B`:
+> 1. Xây dựng Màn hình đăng nhập/đăng ký thông minh bằng số định dạng điện thoại liên lạc Zalo.
+> 2. Thiết lập Màn hình Dashboard chính có thanh đo tiến trình hình tròn biểu diễn hạn mức vốn còn dư tuyệt đẹp và các bento-grid điều hướng cho phép truy cập: Vòng quay may mắn, Nâng VIP Rank và Đăng ký khoản vay mới.
+> 3. Xây dựng Form nộp yêu cầu vay vốn bao gồm: Thanh trượt chọn tiền giải ngân trực quan kèm chuyển sang chữ Tiếng Việt, ô hiển thị điều khoản và quan trọng nhất là khung vẽ ký tên tay (HTML5 Canvas) đón điểm tương tác cảm ứng di động cực tốt, xuất ra Base64 để lưu trữ vào trường 'signature' của hợp một cách trọn vẹn."*
+
+### Giai đoạn 3: Hiện thực hóa Logic Nghiệp vụ Admin & Gộp Nợ Hợp Nhất
+> **PROMPT GỬI AI STUDIO:**
+> *"Hãy triển khai bộ não xử trị dữ liệu cốt lõi của ứng dụng (Admin Control & Debt Consolidation Logic):
+> 1. Tạo giao diện trang quản trị di động (Admin Control Desk) hiển thị các bảng thống kê dòng tiền chi tiết, đồ thị biến thiên lợi tức bằng Recharts mini cực mượt, danh sách người dùng và các hồ sơ vay nợ chờ thẩm duyệt.
+> 2. Thiết lập chính xác Logic Gộp Nợ Tự Động (Consolidation): Khi người dùng đang có nợ ở trạng thái 'ĐANG NỢ' mà tiếp tục được duyệt yêu cầu giải ngân khoản mới, hệ thống tự động đổi trạng thái khoản nợ cũ thành 'ĐÃ CỘNG DỒN' và mở một hợp đồng nợ tích hợp gộp mới có mã mã định dạng '[MÃ_USER]-NDV[CYCLE]-GOP'. Số gốc của hợp đồng gộp mới này bảo đảm chứa cả nợ cũ lẫn số tiền mới đăng ký."*
+
+---
+*Tài liệu nội bộ NDV Money - Lưu hành nội bộ phục vụ chiến dịch phát triển di động.*

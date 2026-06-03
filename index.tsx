@@ -9,7 +9,7 @@ const getResolvedApiHost = (): string => {
   if (envApiUrl) return envApiUrl;
 
   // Default fallback to the registered live domain of your system
-  return "https://ais-pre-uk7oku3rrlicfza6it3qfz-139884708089.asia-southeast1.run.app";
+  return "https://ndv-money-ok.vercel.app";
 };
 
 const isNativeOrLocalWebview = (): boolean => {
@@ -23,7 +23,7 @@ const isNativeOrLocalWebview = (): boolean => {
   const isSpecialScheme =
     window.location.protocol === 'capacitor:' ||
     window.location.protocol === 'file:' ||
-    (window.location.protocol === 'http:' && window.location.hostname === 'localhost' && window.location.port !== '3000');
+    ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && window.location.port !== '3000');
 
   return !!(isCapNative || isSpecialScheme);
 };

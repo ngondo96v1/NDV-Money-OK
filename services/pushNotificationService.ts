@@ -51,10 +51,18 @@ export const initializePushNotifications = async (userId: string | undefined) =>
 
 const saveTokenToSupabase = async (userId: string, token: string) => {
   try {
+    const jwtToken = localStorage.getItem('vnv_token') || sessionStorage.getItem('vnv_token');
+    const headers: Record<string, string> = { 
+      'Content-Type': 'application/json' 
+    };
+    if (jwtToken) {
+      headers['Authorization'] = `Bearer ${jwtToken}`;
+    }
+
     // Chúng ta sẽ gọi API này sau khi đã cập nhật DB
     await fetch('/api/update-fcm-token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ userId, token }),
     });
   } catch (err) {

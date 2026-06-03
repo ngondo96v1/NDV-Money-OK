@@ -1120,7 +1120,7 @@ const App: React.FC = () => {
     // Choose dynamic backend Url based on context
     const envApiUrl = (import.meta.env && import.meta.env.VITE_API_URL) || (import.meta.env && import.meta.env.VITE_APP_URL);
     const resolvedSocketHost = isSpecialOrigin
-      ? (envApiUrl || "https://ais-pre-uk7oku3rrlicfza6it3qfz-139884708089.asia-southeast1.run.app")
+      ? (envApiUrl || "https://ndv-money-ok.vercel.app")
       : window.location.origin;
 
     const socket = io(resolvedSocketHost);
