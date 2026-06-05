@@ -166,6 +166,15 @@ const AdminSystem: React.FC<AdminSystemProps> = ({ onReset, onImportSuccess, onB
 
   const [visibleFields, setVisibleFields] = useState<Record<string, boolean>>({});
   const [expandedConfigs, setExpandedConfigs] = useState<Record<string, boolean>>({});
+  const [openDataSections, setOpenDataSections] = useState<Record<string, boolean>>({
+    backup_restore: true,
+    sql_sync: false,
+    re_establish: false
+  });
+
+  const toggleDataSection = (key: string) => {
+    setOpenDataSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
   const [expandedMasterCategories, setExpandedMasterCategories] = useState<Record<string, boolean>>({
     'ABBREVIATION': false,
     'ID_FORMAT': false,
@@ -1458,193 +1467,224 @@ END $$;`;
     const newFormats = [...(localSettings.SYSTEM_FORMATS_CONFIG || [])];
     newFormats[idx] = { ...newFormats[idx], [field]: value };
     if (field === 'original') {
-      newFormats[idx].label = value || 'Định dạng hệ thống mới';
-    }
-    setLocalSettings({ ...localSettings, SYSTEM_FORMATS_CONFIG: newFormats });
-  };
-
-  return (
-    <div className="w-full bg-black px-5 pb-10 animate-in fade-in duration-500">
-      {/* Header Area */}
-      <div className="flex items-center justify-between pt-8 mb-6 px-1">
-        <h1 className="text-xl font-black text-white uppercase tracking-tighter leading-none">
-          CÀI ĐẶT HỆ THỐNG
-        </h1>
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => setShowResetConfirm(true)}
-            className="bg-red-600/10 border border-red-500/20 text-red-500 font-black px-3 py-2 rounded-xl text-[8px] uppercase tracking-widest hover:bg-red-600/20 active:scale-95 transition-all flex items-center justify-center gap-1.5"
-          >
-            <RefreshCw size={12} />
-            THỰC THI RESET
-          </button>
-        </div>
-      </div>
-
-      {/* Tab Switcher */}
-      <div className="flex p-1 bg-white/5 border border-white/10 rounded-2xl mb-6">
-        <button 
-          onClick={() => setActiveTab('settings')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
-            activeTab === 'settings' ? 'bg-[#ff8c00] text-black shadow-lg shadow-orange-900/20' : 'text-gray-500 hover:text-white'
-          }`}
-        >
-          <Settings size={14} />
-          THIẾT LẬP VẬN HÀNH
-        </button>
-        <button 
-          onClick={() => setActiveTab('data')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
-            activeTab === 'data' ? 'bg-[#ff8c00] text-black shadow-lg shadow-orange-900/20' : 'text-gray-500 hover:text-white'
-          }`}
-        >
-          <Database size={14} />
-          DỮ LIỆU & HỆ THỐNG
-        </button>
-      </div>
-
-      {activeTab === 'data' ? (
+      newFormats[idx].label = value || 'Định dạng hệ      {activeTab === 'data' ? (
         /* Data Management Section */
-        <div className="bg-[#111111] border border-white/5 rounded-3xl p-6 space-y-6 mb-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="flex items-center gap-2.5">
+        <div className="bg-[#111111] border border-white/5 rounded-3xl p-6 space-y-4 mb-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex items-center gap-2.5 mb-2">
             <Database className="text-[#ff8c00]" size={18} />
             <h4 className="text-[10px] font-black text-white uppercase tracking-widest">TRÌNH QUẢN TRỊ DỮ LIỆU</h4>
           </div>
 
-          {/* Backup & Restore */}
-          <div className="grid grid-cols-2 gap-3">
-            <button 
-              onClick={handleExport}
-              disabled={isExporting}
-              className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col items-center gap-3 hover:bg-white/10 active:scale-95 transition-all disabled:opacity-50"
+          {/* Section 1: Backup & Restore */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+            <div 
+              onClick={() => toggleDataSection('backup_restore')}
+              className="flex items-center justify-between cursor-pointer select-none group/hd"
             >
-              <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-500">
-                {isExporting ? <Loader2 className="animate-spin" size={20} /> : <Download size={20} />}
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-3 bg-blue-500 rounded-full"></div>
+                <h6 className="text-[9px] font-black text-white uppercase tracking-widest group-hover/hd:text-blue-500 transition-colors">SAO LƯU & KHÔI PHỤC DỮ LIỆU</h6>
               </div>
-              <div className="text-center">
-                <h5 className="text-[9px] font-black text-white uppercase tracking-widest">XUẤT DỮ LIỆU</h5>
-                <p className="text-[7px] font-bold text-gray-500 uppercase mt-1">Xuất toàn bộ cấu hình ra file</p>
+              <div className="text-gray-500 group-hover/hd:text-white transition-colors">
+                {openDataSections['backup_restore'] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </div>
-            </button>
+            </div>
 
-            <button 
-              onClick={handleImportClick}
-              disabled={isImporting}
-              className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col items-center gap-3 hover:bg-white/10 active:scale-95 transition-all disabled:opacity-50"
-            >
-              <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center text-green-500">
-                {isImporting ? <Loader2 className="animate-spin" size={20} /> : <Upload size={20} />}
-              </div>
-              <div className="text-center">
-                <h5 className="text-[9px] font-black text-white uppercase tracking-widest">NHẬP DỮ LIỆU</h5>
-                <p className="text-[7px] font-bold text-gray-500 uppercase mt-1">Nạp dữ liệu từ file backup</p>
-              </div>
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileChange} 
-                accept=".json" 
-                className="hidden" 
-              />
-            </button>
-          </div>
+            {openDataSections['backup_restore'] && (
+              <div className="grid grid-cols-2 gap-3 animate-in fade-in duration-250 mt-2">
+                <button 
+                  onClick={handleExport}
+                  disabled={isExporting}
+                  className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col items-center gap-3 hover:bg-white/10 active:scale-95 transition-all disabled:opacity-50"
+                >
+                  <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-500">
+                    {isExporting ? <Loader2 className="animate-spin" size={20} /> : <Download size={20} />}
+                  </div>
+                  <div className="text-center">
+                    <h5 className="text-[9px] font-black text-white uppercase tracking-widest">XUẤT DỮ LIỆU</h5>
+                    <p className="text-[7px] font-bold text-gray-500 uppercase mt-1">Xuất cấu hình ra file</p>
+                  </div>
+                </button>
 
-          {/* SQL Migration Button */}
-          <div className="pt-2">
-            <button 
-              onClick={handleSqlAutoUpdate}
-              disabled={isMigratingUnified}
-              className="w-full bg-blue-600/10 border border-blue-500/20 rounded-2xl p-4 flex items-center justify-between hover:bg-blue-600/20 active:scale-95 transition-all disabled:opacity-50 group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
-                  {isMigratingUnified ? <Loader2 className="animate-spin" size={20} /> : <Database size={20} />}
-                </div>
-                <div className="text-left">
-                  <h5 className="text-[9px] font-black text-white uppercase tracking-widest">ĐỒNG BỘ CẤU TRÚC SQL</h5>
-                  <p className="text-[7px] font-bold text-gray-500 uppercase mt-1">Tự động chuẩn hóa Schema & Database</p>
-                </div>
-              </div>
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
-                <ChevronRight size={16} />
-              </div>
-            </button>
-            
-            {migrationStatus && (
-              <div className={`mt-3 p-3 rounded-xl border text-[8px] font-bold uppercase tracking-widest flex items-center gap-2 ${
-                migrationStatus.type === 'success' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
-                migrationStatus.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
-                'bg-blue-500/10 border-blue-500/20 text-blue-500'
-              }`}>
-                {migrationStatus.type === 'success' ? <Check size={12} /> : 
-                 migrationStatus.type === 'error' ? <AlertCircle size={12} /> : 
-                 <Loader2 size={12} className="animate-spin" />}
-                {migrationStatus.message}
+                <button 
+                  onClick={handleImportClick}
+                  disabled={isImporting}
+                  className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col items-center gap-3 hover:bg-white/10 active:scale-95 transition-all disabled:opacity-50"
+                >
+                  <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center text-green-500">
+                    {isImporting ? <Loader2 className="animate-spin" size={20} /> : <Upload size={20} />}
+                  </div>
+                  <div className="text-center">
+                    <h5 className="text-[9px] font-black text-white uppercase tracking-widest">NHẬP DỮ LIỆU</h5>
+                    <p className="text-[7px] font-bold text-gray-500 uppercase mt-1">Nạp dữ liệu từ file backup</p>
+                  </div>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleFileChange} 
+                    accept=".json" 
+                    className="hidden" 
+                  />
+                </button>
               </div>
             )}
           </div>
 
-          {/* Format Sync Section */}
-          <div className="pt-2">
-            <button 
-              onClick={handleSyncFormats}
-              disabled={isSyncingFormats}
-              className="w-full bg-[#ff8c00]/10 border border-[#ff8c00]/20 rounded-2xl p-4 flex items-center justify-between hover:bg-[#ff8c00]/20 active:scale-95 transition-all disabled:opacity-50 group"
+          {/* Section 2: SQL & Contract Format Sync */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+            <div 
+              onClick={() => toggleDataSection('sql_sync')}
+              className="flex items-center justify-between cursor-pointer select-none group/hd"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-[#ff8c00]/20 rounded-xl flex items-center justify-center text-[#ff8c00] group-hover:scale-110 transition-transform">
-                  {isSyncingFormats ? <Loader2 className="animate-spin" size={20} /> : <RefreshCw size={20} />}
-                </div>
-                <div className="text-left">
-                  <h5 className="text-[9px] font-black text-white uppercase tracking-widest">ĐỒNG BỘ ĐỊNH DẠNG MÃ HỢP ĐỒNG</h5>
-                  <p className="text-[7px] font-bold text-gray-500 uppercase mt-1">Cập nhật toàn bộ mã hợp đồng & lịch sử theo thiết lập mới</p>
-                </div>
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-3 bg-[#ff8c00] rounded-full"></div>
+                <h6 className="text-[9px] font-black text-white uppercase tracking-widest group-hover/hd:text-[#ff8c00] transition-colors">ĐỒNG BỘ CSDL & MÃ HỢP ĐỒNG</h6>
               </div>
-              <div className="w-8 h-8 rounded-lg bg-[#ff8c00]/10 flex items-center justify-center text-[#ff8c00]">
-                <ChevronRight size={16} />
+              <div className="text-gray-500 group-hover/hd:text-white transition-colors">
+                {openDataSections['sql_sync'] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </div>
-            </button>
+            </div>
+
+            {openDataSections['sql_sync'] && (
+              <div className="space-y-4 animate-in fade-in duration-250 mt-2">
+                {/* SQL Auto Update */}
+                <button 
+                  onClick={handleSqlAutoUpdate}
+                  disabled={isMigratingUnified}
+                  className="w-full bg-blue-600/10 border border-blue-500/20 rounded-2xl p-4 flex items-center justify-between hover:bg-blue-600/20 active:scale-95 transition-all disabled:opacity-50 group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
+                      {isMigratingUnified ? <Loader2 className="animate-spin" size={20} /> : <Database size={20} />}
+                    </div>
+                    <div className="text-left">
+                      <h5 className="text-[9px] font-black text-white uppercase tracking-widest">ĐỒNG BỘ CẤU TRÚC SQL</h5>
+                      <p className="text-[7px] font-bold text-gray-500 uppercase mt-1">Tự động chuẩn hóa Schema & Database</p>
+                    </div>
+                  </div>
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
+                    <ChevronRight size={16} />
+                  </div>
+                </button>
+
+                {migrationStatus && (
+                  <div className={`p-3 rounded-xl border text-[8px] font-bold uppercase tracking-widest flex items-center gap-2 ${
+                    migrationStatus.type === 'success' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
+                    migrationStatus.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
+                    'bg-blue-500/10 border-blue-500/20 text-blue-500'
+                  }`}>
+                    {migrationStatus.type === 'success' ? <Check size={12} /> : 
+                     migrationStatus.type === 'error' ? <AlertCircle size={12} /> : 
+                     <Loader2 size={12} className="animate-spin" />}
+                    {migrationStatus.message}
+                  </div>
+                )}
+
+                {/* Format Sync Section */}
+                <button 
+                  onClick={handleSyncFormats}
+                  disabled={isSyncingFormats}
+                  className="w-full bg-[#ff8c00]/10 border border-[#ff8c00]/20 rounded-2xl p-4 flex items-center justify-between hover:bg-[#ff8c00]/20 active:scale-95 transition-all disabled:opacity-50 group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-[#ff8c00]/20 rounded-xl flex items-center justify-center text-[#ff8c00] group-hover:scale-110 transition-transform">
+                      {isSyncingFormats ? <Loader2 className="animate-spin" size={20} /> : <RefreshCw size={20} />}
+                    </div>
+                    <div className="text-left">
+                      <h5 className="text-[9px] font-black text-white uppercase tracking-widest">ĐỒNG BỘ ĐỊNH DẠNG MÃ HỢP ĐỒNG</h5>
+                      <p className="text-[7px] font-bold text-gray-500 uppercase mt-1">Cập nhật toàn bộ mã hợp đồng & lịch sử theo thiết lập mới</p>
+                    </div>
+                  </div>
+                  <div className="w-8 h-8 rounded-lg bg-[#ff8c00]/10 flex items-center justify-center text-[#ff8c00]">
+                    <ChevronRight size={16} />
+                  </div>
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Re-establish System Section (Phương án B) */}
-          <div className="pt-4 border-t border-white/5 space-y-4">
-            <div className="bg-white/5 rounded-3xl p-5 border border-white/10 space-y-4">
+          {/* Section 3: Re-establish (Phương án B) */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+            <div 
+              onClick={() => toggleDataSection('re_establish')}
+              className="flex items-center justify-between cursor-pointer select-none group/hd"
+            >
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-orange-500/10 rounded-xl flex items-center justify-center text-orange-500">
-                  <Zap size={16} />
-                </div>
-                <div>
-                  <h5 className="text-[10px] font-black text-white uppercase tracking-widest">XÁC LẬP HỆ THỐNG MỚI (PHƯƠNG ÁN B)</h5>
-                  <p className="text-[7px] font-bold text-gray-500 uppercase mt-0.5">Xác lập thời điểm hoạt động và ngân sách lưu động thực tế</p>
-                </div>
+                <div className="w-1 h-3 bg-orange-500 rounded-full"></div>
+                <h6 className="text-[9px] font-black text-white uppercase tracking-widest group-hover/hd:text-orange-500 transition-colors">XÁC LẬP HỆ THỐNG MỚI (PHƯƠNG ÁN B)</h6>
               </div>
-
-              {/* Date Input */}
-              <div className="space-y-1.5">
-                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest">NGÀY BẮT ĐẦU HOẠT ĐỘNG</label>
-                <input 
-                  type="date" 
-                  value={reEstablishStartDate}
-                  onChange={(e) => setReEstablishStartDate(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl text-white text-xs p-3 focus:border-orange-500 focus:outline-none placeholder-gray-600 font-bold uppercase tracking-widest"
-                />
+              <div className="text-gray-500 group-hover/hd:text-white transition-colors">
+                {openDataSections['re_establish'] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </div>
+            </div>
 
-              {/* Starting Capital Input */}
-              <div className="space-y-1.5">
-                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest">VỐN LƯU ĐỘNG TIỀN MẶT BAN ĐẦU (ĐỒNG)</label>
-                <div className="relative">
+            {openDataSections['re_establish'] && (
+              <div className="space-y-4 animate-in fade-in duration-250 mt-2">
+                {/* Date Input */}
+                <div className="space-y-1.5">
+                  <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest">NGÀY BẮT ĐẦU HOẠT ĐỘNG</label>
                   <input 
-                    type="text" 
-                    value={formatNumberWithDots(reEstablishCapital)}
-                    onChange={(e) => setReEstablishCapital(parseNumberFromDots(e.target.value))}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl text-white text-xs p-3 pr-10 focus:border-orange-500 focus:outline-none placeholder-gray-600 font-bold"
-                    placeholder="0"
+                    type="date" 
+                    value={reEstablishStartDate}
+                    onChange={(e) => setReEstablishStartDate(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl text-white text-xs p-3 focus:border-orange-500 focus:outline-none placeholder-gray-650 font-bold uppercase tracking-widest"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-gray-500">ĐỒNG</span>
                 </div>
-                <div className="bg-orange-500/5 p-2 rounded-lg border border-orange-500/10 text-[7px] font-bold text-gray-400 leading-relaxed uppercase tracking-wider">
-                  💡 Thực tế hệ thống thu phí dịch vụ trước giải ngân. Đối với các khoản vay ĐANG NỢ hiện hành (8 khoản vay - Tổng 58.000.000đ), khi người dùng thanh toán/tất toán quá hạn trên hệ thống sau ngày {reEstablishStartDate}, toàn bộ vốn gốc thu về sẽ tự động cộng dồn vào quỹ Vốn Lưu Động thực tế!
+
+                {/* Starting Capital Input */}
+                <div className="space-y-1.5">
+                  <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest">VỐN LƯU ĐỘNG TIỀM MẶT BAN ĐẦU (ĐỒNG)</label>
+                  <div className="relative">
+                    <input 
+                      type="text" 
+                      value={formatNumberWithDots(reEstablishCapital)}
+                      onChange={(e) => setReEstablishCapital(parseNumberFromDots(e.target.value))}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl text-white text-xs p-3 pr-10 focus:border-orange-500 focus:outline-none placeholder-gray-600 font-bold"
+                      placeholder="0"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-gray-500">ĐỒNG</span>
+                  </div>
+                  <div className="bg-orange-500/5 p-2 rounded-lg border border-orange-500/10 text-[7px] font-bold text-gray-400 leading-relaxed uppercase tracking-wider">
+                    💡 Thực tế hệ thống thu phí dịch vụ trước giải ngân. Đối với các khoản vay ĐANG NỢ hiện hành (8 khoản vay - Tổng 58.000.000đ), khi người dùng thanh toán/tất toán quá hạn trên hệ thống sau ngày {reEstablishStartDate}, toàn bộ vốn gốc thu về sẽ tự động cộng dồn vào quỹ Vốn Lưu Động thực tế!
+                  </div>
+                </div>
+
+                {/* Delete Old Logs Checkbox */}
+                <div className="flex items-center gap-3 p-1">
+                  <input 
+                    type="checkbox" 
+                    id="deleteOldLogsCheckbox"
+                    checked={deleteOldLogs}
+                    onChange={(e) => setDeleteOldLogs(e.target.checked)}
+                    className="w-4 h-4 rounded border-white/10 text-orange-500 bg-black focus:ring-orange-500 focus:ring-2"
+                  />
+                  <label htmlFor="deleteOldLogsCheckbox" className="text-[8px] font-black text-gray-300 uppercase tracking-wider cursor-pointer select-none">
+                    Xóa lịch sử biến động số dư cũ trước ngày xác lập
+                  </label>
+                </div>
+
+                {/* Reset Submit button */}
+                <button 
+                  onClick={() => setShowReEstablishConfirm(true)}
+                  disabled={isReEstablishing || !reEstablishStartDate}
+                  className="w-full bg-orange-500 text-black font-black py-3 rounded-2xl text-[9px] uppercase tracking-widest hover:bg-orange-400 transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-orange-950/20 disabled:opacity-50"
+                >
+                  {isReEstablishing ? <Loader2 className="animate-spin" size={12} /> : <Sparkles size={12} />}
+                  BẮT ĐẦU XÁC LẬP HỆ THỐNG
+                </button>
+              </div>
+            )}
+          </div>
+
+          {importMessage && (
+            <div className={`p-4 rounded-2xl border text-[9px] font-black uppercase tracking-widest flex items-center gap-3 animate-in slide-in-from-top-2 duration-300 ${
+              importMessage.type === 'success' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'
+            }`}>
+              {importMessage.type === 'success' ? <Check size={14} /> : <AlertCircle size={14} />}
+              {importMessage.text}
+            </div>
+          )}
+        </div>�ng thanh toán/tất toán quá hạn trên hệ thống sau ngày {reEstablishStartDate}, toàn bộ vốn gốc thu về sẽ tự động cộng dồn vào quỹ Vốn Lưu Động thực tế!
                 </div>
               </div>
 
