@@ -267,7 +267,6 @@ const getMergedSettings = async (client: any) => {
     SIMULATION_INTERVAL: Number(dbSettings.SIMULATION_INTERVAL !== undefined ? dbSettings.SIMULATION_INTERVAL : (config.SIMULATION_INTERVAL !== undefined ? config.SIMULATION_INTERVAL : 15)),
     CONTRACT_CLAUSES: dbSettings.CONTRACT_CLAUSES || config.CONTRACT_CLAUSES || null,
     RANK_CONFIG: dbSettings.RANK_CONFIG || config.RANK_CONFIG || [
-      { id: 'standard', name: 'TIÊU CHUẨN', minLimit: 1000000, maxLimit: 2000000, color: '#6b7280', features: ['Hạn mức 1 - 2 triệu', 'Duyệt trong 24h'] },
       { id: 'bronze', name: 'ĐỒNG', minLimit: 1000000, maxLimit: 3000000, color: '#fdba74', features: ['Hạn mức 1 - 3 triệu', 'Ưu tiên duyệt lệnh'] },
       { id: 'silver', name: 'BẠC', minLimit: 1000000, maxLimit: 4000000, color: '#bfdbfe', features: ['Hạn mức 1 - 4 triệu', 'Hỗ trợ 24/7'] },
       { id: 'gold', name: 'VÀNG', minLimit: 1000000, maxLimit: 5000000, color: '#facc15', features: ['Hạn mức 1 - 5 triệu', 'Giảm 10% phí phạt'] },
@@ -1457,7 +1456,7 @@ router.post("/login", async (req, res) => {
               const isAdmin = user.isAdmin === true;
               const token = jwt.sign({ id: user.id, isAdmin }, settings.JWT_SECRET, { expiresIn: '24h' });
               
-              return res.json({ success: true, user: { ...userNoPwd, isAdmin }, token });
+              return sendSafeJson(res, { success: true, user: { ...userNoPwd, isAdmin }, token });
             } else {
               return res.status(401).json({ error: "Số điện thoại hoặc mật khẩu không chính xác." });
             }
@@ -1487,7 +1486,7 @@ router.post("/login", async (req, res) => {
         isLoggedIn: true, isAdmin: true
       };
       const token = jwt.sign({ id: adminUser.id, isAdmin: true }, settings.JWT_SECRET, { expiresIn: '24h' });
-      return res.json({
+      return sendSafeJson(res, {
         success: true,
         user: adminUser,
         token
@@ -1601,8 +1600,8 @@ router.post("/register", async (req, res) => {
 
     // Determine default rank based on CHÍNH SÁCH TÀI CHÍNH (RANK_CONFIG)
     // Find the rank with the lowest maximum limit
-    let defaultRank = 'standard' as any;
-    let initialLimit = 1000000;
+    let defaultRank = 'bronze' as any;
+    let initialLimit = 3000000;
     
     if (settings.RANK_CONFIG && settings.RANK_CONFIG.length > 0) {
       const sortedRanks = [...settings.RANK_CONFIG].sort((a, b) => a.maxLimit - b.maxLimit);
@@ -1642,7 +1641,7 @@ router.post("/register", async (req, res) => {
 
     const token = jwt.sign({ id: sanitizedUser.id, isAdmin: false }, settings.JWT_SECRET, { expiresIn: '24h' });
     
-    res.json({
+    sendSafeJson(res, {
       success: true,
       token
     });
@@ -1752,13 +1751,13 @@ const processRankPenalties = async (user: any, userLoans: any[], settings: any, 
     const isHighestRank = currentRankConf && currentRankConf.maxLimit >= maxLimitOverall;
 
     if (s >= 5) {
-      newRank = 'standard';
+      newRank = 'bronze';
       newProgress = 0;
-      const standardConf = rankConfig.find((r: any) => r.id === 'standard');
-      newLimit = standardConf ? standardConf.maxLimit : 2000000;
+      const bronzeConf = rankConfig.find((r: any) => r.id === 'bronze');
+      newLimit = bronzeConf ? bronzeConf.maxLimit : 3000000;
       notifications.push({
         title: 'Hạ cấp bậc: QUÁ HẠN 5 NGÀY',
-        message: `Tài khoản của bạn đã quá hạn 5 ngày. Hệ thống hạ cấp bậc về TIÊU CHUẨN và xóa toàn bộ điểm tiến trình.`
+        message: `Tài khoản của bạn đã quá hạn 5 ngày. Hệ thống hạ cấp bậc về ĐỒNG và xóa toàn bộ điểm tiến trình.`
       });
       break; 
     } else if (s === 1) {

@@ -206,9 +206,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
   }, [budgetLogs, tempStartDate]);
 
   // Loan Statistics
-  const { settledLoans, pendingLoans, activeLoans, overdueLoans, isolatedBadDebt } = useMemo(() => {
+  const { settledLoans, pendingLoans, activeLoans, overdueLoans, isolatedBadDebt, isolatedBadDebtPrincipal, isolatedBadDebtFine } = useMemo(() => {
     const today = new Date();
     const lockedUserIds = new Set((users || []).filter(u => u.isLocked).map(u => u.id));
+
+    const isolatedLoans = filteredLoans.filter(l => {
+      const activeStatuses = ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'];
+      return lockedUserIds.has(l.userId) && activeStatuses.includes(l.status);
+    });
 
     return {
       settledLoans: filteredLoans.filter(l => l.status === 'ĐÃ TẤT TOÁN' && l.settlementType !== 'PRINCIPAL' && l.settlementType !== 'PARTIAL'),
@@ -221,10 +226,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
         const dueDate = new Date(y, m - 1, d);
         return dueDate < today;
       }),
-      isolatedBadDebt: filteredLoans.filter(l => {
-        const activeStatuses = ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'];
-        return lockedUserIds.has(l.userId) && activeStatuses.includes(l.status);
-      }).reduce((sum, l) => sum + (Number(l.amount) || 0) + (Number(l.fine) || 0), 0)
+      isolatedBadDebt: isolatedLoans.reduce((sum, l) => sum + (Number(l.amount) || 0) + (Number(l.fine) || 0), 0),
+      isolatedBadDebtPrincipal: isolatedLoans.reduce((sum, l) => sum + (Number(l.amount) || 0), 0),
+      isolatedBadDebtFine: isolatedLoans.reduce((sum, l) => sum + (Number(l.fine) || 0), 0)
     };
   }, [filteredLoans, users]);
   
@@ -300,7 +304,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
 
     let rProfit = 0;
     const sortedRanks = settings.RANK_CONFIG ? [...settings.RANK_CONFIG].sort((a, b) => a.maxLimit - b.maxLimit) : [];
-    const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'standard';
+    const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'bronze';
 
     filteredUsers.forEach(u => {
       if (u.isAdmin || u.phone === 'admin' || u.id === 'admin' || !u.phone || u.phone.length < 10) return;
@@ -396,23 +400,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
   return (
     <div className="w-full bg-[#0a0a0a] px-5 space-y-6 pt-4 pb-20 animate-in fade-in duration-700">
       {/* Header Section */}
-      <div className="flex justify-between items-center px-1 mb-2">
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center px-1 mb-2">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-gradient-to-br from-[#ff8c00] to-[#ff5f00] rounded-2xl flex items-center justify-center font-black text-black text-sm shadow-xl shadow-orange-500/20">
+          <div className="w-10 h-10 bg-gradient-to-br from-[#ff8c00] to-[#ff5f00] rounded-xl flex items-center justify-center font-black text-black text-xs shadow-xl shadow-orange-500/20 shrink-0">
             NDV
           </div>
           <div>
-            <h2 className="text-xl font-black text-white tracking-tighter uppercase leading-none">BIỂU ĐỒ TỔNG QUAN</h2>
-            <div className="flex items-center gap-1.5 mt-1">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em]">Hệ thống bảo mật trực tuyến</span>
-            </div>
+            <h2 className="text-sm sm:text-base font-black text-white tracking-widest uppercase leading-none">TỔNG QUAN</h2>
+            <p className="text-[8px] font-bold text-gray-500 uppercase tracking-widest mt-1">HỆ THỐNG NDV MONEY</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        
+        {/* Actions Row */}
+        <div className="flex items-center justify-between sm:justify-end gap-2">
           {/* Bộ lọc Ngày bắt đầu thống kê thu gọn */}
-          <div className="flex items-center bg-white/5 border border-white/5 rounded-xl px-2 h-10 shadow-lg">
-            <Calendar size={14} className="text-[#ff8c00] shrink-0 mr-1" />
+          <div className="flex items-center bg-white/5 border border-white/5 rounded-xl px-2.5 h-10 shadow-lg flex-1 sm:flex-none">
+            <Calendar size={13} className="text-[#ff8c00] shrink-0 mr-1.5" />
             <input 
               type="date"
               value={tempStartDate}
@@ -421,7 +424,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
                 setTempStartDate(dateVal);
                 onUpdateSettings({ SYSTEM_START_DATE: dateVal });
               }}
-              className="bg-transparent text-[8px] font-black text-white focus:outline-none w-[75px] [color-scheme:dark] shrink-0 cursor-pointer p-0 border-none uppercase"
+              className="bg-transparent text-[9px] font-black text-white focus:outline-none w-full sm:w-[90px] [color-scheme:dark] shrink-0 cursor-pointer p-0 border-none uppercase"
               title="Ngày bắt đầu"
             />
             {tempStartDate && (
@@ -430,28 +433,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
                   setTempStartDate('');
                   onUpdateSettings({ SYSTEM_START_DATE: '' });
                 }}
-                className="text-gray-400 hover:text-red-400 shrink-0 ml-1 p-0.5 rounded-md hover:bg-white/10 transition-all cursor-pointer"
+                className="text-gray-400 hover:text-red-400 shrink-0 ml-1.5 p-0.5 rounded-md hover:bg-white/10 transition-all cursor-pointer"
                 title="Tất cả thời gian"
               >
-                <X size={12} />
+                <X size={11} />
               </button>
             )}
           </div>
 
           <button 
             onClick={() => onUpdateSettings({ MAINTENANCE_MODE: !settings.MAINTENANCE_MODE })}
-            className={`w-10 h-10 border rounded-xl flex items-center justify-center transition-all active:scale-90 shadow-lg ${
+            className={`w-10 h-10 border rounded-xl flex items-center justify-center transition-all active:scale-95 shrink-0 shadow-lg ${
               settings.MAINTENANCE_MODE 
                 ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-500' 
                 : 'bg-white/5 border-white/5 text-gray-500 hover:text-yellow-500 hover:bg-yellow-500/10'
             }`}
             title={settings.MAINTENANCE_MODE ? "Tắt bảo trì" : "Bật bảo trì"}
           >
-            <Power size={18} />
+            <Power size={16} />
           </button>
 
-          <button onClick={onLogout} className="w-10 h-10 bg-white/5 border border-white/5 rounded-xl flex items-center justify-center text-gray-500 hover:text-red-500 hover:bg-red-500/10 transition-all active:scale-90 shadow-lg">
-            <LogOut size={18} />
+          <button onClick={onLogout} className="w-10 h-10 bg-white/5 border border-white/5 rounded-xl flex items-center justify-center text-gray-500 hover:text-red-500 hover:bg-red-500/10 transition-all active:scale-95 shrink-0 shadow-lg">
+            <LogOut size={16} />
           </button>
         </div>
       </div>
@@ -480,140 +483,75 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
         </motion.div>
       )}
 
-
-
-      {/* Main Stats Grid */}
-      <div className="grid grid-cols-2 gap-4">
-        {/* Total Profit Card */}
-          <div className="col-span-2 bg-gradient-to-br from-[#111111] to-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-6 relative overflow-hidden shadow-2xl">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 blur-3xl rounded-full -mr-16 -mt-16"></div>
-          <div className="relative z-10 flex justify-between items-start">
-            <div className="space-y-1">
-              <p className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">TỔNG DOANH THU HỆ THỐNG</p>
-              <h3 className="text-3xl font-black text-[#00ffcc] tracking-tighter drop-shadow-[0_0_15px_rgba(0,255,204,0.3)]">
-                {(filteredLoanProfit + filteredFineProfit + filteredRankProfit).toLocaleString()} <span className="text-xs font-bold text-[#00ffcc]/60 uppercase ml-0.5">VND</span>
-              </h3>
-              <div className="flex items-center gap-2 mt-2">
-                <div className="flex items-center gap-1 bg-[#00ffcc]/10 px-2 py-0.5 rounded-full border border-[#00ffcc]/10">
-                  <ArrowUpRight size={10} className="text-[#00ffcc]" />
-                  <span className="text-[8px] font-black text-[#00ffcc] uppercase tracking-widest">ĐỒNG BỘ REAL-TIME</span>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-black/60 border border-white/10 rounded-2xl p-2.5 shadow-xl backdrop-blur-md flex items-center gap-3">
-              <div className="flex flex-col gap-2 pr-3 border-r border-white/10">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); checkDbStatus(); }}
-                  disabled={isCheckingDb}
-                  className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-                >
-                  <Database size={12} className={dbStatus?.connected ? 'text-green-500' : 'text-red-500'} />
-                  <span className={`text-[8px] font-black uppercase tracking-widest ${dbStatus?.connected ? 'text-green-500' : 'text-red-500'}`}>
-                    {dbStatus?.connected ? 'ONLINE' : 'OFFLINE'}
-                  </span>
-                </button>
-                <div className="flex items-center gap-2">
-                  <Clock size={12} className="text-blue-400" />
-                  <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none">
-                    {lastKeepAlive ? new Date(lastKeepAlive).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '00:00'}
-                  </span>
-                </div>
-              </div>
-              <div className="text-[#00ffcc] drop-shadow-[0_0_10px_rgba(0,255,204,0.4)]">
-                <TrendingUp size={24} />
-              </div>
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-3 gap-2 mt-6 pt-6 border-t border-white/5">
-            <div className="space-y-1 group relative">
-              <div className="flex items-center gap-1.5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
-                <div className="w-1.5 h-1.5 bg-[#ff8c00] rounded-full shadow-[0_0_5px_#ff8c00]"></div>
-                <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">PHÍ DỊCH VỤ</p>
-              </div>
-              <p className="text-xs font-black text-white group-hover:text-[#ff8c00] transition-colors">{filteredLoanProfit.toLocaleString()} đ</p>
-            </div>
-            <div className="space-y-1 group relative">
-              <div className="flex items-center gap-1.5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
-                <div className="w-1.5 h-1.5 bg-red-400 rounded-full shadow-[0_0_5px_#f87171]"></div>
-                <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">TIỀN PHẠT</p>
-              </div>
-              <p className="text-xs font-black text-white group-hover:text-red-400 transition-colors">{filteredFineProfit.toLocaleString()} đ</p>
-            </div>
-            <div className="space-y-1 group relative">
-              <div className="flex items-center gap-1.5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
-                <div className="w-1.5 h-1.5 bg-purple-500 rounded-full shadow-[0_0_5px_#a855f7]"></div>
-                <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">NÂNG HẠNG</p>
-              </div>
-              <p className="text-xs font-black text-white group-hover:text-purple-500 transition-colors">{filteredRankProfit.toLocaleString()} đ</p>
-            </div>
-          </div>
-        </div>
-
-        {/* System Budget Card */}
-        <div className="bg-[#111111] border border-white/5 rounded-[2rem] p-5 space-y-4 shadow-xl group hover:border-orange-500/20 transition-all duration-500">
-          <div className="flex justify-between items-center">
-            <div className="w-9 h-9 bg-orange-500/10 rounded-xl flex items-center justify-center text-orange-500 border border-orange-500/10">
-              <Wallet size={18} />
-            </div>
-            {isBudgetAlarm && <AlertCircle size={14} className="text-red-500 animate-pulse" />}
-          </div>
-          <div className="space-y-0.5">
-            <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em]">NGUỒN VỐN LƯU ĐỘNG</p>
-            <p className={`text-lg font-black tracking-tight ${isBudgetAlarm ? 'text-red-500' : 'text-white'}`}>
-              {systemBudget.toLocaleString()} <span className="text-[10px] opacity-40">đ</span>
-            </p>
-          </div>
-          <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-            <div 
-              className={`h-full transition-all duration-1000 ${isBudgetAlarm ? 'bg-red-500' : 'bg-[#ff8c00] shadow-[0_0_10px_#ff8c00]'}`} 
-              style={{ width: `${Math.min(100, (systemBudget / 50000000) * 100)}%` }}
-            ></div>
-          </div>
-        </div>
-
-        {/* Active Debt Card */}
-        <div className="bg-[#111111] border border-white/5 rounded-[2rem] p-5 space-y-4 shadow-xl group hover:border-red-500/20 transition-all duration-500">
-          <div className="flex justify-between items-center">
-            <div className="w-9 h-9 bg-red-500/10 rounded-xl flex items-center justify-center text-red-500 border border-red-500/10">
-              <ShieldAlert size={18} />
-            </div>
-            <div className="flex items-center gap-1 bg-red-500/10 px-1.5 py-0.5 rounded-md">
-              <ArrowDownRight size={8} className="text-red-500" />
-              <span className="text-[6px] font-black text-red-500 uppercase">DƯ NỢ SẠCH</span>
-            </div>
-          </div>
-          <div className="space-y-0.5">
-            <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em]">DƯ NỢ THỰC TẾ</p>
-            <p className="text-lg font-black text-white tracking-tight">
-              {activeDebt.toLocaleString()} <span className="text-[10px] opacity-40">đ</span>
-            </p>
-          </div>
-          <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-red-500 transition-all duration-1000 shadow-[0_0_10px_#ef4444]" 
-              style={{ width: `${Math.min(100, (activeDebt / (totalDisbursed || 1)) * 100)}%` }}
-            ></div>
-          </div>
-        </div>
-
-        {/* Isolated Bad Debt Card */}
-        <div className="col-span-2 bg-black/40 border border-red-600/30 rounded-[2rem] p-5 flex items-center justify-between shadow-inner">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-red-600/10 rounded-2xl flex items-center justify-center text-red-600 border border-red-600/20">
-              <ShieldOff size={24} />
-            </div>
+      {/* Unified Stats Card */}
+      <div className="bg-[#111111] border border-white/5 rounded-[2.5rem] p-6 relative overflow-hidden shadow-2xl">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 blur-3xl rounded-full -mr-16 -mt-16"></div>
+        <div className="relative z-10 space-y-5">
+          {/* 1. TỔNG THU */}
+          <div className="space-y-3">
             <div>
-              <p className="text-[9px] font-black text-red-500 uppercase tracking-[0.2em] mb-1">DƯ NỢ PHONG TỎA (LOCKED)</p>
-              <h4 className="text-xl font-black text-white tracking-tighter">{isolatedBadDebt.toLocaleString()} đ</h4>
+              <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1">TỔNG THU</p>
+              <h3 className="text-2xl font-black text-[#00ffcc] tracking-tight drop-shadow-[0_0_15px_rgba(0,255,204,0.15)] select-all">
+                {(filteredLoanProfit + filteredFineProfit + filteredRankProfit).toLocaleString()}
+                <span className="text-xs font-black text-[#00ffcc]/60 uppercase ml-1 align-middle">VND</span>
+              </h3>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-0.5">
+                <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest">PHÍ DỊCH VỤ</p>
+                <p className="text-[10px] sm:text-xs font-black text-amber-500">{filteredLoanProfit.toLocaleString()}đ</p>
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest">TIỀN PHẠT</p>
+                <p className="text-[10px] sm:text-xs font-black text-red-500">{filteredFineProfit.toLocaleString()}đ</p>
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest">NÂNG HẠNG</p>
+                <p className="text-[10px] sm:text-xs font-black text-violet-400">{filteredRankProfit.toLocaleString()}đ</p>
+              </div>
             </div>
           </div>
-          <div className="text-right">
-            <div className="px-2.5 py-1 bg-red-600/10 border border-red-600/20 rounded-lg">
-              <p className="text-[8px] font-black text-red-500 uppercase">TIỀN PHẠT TÍCH LŨY</p>
+
+          <div className="border-t border-white/[0.04]"></div>
+
+          {/* 2. VỐN LƯU & DƯ NỢ */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-1">
+                <p className="text-[8px] font-black text-[#ff8c00]/80 uppercase tracking-[0.2em]">VỐN LƯU</p>
+                {isBudgetAlarm && <AlertCircle size={11} className="text-[#ff3b30] animate-pulse shrink-0" />}
+              </div>
+              <p className={`text-sm sm:text-base font-black tracking-tight ${isBudgetAlarm ? 'text-[#ff3b30]' : 'text-[#ff9f0a]'}`}>
+                {systemBudget.toLocaleString()}đ
+              </p>
             </div>
-            <p className="text-[7px] font-black text-gray-600 uppercase mt-2 tracking-widest">(GỐC + LÃI PHẠT ĐÃ KẾT TOÁN)</p>
+            <div className="space-y-0.5">
+              <p className="text-[8px] font-black text-emerald-500/80 uppercase tracking-[0.2em]">DƯ NỢ</p>
+              <p className="text-sm sm:text-base font-black text-emerald-400 tracking-tight">
+                {activeDebt.toLocaleString()}đ
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-white/[0.04]"></div>
+
+          {/* 3. NỢ KHÓA - 2 Columns */}
+          <div className="grid grid-cols-2 gap-4 items-center">
+            {/* Left column: Nợ khóa gốc */}
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 bg-red-600/10 rounded-xl flex items-center justify-center text-red-500 border border-red-600/20 shrink-0">
+                <ShieldOff size={15} />
+              </div>
+              <div>
+                <p className="text-[8px] font-black text-red-500 uppercase tracking-[0.2em] mb-0.5">NỢ KHÓA GỐC</p>
+                <h4 className="text-xs sm:text-sm font-black text-red-500 tracking-tight whitespace-nowrap">{isolatedBadDebtPrincipal.toLocaleString()}đ</h4>
+              </div>
+            </div>
+            {/* Right column: Phạt tích lũy */}
+            <div className="text-right space-y-0.5">
+              <p className="text-[8px] font-black text-amber-500 uppercase tracking-[0.2em] mb-0.5">PHẠT TÍCH LŨY</p>
+              <h4 className="text-xs sm:text-sm font-black text-amber-400 tracking-tight whitespace-nowrap">{isolatedBadDebtFine.toLocaleString()}đ</h4>
+            </div>
           </div>
         </div>
       </div>
@@ -625,7 +563,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
             <div className="w-9 h-9 bg-[#ff8c00]/10 rounded-xl flex items-center justify-center text-[#ff8c00] border border-[#ff8c00]/10">
               <BarChart3 size={18} />
             </div>
-            <h3 className="text-[11px] font-black text-white uppercase tracking-[0.2em]">BÁO CÁO VẬN HÀNH CHI TIẾT</h3>
+            <h3 className="text-[11px] font-black text-white uppercase tracking-[0.2em]">LỊCH SỬ HOẠT ĐỘNG</h3>
           </div>
           <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 rounded-full border border-white/10">
             <Users size={10} className="text-[#ff8c00]" />
@@ -634,59 +572,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
         </div>
 
         <div className="p-5 space-y-6">
-          {/* Loan Status Breakdown */}
-          <div className="space-y-4">
-            <div className="flex justify-between items-end">
-              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">PHÂN TÍCH TRẠNG THÁI KHOẢN VAY</p>
-              <div className="flex items-center gap-1 text-blue-400">
-                <PieChart size={10} />
-                <span className="text-[8px] font-black uppercase tracking-tighter">PHÂN BỔ REAL-TIME</span>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex items-center gap-3 hover:bg-white/5 transition-colors group">
-                <div className="w-8 h-8 bg-orange-500/10 rounded-lg flex items-center justify-center text-orange-500 group-hover:scale-110 transition-transform">
-                  <Clock size={16} />
-                </div>
-                <div>
-                  <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest leading-none mb-1">CHỜ XỬ LÝ</p>
-                  <p className="text-base font-black text-white">{pendingLoans.length}</p>
-                </div>
-              </div>
-              <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex items-center gap-3 hover:bg-white/5 transition-colors group">
-                <div className="w-8 h-8 bg-red-500/10 rounded-lg flex items-center justify-center text-red-500 group-hover:scale-110 transition-transform">
-                  <ShieldAlert size={16} />
-                </div>
-                <div>
-                  <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest leading-none mb-1">RỦI RO CAO</p>
-                  <p className="text-base font-black text-red-500">{overdueLoans.length}</p>
-                </div>
-              </div>
-              <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex items-center gap-3 hover:bg-white/5 transition-colors group">
-                <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
-                  <Activity size={16} />
-                </div>
-                <div>
-                  <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest leading-none mb-1">ĐANG LƯU HÀNH</p>
-                  <p className="text-base font-black text-white">{activeLoans.length}</p>
-                </div>
-              </div>
-              <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex items-center gap-3 hover:bg-white/5 transition-colors group">
-                <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center text-green-500 group-hover:scale-110 transition-transform">
-                  <Check size={16} />
-                </div>
-                <div>
-                  <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest leading-none mb-1">ĐÃ TẤT TOÁN</p>
-                  <p className="text-base font-black text-white">{settledLoans.length}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Recent Budget Activity */}
           {recentLogs.length > 0 && (
-            <div className="space-y-4 pt-4 border-t border-white/5">
+            <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">LỊCH SỬ THU / CHI</p>
                 <button 

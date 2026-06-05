@@ -94,7 +94,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
     return dueDate < today;
   });
 
-  const getRankInfo = (rankId: UserRank = 'standard') => {
+  const getRankInfo = (rankId: UserRank = 'bronze') => {
     const rankConfig = Array.isArray(settings.RANK_CONFIG) ? settings.RANK_CONFIG : [];
     const foundRank = rankConfig.find((r: any) => r.id === rankId);
     
@@ -112,7 +112,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
       case 'silver': return { name: 'BẠC', color: '#c0c0c0', textColor: 'text-white' };
       case 'gold': return { name: 'VÀNG', color: '#facc15', textColor: 'text-white' };
       case 'diamond': return { name: 'KIM CƯƠNG', color: '#60a5fa', textColor: 'text-white' };
-      default: return { name: 'TIÊU CHUẨN', color: '#6b7280', textColor: 'text-white' };
+      default: return { name: 'ĐỒNG', color: '#cd7f32', textColor: 'text-white' };
     }
   };
 

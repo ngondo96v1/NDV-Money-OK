@@ -446,7 +446,6 @@ const App: React.FC = () => {
     SYSTEM_NOTIFICATION: '',
     MAINTENANCE_MODE: false,
     RANK_CONFIG: [
-      { id: 'standard', name: 'TIÊU CHUẨN', minLimit: 1000000, maxLimit: 2000000, color: '#6b7280', features: ['Hạn mức 1 - 2 triệu', 'Duyệt trong 24h'] },
       { id: 'bronze', name: 'ĐỒNG', minLimit: 1000000, maxLimit: 3000000, color: '#fdba74', features: ['Hạn mức 1 - 3 triệu', 'Ưu tiên duyệt lệnh'] },
       { id: 'silver', name: 'BẠC', minLimit: 1000000, maxLimit: 4000000, color: '#bfdbfe', features: ['Hạn mức 1 - 4 triệu', 'Hỗ trợ 24/7'] },
       { id: 'gold', name: 'VÀNG', minLimit: 1000000, maxLimit: 5000000, color: '#facc15', features: ['Hạn mức 1 - 5 triệu', 'Giảm 10% phí phạt'] },
@@ -1615,7 +1614,7 @@ const App: React.FC = () => {
       });
 
       if (maxDiffDays > 0) {
-        const rankOrder: UserRank[] = ['standard', 'bronze', 'silver', 'gold', 'diamond'];
+        const rankOrder: UserRank[] = ['bronze', 'silver', 'gold', 'diamond'];
         let currentRank = targetUser.rank;
         let currentProgress = targetUser.rankProgress;
         let remainingDays = maxDiffDays;
@@ -1626,7 +1625,7 @@ const App: React.FC = () => {
           remainingDays -= 1;
         }
 
-        while (remainingDays > 0 && currentRank !== 'standard') {
+        while (remainingDays > 0 && currentRank !== 'bronze') {
           if (currentProgress >= remainingDays) {
             currentProgress -= remainingDays;
             remainingDays = 0;
@@ -1642,7 +1641,7 @@ const App: React.FC = () => {
           }
         }
 
-        if (currentRank === 'standard' && remainingDays > 0) {
+        if (currentRank === 'bronze' && remainingDays > 0) {
           currentProgress = Math.max(0, currentProgress - remainingDays);
           remainingDays = 0;
         }
@@ -1843,7 +1842,7 @@ const App: React.FC = () => {
       const defaultRank = sortedRanks.length > 0 ? sortedRanks[0] : null;
       
       const initialLimit = defaultRank ? defaultRank.maxLimit : Number(settings.INITIAL_LIMIT || 2000000);
-      const initialRank = defaultRank ? defaultRank.id : 'standard';
+      const initialRank = defaultRank ? defaultRank.id : 'bronze';
 
       const newUser: User = {
         id: newUserId, 
@@ -3426,7 +3425,7 @@ const App: React.FC = () => {
     let derivedRankProfit = 0;
     const upgradePercent = Number(settings.UPGRADE_PERCENT || 0);
     const sortedRanks = settings.RANK_CONFIG ? [...settings.RANK_CONFIG].sort((a, b) => a.maxLimit - b.maxLimit) : [];
-    const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'standard';
+    const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'bronze';
 
     registeredUsers.forEach(u => {
       // LOẠI BỎ DỮ LIỆU RÁC: Chỉ tính lợi nhuận từ người dùng thực tế có hoạt động

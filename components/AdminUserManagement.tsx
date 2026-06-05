@@ -47,6 +47,15 @@ import ContractModal from './ContractModal';
 import { BANK_BINS } from '../constants';
 import { generatePaymentContent, calculateFine } from '../utils';
 
+const abbreviateName = (fullName: string): string => {
+  if (!fullName) return "";
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length <= 1) return fullName;
+  const lastWord = parts[parts.length - 1];
+  const prefix = parts.slice(0, parts.length - 1).map(p => p.charAt(0).toUpperCase() + ".").join("");
+  return prefix + lastWord.toUpperCase();
+};
+
 interface AdminUserManagementProps {
   users: UserType[];
   loans: LoanRecord[];
@@ -489,72 +498,93 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
           const upgradeAmount = pendingRank ? Math.round(pendingRank.maxLimit * (upgradePercent / 100)) : 0;
 
           return (
-            <div key={u.id} className={`bg-[#111111] border rounded-3xl overflow-hidden relative shadow-lg transition-all ${badDebt ? 'border-red-600/50 ring-1 ring-red-600/20' : 'border-white/5'}`}>
+            <div key={u.id} className={`bg-[#111111] border rounded-[2rem] overflow-hidden relative shadow-lg transition-all ${badDebt ? 'border-red-600/50 ring-1 ring-red-600/20' : 'border-white/5'}`}>
+              
+              {/* Compact Collapsed User Row using CSS Grid */}
               <div 
                 onClick={() => handleToggleUser(u.id)}
-                className="cursor-pointer active:bg-white/[0.01] transition-all"
+                className="cursor-pointer active:bg-white/[0.01] transition-all p-4 grid grid-cols-[1fr_auto] md:grid-cols-[2fr_1fr_auto] items-center gap-x-4 gap-y-2.5"
               >
-                <div className="p-4 pb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div 
-                      onClick={(e) => {
-                        if (u.avatar) {
-                          e.stopPropagation();
-                          setZoomImage(u.avatar);
-                        }
-                      }}
-                      className={`w-11 h-11 bg-[#1a1a1e] rounded-xl flex items-center justify-center text-gray-500 border border-white/5 relative overflow-hidden ${u.avatar ? 'cursor-zoom-in' : ''}`}
-                    >
-                      {u.avatar ? (
-                        <img src={u.avatar} className="w-full h-full object-cover" alt="Avatar" referrerPolicy="no-referrer" />
-                      ) : (
-                        <User size={20} className={isExpanded ? 'text-[#ff8c00]' : ''} />
+                {/* Left: Avatar & Identity section */}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div 
+                    onClick={(e) => {
+                      if (u.avatar) {
+                        e.stopPropagation();
+                        setZoomImage(u.avatar);
+                      }
+                    }}
+                    className={`w-11 h-11 bg-[#1a1a1e] rounded-xl flex items-center justify-center text-gray-500 border border-white/5 relative overflow-hidden shrink-0 ${u.avatar ? 'cursor-zoom-in' : ''}`}
+                  >
+                    {u.avatar ? (
+                      <img src={u.avatar} className="w-full h-full object-cover" alt="Avatar" referrerPolicy="no-referrer" />
+                    ) : (
+                      <User size={20} className={isExpanded ? 'text-[#ff8c00]' : ''} />
+                    )}
+                    {notificationCount > 0 && (
+                      <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center border border-2 border-[#111111] shadow-lg">
+                        <span className="text-[9px] font-black text-white leading-none">{notificationCount}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap min-w-0">
+                      <h3 className="text-sm font-black text-white tracking-tight uppercase leading-none truncate max-w-[130px] sm:max-w-[180px] md:max-w-none" title={u.fullName}>
+                        {abbreviateName(u.fullName)}
+                      </h3>
+                      {u.isLocked && (
+                        <div className="flex items-center gap-0.5 bg-gray-600 px-1 py-0.5 rounded text-[6px] font-black text-white uppercase tracking-tighter shrink-0">
+                          <ShieldAlert size={6} className="text-white" />
+                          <span>ĐÃ KHÓA</span>
+                        </div>
                       )}
-                      {notificationCount > 0 && (
-                        <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center border-2 border-[#111111] shadow-lg">
-                          <span className="text-[9px] font-black text-white">{notificationCount}</span>
+                      {badDebt && !u.isLocked && (
+                        <div className="flex items-center gap-0.5 bg-red-600 px-1 py-0.5 rounded text-[6px] font-black text-white uppercase tracking-tighter animate-pulse shrink-0">
+                          <AlertTriangle size={6} className="text-white" />
+                          <span>NỢ XẤU</span>
                         </div>
                       )}
                     </div>
-                    <div>
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <h3 className="text-sm font-black text-white tracking-tight uppercase leading-none">{u.fullName}</h3>
-                        {u.isLocked && (
-                          <div className="flex items-center gap-1 bg-gray-600 px-1.5 py-0.5 rounded-md">
-                            <ShieldAlert size={8} className="text-white" />
-                            <span className="text-[7px] font-black text-white uppercase tracking-tighter">ĐÃ KHÓA</span>
-                          </div>
-                        )}
-                        {badDebt && !u.isLocked && (
-                          <div className="flex items-center gap-1 bg-red-600 px-1.5 py-0.5 rounded-md animate-pulse">
-                            <AlertTriangle size={8} className="text-white" />
-                            <span className="text-[7px] font-black text-white uppercase tracking-tighter">NỢ XẤU</span>
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-[8px] font-bold text-gray-600 tracking-widest uppercase">MÃ KHÁCH: {u.id}</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center text-gray-500">
-                      {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </div>
+                    <p className="text-[8px] font-bold text-gray-500 tracking-widest uppercase truncate">ID: {u.id} • {u.phone}</p>
                   </div>
                 </div>
 
-                <div className="mx-3 mb-3 bg-black/40 border border-white/5 rounded-2xl p-4 flex items-center justify-between shadow-inner">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center text-gray-600">
-                      <Coins size={18} />
-                    </div>
-                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">TỔNG THỰC THU:</span>
+                {/* Center-Right Quick Stats indicators directly on the card (Desktop only) */}
+                <div className="hidden md:flex items-center gap-3 sm:gap-4 justify-end mr-3">
+                  <div className="flex flex-col items-end shrink-0">
+                    <span className="text-[5.5px] font-black text-gray-500 uppercase tracking-widest leading-none">Hạng</span>
+                    <span className="text-[8px] font-black text-[#ff8c00] mt-0.5 uppercase leading-none">{getRankName(u.rank)}</span>
                   </div>
-                  <div className="text-right">
-                    <p className="text-lg font-black text-white tracking-tight leading-none mb-1">{tongThucThu.toLocaleString()} đ</p>
-                    <p className="text-[6px] font-black text-gray-600 uppercase tracking-tighter">
-                      (GỐC + PHẠT TRÊN DƯ NỢ)
-                    </p>
+                  <div className="flex flex-col items-end shrink-0">
+                    <span className="text-[5.5px] font-black text-gray-500 uppercase tracking-widest leading-none">Khả dụng</span>
+                    <span className="text-[8.5px] font-black text-emerald-500 mt-0.5 leading-none">{(u.balance || 0).toLocaleString()}đ</span>
+                  </div>
+                  <div className="flex flex-col items-end shrink-0">
+                    <span className="text-[5.5px] font-black text-gray-500 uppercase tracking-widest leading-none">Dư nợ</span>
+                    <span className="text-[8.5px] font-black text-rose-500 mt-0.5 leading-none">{getUserLoanValue(u.id).toLocaleString()}đ</span>
+                  </div>
+                </div>
+
+                {/* Right: Expand Button indicator */}
+                <div className="flex items-center shrink-0 justify-end">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all text-gray-500 ${isExpanded ? 'bg-[#ff8c00]/10 border-[#ff8c00]/30 text-[#ff8c00]' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}>
+                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </div>
+                </div>
+
+                {/* Bottom: Quick Stats Pill (Mobile only, perfectly aligned and consistent) */}
+                <div className="col-span-2 md:hidden grid grid-cols-3 gap-1 bg-[#16161a] border border-white/5 p-2 rounded-2xl text-center select-none mt-1">
+                  <div className="flex flex-col items-center justify-center">
+                    <span className="text-[6px] font-black text-gray-500 uppercase tracking-widest leading-none">Hạng</span>
+                    <span className="text-[8px] font-black text-[#ff8c00] mt-1.5 uppercase leading-none">{getRankName(u.rank)}</span>
+                  </div>
+                  <div className="flex flex-col items-center justify-center border-x border-white/5">
+                    <span className="text-[6px] font-black text-gray-500 uppercase tracking-widest leading-none">Khả dụng</span>
+                    <span className="text-[9px] font-black text-emerald-500 mt-1.5 leading-none">{(u.balance || 0).toLocaleString()}đ</span>
+                  </div>
+                  <div className="flex flex-col items-center justify-center">
+                    <span className="text-[6px] font-black text-gray-500 uppercase tracking-widest leading-none">Dư nợ</span>
+                    <span className="text-[9px] font-black text-rose-500 mt-1.5 leading-none">{getUserLoanValue(u.id).toLocaleString()}đ</span>
                   </div>
                 </div>
               </div>
@@ -1481,7 +1511,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                     {settings.RANK_CONFIG?.map((rc) => (
                       <option key={rc.id} value={rc.id}>{rc.name.toUpperCase()}</option>
                     ))}
-                    {!settings.RANK_CONFIG?.some(rc => rc.id === 'standard') && <option value="standard">TIÊU CHUẨN</option>}
                   </select>
                 </div>
 

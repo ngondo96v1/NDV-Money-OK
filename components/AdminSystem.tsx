@@ -540,8 +540,7 @@ END $$;`;
 
       // 2. Rank Config - Professional Tiers
       const standardRanks = [
-        { id: 'standard', name: 'Hạng Tiêu Chuẩn', minLimit: 0, maxLimit: 2000000, color: '#6b7280', features: ['Hạn mức 2 triệu', 'Cơ bản'] },
-        { id: 'bronze', name: 'Hạng Đồng', minLimit: 2000000, maxLimit: 5000000, color: '#cd7f32', features: ['Hạn mức 5 triệu', 'Ưu tiên'] },
+        { id: 'bronze', name: 'Hạng Đồng', minLimit: 1000000, maxLimit: 5000000, color: '#cd7f32', features: ['Hạn mức 5 triệu', 'Ưu tiên'] },
         { id: 'silver', name: 'Hạng Bạc', minLimit: 5000000, maxLimit: 10000000, color: '#C0C0C0', features: ['Hạn mức 10 triệu', 'Phí ưu đãi', 'Hỗ trợ 24/7'] },
         { id: 'gold', name: 'Hạng Vàng', minLimit: 10000000, maxLimit: 30000000, color: '#FFD700', features: ['Hạn mức 30 triệu', 'Duyệt nhanh', 'Quay thưởng x2'] },
         { id: 'diamond', name: 'Hạng Kim Cương', minLimit: 30000000, maxLimit: 50000000, color: '#B9F2FF', features: ['Hạn mức 50 triệu', 'Lãi suất 0%', 'Đặc quyền VIP'] }

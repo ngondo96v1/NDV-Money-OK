@@ -71,48 +71,38 @@ const RankLimits: React.FC<RankLimitsProps> = ({ user, isGlobalProcessing, onBac
 
     const initial = Number(settings.INITIAL_LIMIT || 2000000);
     const max = Number(settings.MAX_SINGLE_LOAN_AMOUNT || 10000000);
-    const step = (max - initial) / 4;
+    const step = (max - initial) / 3;
 
     return [
-      {
-        id: 'standard',
-        name: 'TIÊU CHUẨN',
-        code: 'USER',
-        min: '1.000.000 đ',
-        max: `${(initial / 1000000).toLocaleString()} triệu đ`,
-        limitVal: initial,
-        icon: <Trophy size={24} className="text-gray-500" />,
-        features: [`Hạn mức 1 - ${initial / 1000000} triệu`, 'Duyệt trong 24h'],
-      },
       {
         id: 'bronze',
         name: 'ĐỒNG',
         code: 'DONG',
         min: '1.000.000 đ',
-        max: `${((initial + step) / 1000000).toLocaleString()} triệu đ`,
-        limitVal: initial + step,
+        max: `${(initial / 1000000).toLocaleString()} triệu đ`,
+        limitVal: initial,
         icon: <Trophy size={24} className="text-orange-300" />,
-        features: [`Hạn mức 1 - ${(initial + step) / 1000000} triệu`, 'Ưu tiên duyệt lệnh'],
+        features: [`Hạn mức 1 - ${initial / 1000000} triệu`, 'Ưu tiên duyệt lệnh'],
       },
       {
         id: 'silver',
         name: 'BẠC',
         code: 'BAC',
         min: '1.000.000 đ',
-        max: `${((initial + step * 2) / 1000000).toLocaleString()} triệu đ`,
-        limitVal: initial + step * 2,
+        max: `${((initial + step) / 1000000).toLocaleString()} triệu đ`,
+        limitVal: initial + step,
         icon: <Trophy size={24} className="text-blue-200" />,
-        features: [`Hạn mức 1 - ${(initial + step * 2) / 1000000} triệu`, 'Hỗ trợ 24/7'],
+        features: [`Hạn mức 1 - ${(initial + step) / 1000000} triệu`, 'Hỗ trợ 24/7'],
       },
       {
         id: 'gold',
         name: 'VÀNG',
         code: 'VANG',
         min: '1.000.000 đ',
-        max: `${((initial + step * 3) / 1000000).toLocaleString()} triệu đ`,
-        limitVal: initial + step * 3,
+        max: `${((initial + step * 2) / 1000000).toLocaleString()} triệu đ`,
+        limitVal: initial + step * 2,
         icon: <Trophy size={24} className="text-yellow-400" />,
-        features: [`Hạn mức 1 - ${(initial + step * 3) / 1000000} triệu`, 'Giảm 10% phí phạt'],
+        features: [`Hạn mức 1 - ${(initial + step * 2) / 1000000} triệu`, 'Giảm 10% phí phạt'],
       },
       {
         id: 'diamond',
@@ -127,7 +117,7 @@ const RankLimits: React.FC<RankLimitsProps> = ({ user, isGlobalProcessing, onBac
     ];
   }, [settings]);
 
-  const currentRankIndex = ranks.findIndex(r => r.id === (user?.rank || 'standard'));
+  const currentRankIndex = ranks.findIndex(r => r.id === (user?.rank || 'bronze'));
 
   const handleDownloadQR = async (url: string) => {
     try {
