@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { TrendingUp, Wallet, AlertTriangle, ChevronLeft, Save, X, Check, Plus, Minus, History, Calendar, ArrowUpRight, ArrowDownLeft, Info, ChevronRight, Trash2, RefreshCcw } from 'lucide-react';
-import { BudgetLog, AppSettings } from '../types';
+import { BudgetLog, AppSettings, LoanRecord, User } from '../types';
 
 interface AdminBudgetProps {
   currentBudget: number;
@@ -12,9 +12,11 @@ interface AdminBudgetProps {
   onSyncStats?: () => Promise<void>;
   onBack: () => void;
   settings: AppSettings;
+  loans: LoanRecord[];
+  users: User[];
 }
 
-const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdateBudget, onDeleteLog, onSyncStats, onBack, settings }) => {
+const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdateBudget, onDeleteLog, onSyncStats, onBack, settings, loans, users }) => {
   const [activeTab, setActiveTab] = useState<'ADD' | 'WITHDRAW' | 'INITIAL'>('ADD');
   const [inputValue, setInputValue] = useState('');
   const [numericValue, setNumericValue] = useState(0);
@@ -39,6 +41,12 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
 
   const netCapital = stats.initial + stats.added - stats.withdrawn;
   const currentProfit = currentBudget - netCapital;
+
+  // Calculate Nợ Phong Toả
+  const lockedUserIds = new Set((users || []).filter(u => u.isLocked).map(u => u.id));
+  const activeStatuses = ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'];
+  const lockedLoans = (loans || []).filter(l => lockedUserIds.has(l.userId) && activeStatuses.includes(l.status));
+  const isolatedBadDebtPrincipal = lockedLoans.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
 
   const totalPages = Math.ceil(logs.length / itemsPerPage);
   const displayedLogs = logs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -165,50 +173,62 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
         >
           <ChevronLeft size={16} />
         </button>
-        <h1 className="text-lg font-black text-white uppercase tracking-tighter leading-none">
-          CẤU HÌNH NGÂN SÁCH
+        <h1 className="text-sm font-black text-white uppercase tracking-widest leading-none">
+          NGÂN SÁCH
         </h1>
         <div className="flex-1"></div>
       </div>
 
       <div className="flex flex-col gap-4 overflow-hidden flex-1">
-        {/* Tổng quan ngân sách */}
-        <div className="bg-gradient-to-br from-[#111111] to-black border border-white/5 rounded-2xl p-4 relative overflow-hidden shrink-0">
-          <div className="absolute top-0 right-0 p-2 opacity-10">
-            <Wallet size={60} className="text-[#ff8c00]" />
-          </div>
-          <div className="relative z-10 flex justify-between items-end">
-            <div className="space-y-0.5">
-              <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em]">Vốn lưu động hiện tại</p>
-              <h2 className="text-2xl font-black text-[#ff8c00] tracking-tighter leading-none">
-                {currentBudget.toLocaleString()} <span className="text-xs">đ</span>
-              </h2>
-            </div>
-            <div className="text-right space-y-0.5">
-              <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">Lợi nhuận ròng</p>
-              <h3 className={`text-sm font-black tracking-tighter ${currentProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {currentProfit >= 0 ? '+' : ''}{currentProfit.toLocaleString()} <span className="text-[8px]">đ</span>
-              </h3>
-            </div>
-          </div>
+        {/* Unified Budget Overview Card */}
+        <div className="bg-[#111111] border border-white/5 rounded-xl p-3.5 relative overflow-hidden shadow-2xl shrink-0">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/5 blur-2xl rounded-full -mr-12 -mt-12"></div>
           
-          <div className="mt-4 pt-3 border-t border-white/5 flex justify-between items-center relative z-10">
-            <p className="text-[8px] font-bold text-gray-600 uppercase tracking-widest">Tổng vốn đối ứng</p>
-            <p className="text-[10px] font-black text-white tracking-tighter">{netCapital.toLocaleString()} đ</p>
+          <div className="relative z-10">
+            <div className="grid grid-cols-4 gap-2">
+              <div className="space-y-0.5 min-w-0">
+                <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest leading-none truncate">THÊM VỐN</p>
+                <p className="text-[10px] font-black text-emerald-400 truncate">
+                  {stats.added.toLocaleString()}đ
+                </p>
+              </div>
+              <div className="space-y-0.5 min-w-0">
+                <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest leading-none truncate">RÚT VỐN</p>
+                <p className="text-[10px] font-black text-rose-500 truncate">
+                  {stats.withdrawn.toLocaleString()}đ
+                </p>
+              </div>
+              <div className="space-y-0.5 min-w-0">
+                <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest leading-none truncate">NỢ PHONG TOẢ</p>
+                <p className="text-[10px] font-black text-amber-500 truncate">
+                  {isolatedBadDebtPrincipal.toLocaleString()}đ
+                </p>
+              </div>
+              <div className="space-y-0.5 min-w-0">
+                <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest leading-none truncate">VỐN BAN ĐẦU</p>
+                <p className="text-[10px] font-black text-white truncate">
+                  {stats.initial.toLocaleString()}đ
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Tabs hành động */}
-        <div className="bg-[#111111] border border-white/5 rounded-2xl p-1 flex gap-1 shrink-0">
+        {/* Action Tabs */}
+        <div className="bg-[#111111] border border-white/5 rounded-xl p-0.5 flex gap-0.5 shrink-0">
           {[
-            { id: 'ADD', label: 'THÊM VỐN', icon: <Plus size={12} /> },
-            { id: 'WITHDRAW', label: 'RÚT VỐN', icon: <Minus size={12} /> },
-            { id: 'INITIAL', label: 'VỐN BAN ĐẦU', icon: <Wallet size={12} /> }
+            { id: 'ADD', label: 'THÊM VỐN', icon: <Plus size={9} /> },
+            { id: 'WITHDRAW', label: 'RÚT VỐN', icon: <Minus size={9} /> },
+            { id: 'INITIAL', label: 'THIẾT LẬP', icon: <Wallet size={9} /> }
           ].map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all ${activeTab === tab.id ? 'bg-[#ff8c00] text-black shadow-lg shadow-orange-900/20' : 'text-gray-500 hover:text-white'}`}
+              className={`flex-1 flex items-center justify-center gap-1 py-1 rounded-lg text-[7px] font-black uppercase tracking-wider transition-all ${
+                activeTab === tab.id 
+                  ? 'bg-orange-500/10 text-[#ff8c00] border border-orange-500/20 shadow-sm' 
+                  : 'text-gray-500 hover:text-gray-300 border border-transparent'
+              }`}
             >
               {tab.icon}
               {tab.label}
@@ -216,35 +236,35 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
           ))}
         </div>
 
-        {/* Form nhập liệu */}
-        <div className="bg-[#111111] border border-white/5 rounded-2xl p-4 space-y-4 shrink-0">
-          <div className="grid grid-cols-1 gap-3">
-            <div className="space-y-1.5">
+        {/* Input Form */}
+        <div className="bg-[#111111] border border-white/5 rounded-xl p-2.5 space-y-2 shrink-0">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
               <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest pl-1">
-                {activeTab === 'ADD' ? 'Số tiền muốn thêm' : 'Số tiền muốn rút'} (VND)
+                {activeTab === 'ADD' ? 'SỐ TIỀN THÊM' : activeTab === 'WITHDRAW' ? 'SỐ TIỀN RÚT' : 'SỐ VỐN BAN ĐẦU'}
               </p>
-              <div className="bg-black border border-white/5 rounded-xl p-3 flex items-center">
+              <div className="bg-black border border-white/5 rounded-lg px-2 py-1.5 flex items-center h-8">
                 <input 
                   type="text" 
                   inputMode="numeric"
                   placeholder="0"
                   value={inputValue}
                   onChange={handleAmountChange}
-                  className="bg-transparent text-lg font-black tracking-tighter focus:outline-none w-full text-[#ff8c00]"
+                  className="bg-transparent text-xs font-black tracking-tighter focus:outline-none w-full text-[#ff8c00]"
                 />
-                <span className="text-gray-700 font-black text-[8px] tracking-widest uppercase ml-2">VND</span>
+                <span className="text-gray-700 font-black text-[6px] tracking-widest uppercase ml-1 shrink-0">VND</span>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest pl-1">Ghi chú hoạt động</p>
-              <div className="bg-black border border-white/5 rounded-xl p-3">
+            <div className="space-y-1">
+              <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest pl-1">GHI CHÚ GIAO DỊCH</p>
+              <div className="bg-black border border-white/5 rounded-lg px-2 py-1.5 flex items-center h-8">
                 <input 
                   type="text" 
-                  placeholder="Ví dụ: Thêm vốn từ nguồn dự phòng..."
+                  placeholder={activeTab === 'ADD' ? "Nguồn bổ sung..." : activeTab === 'WITHDRAW' ? "Rút về..." : "Thiết lập..."}
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  className="bg-transparent text-[10px] font-bold tracking-tight focus:outline-none w-full text-white placeholder:text-gray-800"
+                  className="bg-transparent text-[9px] font-bold tracking-tight focus:outline-none w-full text-white placeholder:text-gray-800"
                 />
               </div>
             </div>
@@ -253,21 +273,25 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
           <button 
             onClick={handleAction}
             disabled={numericValue <= 0 || isProcessing}
-            className={`w-full py-3 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 ${numericValue <= 0 || isProcessing ? 'bg-gray-800 text-gray-600 cursor-not-allowed' : 'bg-[#ff8c00] text-black shadow-orange-950/40'}`}
+            className={`w-full py-2 rounded-lg text-[8px] font-black uppercase tracking-[0.15em] shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 ${
+              numericValue <= 0 || isProcessing 
+                ? 'bg-gray-800 text-gray-600 cursor-not-allowed' 
+                : 'bg-[#ff8c00] text-black hover:bg-orange-500'
+            }`}
           >
-            {activeTab === 'ADD' ? <Plus size={14} /> : <Minus size={14} />}
-            {activeTab === 'ADD' ? 'XÁC NHẬN THÊM' : 'XÁC NHẬN RÚT'}
+            {activeTab === 'ADD' ? <Plus size={11} /> : activeTab === 'WITHDRAW' ? <Minus size={11} /> : <Wallet size={11} />}
+            {activeTab === 'ADD' ? 'XÁC NHẬN THÊM VỐN' : activeTab === 'WITHDRAW' ? 'XÁC NHẬN RÚT VỐN' : 'CẬP NHẬT VỐN BAN ĐẦU'}
           </button>
         </div>
 
-        {/* Lịch sử hoạt động */}
+        {/* Transaction Logs History */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <div className="flex items-center justify-between mb-3 px-1 shrink-0">
             <div className="flex items-center gap-2">
-              <History size={14} className="text-[#ff8c00]" />
-              <h3 className="text-[10px] font-black text-white uppercase tracking-widest">LỊCH SỬ THU / CHI</h3>
+              <History size={13} className="text-[#ff8c00]" />
+              <h3 className="text-[10px] font-black text-white uppercase tracking-widest">LỊCH SỬ HOẠT ĐỘNG</h3>
             </div>
-            <p className="text-[7px] font-bold text-gray-500 uppercase tracking-tighter">Lưu tối đa 60 ngày</p>
+            <p className="text-[7px] font-bold text-gray-600 uppercase tracking-widest">60 ngày</p>
           </div>
 
           <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-2">
@@ -301,11 +325,11 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-right space-y-0">
-                        <p className={`text-[10px] font-black tracking-tighter ${['ADD', 'LOAN_REPAY', 'INITIAL', 'ADJUSTMENT_IN'].includes(log.type) ? 'text-green-400' : 'text-red-400'}`}>
+                        <p className={`text-[10px] font-black tracking-tighter ${['ADD', 'LOAN_REPAY', 'INITIAL', 'ADJUSTMENT_IN'].includes(log.type) ? 'text-emerald-400' : 'text-red-500'}`}>
                           {['ADD', 'LOAN_REPAY', 'INITIAL', 'ADJUSTMENT_IN'].includes(log.type) ? '+' : '-'}
-                          {log.amount.toLocaleString()} đ
+                          {log.amount.toLocaleString()}đ
                         </p>
-                        <p className="text-[7px] font-bold text-gray-600 uppercase tracking-tighter">Dư: {log.balanceAfter.toLocaleString()} đ</p>
+                        <p className="text-[7px] font-bold text-gray-600 uppercase tracking-tighter">Dư: {log.balanceAfter.toLocaleString()}đ</p>
                       </div>
                       <button 
                         onClick={() => setLogToDelete(log.id)}

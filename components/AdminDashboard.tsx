@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { User, LoanRecord, MonthlyStat, AppSettings, BudgetLog, Notification } from '../types';
@@ -134,6 +134,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
   }, []);
 
   const [tempStartDate, setTempStartDate] = useState<string>(settings.SYSTEM_START_DATE || '');
+  const [revenueFilter, setRevenueFilter] = useState<'all' | 'month' | 'year'>('all');
 
   useEffect(() => {
     if (settings.SYSTEM_START_DATE !== undefined) {
@@ -147,37 +148,196 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     if (typeof str === 'number') return new Date(str);
     const cleaned = str.trim();
     
-    // Check if contains " " (datetime format like "HH:MM:SS DD/MM/YYYY")
-    const parts = cleaned.split(' ');
-    const datePart = parts.length > 1 ? parts[1] : parts[0];
-    const dateSubparts = datePart.split('/');
+    // Check if it is a numeric timestamp as a string
+    if (/^\d+$/.test(cleaned)) {
+      return new Date(parseInt(cleaned, 10));
+    }
+
+    // Try standard ISO or browser-native parsing first
+    const nativeDate = new Date(cleaned);
+    if (!isNaN(nativeDate.getTime()) && cleaned.includes('-')) {
+      return nativeDate;
+    }
+
+    // Custom parsing utilizing RegExp for various Vietnamese & standard formats
+    const dateRegex = /(\d{1,2})\/(\d{1,2})\/(\d{4})/;
+    const dateMatch = cleaned.match(dateRegex);
     
-    if (dateSubparts.length === 3) {
-      const day = parseInt(dateSubparts[0], 10);
-      const month = parseInt(dateSubparts[1], 10) - 1;
-      const year = parseInt(dateSubparts[2], 10);
+    if (dateMatch) {
+      const day = parseInt(dateMatch[1], 10);
+      const month = parseInt(dateMatch[2], 10) - 1;
+      const year = parseInt(dateMatch[3], 10);
+      
+      const timeRegex = /(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/;
+      const timeMatch = cleaned.match(timeRegex);
       
       let hour = 0, minute = 0, second = 0;
-      if (parts.length > 1 && parts[0].includes(':')) {
-        const timeSubparts = parts[0].split(':');
-        if (timeSubparts.length >= 2) {
-          hour = parseInt(timeSubparts[0], 10) || 0;
-          minute = parseInt(timeSubparts[1], 10) || 0;
-          second = parseInt(timeSubparts[2], 10) || 0;
-        }
+      if (timeMatch) {
+        hour = parseInt(timeMatch[1], 10) || 0;
+        minute = parseInt(timeMatch[2], 10) || 0;
+        second = parseInt(timeMatch[3], 10) || 0;
       }
+      
       const d = new Date(year, month, day, hour, minute, second);
       if (!isNaN(d.getTime())) return d;
     }
-    const d = new Date(str);
-    return isNaN(d.getTime()) ? null : d;
+    
+    return isNaN(nativeDate.getTime()) ? null : nativeDate;
   };
+
+  const [chartYear, setChartYear] = useState<number>(new Date().getFullYear());
+
+  const getItemRevenueDate = useCallback((item: any, type: 'loan' | 'user' | 'log'): Date | null => {
+    if (type === 'loan') {
+      const loan = item as LoanRecord;
+      if (loan.date) {
+        const dueDate = parseDateString(loan.date);
+        if (dueDate && !isNaN(dueDate.getTime())) {
+          // Trừ đi 1 tháng vì ngày đến hạn là ngày 1 tây của tháng tiếp theo,
+          // và phí của khoản vay được thu trước vào tháng trước đó.
+          const revDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+          revDate.setMonth(revDate.getMonth() - 1);
+          return revDate;
+        }
+      }
+      if (loan.createdAt) {
+        return parseDateString(loan.createdAt);
+      }
+    } else if (type === 'user') {
+      const user = item as User;
+      if (user.joinDate) {
+        return parseDateString(user.joinDate);
+      }
+    } else if (type === 'log') {
+      const log = item as BudgetLog;
+      if (log.createdAt) {
+        return parseDateString(log.createdAt);
+      }
+    }
+    return null;
+  }, []);
+
+  const isItemRevenueMatched = useCallback((item: any, type: 'loan' | 'user' | 'log') => {
+    if (revenueFilter === 'all') return true;
+    const date = getItemRevenueDate(item, type);
+    if (!date || isNaN(date.getTime())) return false;
+
+    const now = new Date();
+    const targetYear = now.getFullYear();
+
+    if (revenueFilter === 'year') {
+      return date.getFullYear() === targetYear;
+    } else if (revenueFilter === 'month') {
+      return date.getFullYear() === targetYear && date.getMonth() === now.getMonth();
+    }
+    return true;
+  }, [revenueFilter, getItemRevenueDate]);
+
+  const availableYears = useMemo(() => {
+    const years = new Set<number>([new Date().getFullYear()]);
+    loans.forEach(l => {
+      let revDate: Date | null = null;
+      if (l.date) {
+        const dueDate = parseDateString(l.date);
+        if (dueDate && !isNaN(dueDate.getTime())) {
+          revDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+          revDate.setMonth(revDate.getMonth() - 1);
+        }
+      }
+      if (!revDate && l.createdAt) {
+        revDate = parseDateString(l.createdAt);
+      }
+      if (revDate && !isNaN(revDate.getTime())) {
+        years.add(revDate.getFullYear());
+      }
+    });
+    users.forEach(u => {
+      const d = parseDateString(u.joinDate);
+      if (d && !isNaN(d.getTime())) {
+        years.add(d.getFullYear());
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [loans, users]);
+
+  const chartData = useMemo(() => {
+    const months = Array.from({ length: 12 }, (_, i) => ({
+      month: `Thg ${i + 1}`,
+      loanRevenue: 0,
+      rankRevenue: 0,
+      penaltyRevenue: 0,
+      total: 0
+    }));
+
+    const activeStatuses = ['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN', 'ĐANG GIẢI NGÂN'];
+    const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 0) / 100;
+    const upgradePercent = Number(settings.UPGRADE_PERCENT || 0);
+
+    loans.forEach(loan => {
+      const loanUser = users.find(u => u.id === loan.userId);
+      if (!loanUser || loanUser.isAdmin || loanUser.phone === 'admin' || !loanUser.phone) return;
+      if (loanUser.id === '5444' || loanUser.fullName?.toLowerCase().includes('test')) return;
+
+      let revDate: Date | null = null;
+      if (loan.date) {
+        const dueDate = parseDateString(loan.date);
+        if (dueDate && !isNaN(dueDate.getTime())) {
+          revDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+          revDate.setMonth(revDate.getMonth() - 1);
+        }
+      }
+      if (!revDate && loan.createdAt) {
+        revDate = parseDateString(loan.createdAt);
+      }
+
+      if (revDate && !isNaN(revDate.getTime()) && revDate.getFullYear() === chartYear) {
+        const m = revDate.getMonth();
+        if (activeStatuses.includes(loan.status)) {
+          months[m].loanRevenue += (loan.amount * feePercent);
+        }
+        if ((loan.status === 'ĐÃ TẤT TOÁN' || loan.status === 'CHỜ TẤT TOÁN') && loan.fine) {
+          months[m].penaltyRevenue += Math.round((loan.fine || 0) / 1000) * 1000;
+        }
+      }
+    });
+
+    const sortedRanks = settings.RANK_CONFIG ? [...settings.RANK_CONFIG].sort((a, b) => a.maxLimit - b.maxLimit) : [];
+    const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'bronze';
+
+    users.forEach(u => {
+      if (u.isAdmin || u.phone === 'admin' || u.id === 'admin' || !u.phone || u.phone.length < 10) return;
+      if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
+
+      const joinDate = parseDateString(u.joinDate);
+      if (joinDate && !isNaN(joinDate.getTime()) && joinDate.getFullYear() === chartYear) {
+        const m = joinDate.getMonth();
+        if (u.rank && u.rank !== lowestRankId && !u.isFreeUpgrade && u.rankApproved !== false) {
+          const rankConf = settings.RANK_CONFIG?.find(r => r.id === u.rank);
+          if (rankConf) {
+            months[m].rankRevenue += (rankConf.maxLimit * (upgradePercent / 100));
+          }
+        }
+      }
+    });
+
+    months.forEach(m => {
+      m.total = m.loanRevenue + m.rankRevenue + m.penaltyRevenue;
+    });
+
+    return months;
+  }, [loans, users, chartYear, settings]);
+
+  const maxTotalRevenue = useMemo(() => {
+    const maxVal = Math.max(...chartData.map(d => d.total), 0);
+    return maxVal === 0 ? 1000000 : maxVal;
+  }, [chartData]);
 
   const isAfterOrEqualMatch = (itemDateStr: string | undefined | null, boundaryDateStr: string | null) => {
     if (!boundaryDateStr) return true;
     const itemDate = parseDateString(itemDateStr);
-    const boundaryDate = new Date(boundaryDateStr);
-    if (!itemDate || isNaN(boundaryDate.getTime())) return true;
+    if (!itemDate || isNaN(itemDate.getTime())) return false;
+    const boundaryDate = parseDateString(boundaryDateStr);
+    if (!boundaryDate || isNaN(boundaryDate.getTime())) return true;
     
     const itemMidnight = new Date(itemDate.getFullYear(), itemDate.getMonth(), itemDate.getDate());
     const boundaryMidnight = new Date(boundaryDate.getFullYear(), boundaryDate.getMonth(), boundaryDate.getDate());
@@ -201,9 +361,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
   }, [users, tempStartDate]);
 
   const filteredBudgetLogs = useMemo(() => {
-    if (!tempStartDate) return budgetLogs;
-    return budgetLogs.filter(log => isAfterOrEqualMatch(log.createdAt, tempStartDate));
-  }, [budgetLogs, tempStartDate]);
+    let result = budgetLogs;
+    if (tempStartDate) {
+      result = result.filter(log => isAfterOrEqualMatch(log.createdAt, tempStartDate));
+    }
+    if (revenueFilter !== 'all') {
+      result = result.filter(log => isItemRevenueMatched(log, 'log'));
+    }
+    return result;
+  }, [budgetLogs, tempStartDate, revenueFilter, isItemRevenueMatched]);
 
   // Loan Statistics
   const { settledLoans, pendingLoans, activeLoans, overdueLoans, isolatedBadDebt, isolatedBadDebtPrincipal, isolatedBadDebtFine } = useMemo(() => {
@@ -285,14 +451,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     let penaltyProfit = 0;
     const activeStatuses = ['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN', 'ĐANG GIẢI NGÂN'];
     
-    filteredLoans.forEach(loan => {
+    // Báo cáo doanh thu mặc định hiển thị toàn bộ hệ thống, lọc chính xác theo bộ chọn Tháng/Năm
+    const targetLoans = loans;
+
+    targetLoans.forEach(loan => {
       const loanUser = users.find(u => u.id === loan.userId);
       if (!loanUser || loanUser.isAdmin || loanUser.phone === 'admin' || !loanUser.phone) return;
       if (loanUser.id === '5444' || loanUser.fullName?.toLowerCase().includes('test')) return;
 
-      // Chỉ tính vào thống kê doanh thu nếu ngày của khoản vay nằm trong khoảng thời gian lọc
-      const isDateMatched = isAfterOrEqualMatch(loan.createdAt || loan.date, tempStartDate);
-      if (!isDateMatched) return;
+      const isRevenueFilterMatched = isItemRevenueMatched(loan, 'loan');
+      if (!isRevenueFilterMatched) return;
 
       if (activeStatuses.includes(loan.status)) {
         serviceProfit += (loan.amount * feePercent);
@@ -306,9 +474,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     const sortedRanks = settings.RANK_CONFIG ? [...settings.RANK_CONFIG].sort((a, b) => a.maxLimit - b.maxLimit) : [];
     const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'bronze';
 
-    filteredUsers.forEach(u => {
+    const targetUsers = users;
+
+    targetUsers.forEach(u => {
       if (u.isAdmin || u.phone === 'admin' || u.id === 'admin' || !u.phone || u.phone.length < 10) return;
       if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
+
+      const isRevenueFilterMatched = isItemRevenueMatched(u, 'user');
+      if (!isRevenueFilterMatched) return;
 
       if (u.rank && u.rank !== lowestRankId && !u.isFreeUpgrade && u.rankApproved !== false) {
         const rankConf = settings.RANK_CONFIG?.find(r => r.id === u.rank);
@@ -323,7 +496,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       filteredFineProfit: penaltyProfit,
       filteredRankProfit: rProfit
     };
-  }, [filteredLoans, filteredUsers, settings, users]);
+  }, [revenueFilter, loans, users, settings, isItemRevenueMatched]);
 
   const isBudgetAlarm = useMemo(() => systemBudget <= Number(settings.MIN_SYSTEM_BUDGET || 2000000), [systemBudget, settings.MIN_SYSTEM_BUDGET]);
   
@@ -395,13 +568,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     setShowFineResetConfirm(false);
   };
 
-  const recentLogs = filteredBudgetLogs.slice(0, 3);
-  
+
   return (
     <div className="w-full bg-[#0a0a0a] px-5 space-y-6 pt-4 pb-20 animate-in fade-in duration-700">
       {/* Header Section */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center px-1 mb-2">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-4 px-1 mb-2">
+        <div className="flex items-center gap-3 shrink-0">
           <div className="w-10 h-10 bg-gradient-to-br from-[#ff8c00] to-[#ff5f00] rounded-xl flex items-center justify-center font-black text-black text-xs shadow-xl shadow-orange-500/20 shrink-0">
             NDV
           </div>
@@ -412,49 +584,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
         </div>
         
         {/* Actions Row */}
-        <div className="flex items-center justify-between sm:justify-end gap-2">
-          {/* Bộ lọc Ngày bắt đầu thống kê thu gọn */}
-          <div className="flex items-center bg-white/5 border border-white/5 rounded-xl px-2.5 h-10 shadow-lg flex-1 sm:flex-none">
-            <Calendar size={13} className="text-[#ff8c00] shrink-0 mr-1.5" />
-            <input 
-              type="date"
-              value={tempStartDate}
-              onChange={(e) => {
-                const dateVal = e.target.value;
-                setTempStartDate(dateVal);
-                onUpdateSettings({ SYSTEM_START_DATE: dateVal });
-              }}
-              className="bg-transparent text-[9px] font-black text-white focus:outline-none w-full sm:w-[90px] [color-scheme:dark] shrink-0 cursor-pointer p-0 border-none uppercase"
-              title="Ngày bắt đầu"
-            />
-            {tempStartDate && (
-              <button 
-                onClick={() => {
-                  setTempStartDate('');
-                  onUpdateSettings({ SYSTEM_START_DATE: '' });
-                }}
-                className="text-gray-400 hover:text-red-400 shrink-0 ml-1.5 p-0.5 rounded-md hover:bg-white/10 transition-all cursor-pointer"
-                title="Tất cả thời gian"
-              >
-                <X size={11} />
-              </button>
-            )}
-          </div>
-
+        <div className="flex items-center gap-2 shrink-0">
           <button 
             onClick={() => onUpdateSettings({ MAINTENANCE_MODE: !settings.MAINTENANCE_MODE })}
-            className={`w-10 h-10 border rounded-xl flex items-center justify-center transition-all active:scale-95 shrink-0 shadow-lg ${
+            className={`w-9 h-9 border rounded-xl flex items-center justify-center transition-all active:scale-95 shrink-0 shadow-lg ${
               settings.MAINTENANCE_MODE 
                 ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-500' 
                 : 'bg-white/5 border-white/5 text-gray-500 hover:text-yellow-500 hover:bg-yellow-500/10'
             }`}
             title={settings.MAINTENANCE_MODE ? "Tắt bảo trì" : "Bật bảo trì"}
           >
-            <Power size={16} />
+            <Power size={14} />
           </button>
 
-          <button onClick={onLogout} className="w-10 h-10 bg-white/5 border border-white/5 rounded-xl flex items-center justify-center text-gray-500 hover:text-red-500 hover:bg-red-500/10 transition-all active:scale-95 shrink-0 shadow-lg">
-            <LogOut size={16} />
+          <button onClick={onLogout} className="w-9 h-9 bg-white/5 border border-white/5 rounded-xl flex items-center justify-center text-gray-500 hover:text-red-500 hover:bg-red-500/10 transition-all active:scale-95 shrink-0 shadow-lg" title="Thoát">
+            <LogOut size={14} />
           </button>
         </div>
       </div>
@@ -489,23 +633,43 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
         <div className="relative z-10 space-y-5">
           {/* 1. TỔNG THU */}
           <div className="space-y-3">
-            <div>
-              <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1">TỔNG THU</p>
-              <h3 className="text-2xl font-black text-[#00ffcc] tracking-tight drop-shadow-[0_0_15px_rgba(0,255,204,0.15)] select-all">
-                {(filteredLoanProfit + filteredFineProfit + filteredRankProfit).toLocaleString()}
-                <span className="text-xs font-black text-[#00ffcc]/60 uppercase ml-1 align-middle">VND</span>
-              </h3>
+            <div className="flex items-center justify-between gap-3 w-full">
+              <div>
+                <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1">TỔNG THU</p>
+                <h3 className="text-2xl font-black text-[#00ffcc] tracking-tight drop-shadow-[0_0_15px_rgba(0,255,204,0.15)] select-all">
+                  {(filteredLoanProfit + filteredFineProfit + filteredRankProfit).toLocaleString()}
+                  <span className="text-xs font-black text-[#00ffcc]/60 uppercase ml-1 align-middle">VND</span>
+                </h3>
+              </div>
+
+              {/* Revenue Filter Dropdown */}
+              <div className="flex items-center gap-1.5 shrink-0 select-none">
+                <select
+                  value={revenueFilter}
+                  onChange={(e) => {
+                    const val = e.target.value as 'all' | 'month' | 'year';
+                    setRevenueFilter(val);
+                    const label = val === 'all' ? 'Tất cả' : val === 'month' ? 'Tháng' : 'Năm';
+                    toast.success(`Đã lọc doanh thu: ${label}`);
+                  }}
+                  className="bg-[#1c1c1e] text-[9px] font-black uppercase tracking-widest text-[#00ffcc] border border-[#00ffcc]/20 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-[#00ffcc] focus:ring-1 focus:ring-[#00ffcc]/30 transition-all cursor-pointer shadow-md [color-scheme:dark]"
+                >
+                  <option value="all" className="bg-[#111111] text-white">Tất Cả</option>
+                  <option value="month" className="bg-[#111111] text-white">Tháng</option>
+                  <option value="year" className="bg-[#111111] text-white">Năm</option>
+                </select>
+              </div>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-0.5">
+              <div className="space-y-0.5 text-left">
                 <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest">PHÍ DỊCH VỤ</p>
                 <p className="text-[10px] sm:text-xs font-black text-amber-500">{filteredLoanProfit.toLocaleString()}đ</p>
               </div>
-              <div className="space-y-0.5">
+              <div className="space-y-0.5 text-center">
                 <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest">TIỀN PHẠT</p>
                 <p className="text-[10px] sm:text-xs font-black text-red-500">{filteredFineProfit.toLocaleString()}đ</p>
               </div>
-              <div className="space-y-0.5">
+              <div className="space-y-0.5 text-right">
                 <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest">NÂNG HẠNG</p>
                 <p className="text-[10px] sm:text-xs font-black text-violet-400">{filteredRankProfit.toLocaleString()}đ</p>
               </div>
@@ -515,28 +679,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
           <div className="border-t border-white/[0.04]"></div>
 
           {/* 2. VỐN LƯU & DƯ NỢ */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-1">
-                <p className="text-[8px] font-black text-[#ff8c00]/80 uppercase tracking-[0.2em]">VỐN LƯU</p>
-                {isBudgetAlarm && <AlertCircle size={11} className="text-[#ff3b30] animate-pulse shrink-0" />}
+          <div className="grid grid-cols-3 gap-4 items-center">
+            {/* Left column: Vốn lưu */}
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 bg-orange-500/10 rounded-xl flex items-center justify-center text-[#ff9f0a] border border-orange-500/20 shrink-0">
+                <Wallet size={15} />
               </div>
-              <p className={`text-sm sm:text-base font-black tracking-tight ${isBudgetAlarm ? 'text-[#ff3b30]' : 'text-[#ff9f0a]'}`}>
-                {systemBudget.toLocaleString()}đ
-              </p>
+              <div>
+                <div className="flex items-center gap-1">
+                  <p className="text-[8px] font-black text-[#ff8c00]/80 uppercase tracking-[0.2em] mb-0.5">VỐN LƯU</p>
+                  {isBudgetAlarm && <AlertCircle size={11} className="text-[#ff3b30] animate-pulse shrink-0" />}
+                </div>
+                <h4 className={`text-xs sm:text-sm font-black tracking-tight whitespace-nowrap ${isBudgetAlarm ? 'text-[#ff3b30]' : 'text-[#ff9f0a]'}`}>{systemBudget.toLocaleString()}đ</h4>
+              </div>
             </div>
-            <div className="space-y-0.5">
-              <p className="text-[8px] font-black text-emerald-500/80 uppercase tracking-[0.2em]">DƯ NỢ</p>
-              <p className="text-sm sm:text-base font-black text-emerald-400 tracking-tight">
-                {activeDebt.toLocaleString()}đ
-              </p>
+            {/* Center column: Blank placeholder (aligns under TIỀN PHẠT) */}
+            <div></div>
+            {/* Right column: Dư nợ */}
+            <div className="text-right space-y-0.5">
+              <p className="text-[8px] font-black text-emerald-500/80 uppercase tracking-[0.2em] mb-0.5">DƯ NỢ</p>
+              <h4 className="text-xs sm:text-sm font-black text-emerald-400 tracking-tight whitespace-nowrap">{activeDebt.toLocaleString()}đ</h4>
             </div>
           </div>
 
           <div className="border-t border-white/[0.04]"></div>
 
-          {/* 3. NỢ KHÓA - 2 Columns */}
-          <div className="grid grid-cols-2 gap-4 items-center">
+          {/* 3. NỢ KHÓA */}
+          <div className="grid grid-cols-3 gap-4 items-center">
             {/* Left column: Nợ khóa gốc */}
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 bg-red-600/10 rounded-xl flex items-center justify-center text-red-500 border border-red-600/20 shrink-0">
@@ -547,6 +716,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
                 <h4 className="text-xs sm:text-sm font-black text-red-500 tracking-tight whitespace-nowrap">{isolatedBadDebtPrincipal.toLocaleString()}đ</h4>
               </div>
             </div>
+            {/* Center column: Blank placeholder (aligns under TIỀN PHẠT) */}
+            <div></div>
             {/* Right column: Phạt tích lũy */}
             <div className="text-right space-y-0.5">
               <p className="text-[8px] font-black text-amber-500 uppercase tracking-[0.2em] mb-0.5">PHẠT TÍCH LŨY</p>
@@ -556,76 +727,109 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
         </div>
       </div>
 
-      {/* Detailed Statistics Section */}
-      <div className="bg-[#111111] border border-white/5 rounded-[2.5rem] overflow-hidden shadow-2xl">
-        <div className="p-5 border-b border-white/5 flex items-center justify-between bg-white/[0.01]">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-[#ff8c00]/10 rounded-xl flex items-center justify-center text-[#ff8c00] border border-[#ff8c00]/10">
-              <BarChart3 size={18} />
+      {/* 3. BIỂU ĐỒ DOANH THU 12 THÁNG */}
+      <div className="bg-[#111111] border border-white/5 rounded-[2.5rem] p-6 relative overflow-hidden shadow-2xl">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-[#ffc300]/5 blur-3xl rounded-full -mr-16 -mt-16"></div>
+        <div className="relative z-10 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-[#00ffcc]/10 rounded-xl flex items-center justify-center text-[#00ffcc] border border-[#00ffcc]/10">
+                <BarChart3 size={18} />
+              </div>
+              <div>
+                <h3 className="text-xs font-black text-white uppercase tracking-[0.2em] leading-none">BIỂU ĐỒ DOANH THU</h3>
+                <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest mt-1">THỐNG KÊ 12 THÁNG TRONG NĂM</p>
+              </div>
             </div>
-            <h3 className="text-[11px] font-black text-white uppercase tracking-[0.2em]">LỊCH SỬ HOẠT ĐỘNG</h3>
-          </div>
-          <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 rounded-full border border-white/10">
-            <Users size={10} className="text-[#ff8c00]" />
-            <span className="text-[8px] font-black text-white uppercase tracking-widest">{users.length} THÀNH VIÊN</span>
-          </div>
-        </div>
 
-        <div className="p-5 space-y-6">
-          {/* Recent Budget Activity */}
-          {recentLogs.length > 0 && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">LỊCH SỬ THU / CHI</p>
-                <button 
-                  onClick={onNavigateToBudget}
-                  className="flex items-center gap-1 text-[#ff8c00] active:scale-95 transition-all"
-                >
-                  <span className="text-[7px] font-black uppercase">Xem tất cả</span>
-                  <ArrowRight size={8} />
-                </button>
-              </div>
-              <div className="space-y-2">
-                {recentLogs.map((log) => (
-                  <div key={log.id} className="bg-black/20 border border-white/5 rounded-xl p-3 flex items-center justify-between group/item">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                        log.type === 'ADD' || log.type === 'LOAN_REPAY' || log.type === 'INITIAL' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
-                      }`}>
-                        {log.type === 'ADD' || log.type === 'LOAN_REPAY' || log.type === 'INITIAL' ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                      </div>
-                      <div>
-                        <p className="text-[8px] font-black text-white leading-tight">{formatLogNote(log.note)}</p>
-                        <p className="text-[6px] font-bold text-gray-500 uppercase mt-0.5">
-                          {new Date(log.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} • {new Date(log.createdAt).toLocaleDateString('vi-VN')}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <p className={`text-[10px] font-black ${
-                        log.type === 'ADD' || log.type === 'LOAN_REPAY' || log.type === 'INITIAL' ? 'text-green-500' : 'text-red-500'
-                      }`}>
-                        {log.type === 'ADD' || log.type === 'LOAN_REPAY' || log.type === 'INITIAL' ? '+' : '-'}{log.amount.toLocaleString()}
-                      </p>
-                      {onDeleteLog && (
-                        <button 
-                          onClick={() => {
-                            if (window.confirm('Bạn có chắc muốn xóa bản ghi này? Hệ thống sẽ hoàn lại số dư tương ứng.')) {
-                              onDeleteLog(log.id);
-                            }
-                          }}
-                          className="w-7 h-7 bg-red-500/10 text-red-500 rounded-lg flex items-center justify-center opacity-0 group-hover/item:opacity-100 transition-opacity active:scale-90"
-                          title="Xóa log"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
+            {/* Year Selector Dropdown for Chart */}
+            <div className="flex items-center gap-1.5 shrink-0 select-none">
+              <select
+                value={chartYear}
+                onChange={(e) => {
+                  setChartYear(Number(e.target.value));
+                  toast.success(`Đã chọn thống kê năm ${e.target.value}`);
+                }}
+                className="bg-[#1c1c1e] text-[9px] font-black uppercase tracking-widest text-[#00ffcc] border border-[#00ffcc]/20 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-[#00ffcc] focus:ring-1 focus:ring-[#00ffcc]/30 transition-all cursor-pointer shadow-md [color-scheme:dark]"
+              >
+                {availableYears.map(yr => (
+                  <option key={yr} value={yr} className="bg-[#111111] text-white">NĂM {yr}</option>
                 ))}
-              </div>
+              </select>
             </div>
-          )}
+          </div>
+
+          {/* Core Chart Grid Area */}
+          <div className="mt-4 pt-6 pb-2 px-1 rounded-2xl bg-black/10 border border-white/[0.02]">
+            <div className="h-44 w-full flex items-end gap-[4%] px-2">
+              {chartData.map((data, index) => {
+                const heightPct = maxTotalRevenue > 0 ? (data.total / maxTotalRevenue) * 100 : 0;
+                // Minimum height of 3% if total > 0 so that there's always a visual indicator
+                const finalHeight = data.total > 0 ? Math.max(heightPct, 3) : 0;
+
+                return (
+                  <div key={data.month} className="flex-1 flex flex-col items-center group relative h-full justify-end cursor-pointer">
+                    {/* Tooltip Content on Hover */}
+                    <div className="absolute bottom-full mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-all duration-200 z-50 text-left bg-[#1a1a1e] border border-white/10 p-2.5 rounded-xl shadow-xl w-36 -translate-y-1">
+                      <p className="text-[8px] font-black text-white mb-1.5 uppercase border-b border-white/10 pb-1">{data.month} / {chartYear}</p>
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-[7px] font-black">
+                          <span className="text-gray-400">PHÍ DỊCH VỤ:</span>
+                          <span className="text-amber-500">{data.loanRevenue.toLocaleString()}đ</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[7px] font-black">
+                          <span className="text-gray-400">TIỀN PHẠT:</span>
+                          <span className="text-red-500">{data.penaltyRevenue.toLocaleString()}đ</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[7px] font-black">
+                          <span className="text-gray-400">NÂNG HẠNG:</span>
+                          <span className="text-violet-400">{data.rankRevenue.toLocaleString()}đ</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[8px] font-black pt-1 border-t border-white/[0.05] mt-1 text-[#00ffcc]">
+                          <span>TỔNG THU:</span>
+                          <span>{data.total.toLocaleString()}đ</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Revenue Text Overlay Above the Bar */}
+                    {data.total > 0 && (
+                      <span className="text-[6px] sm:text-[7px] font-black text-[#00ffcc] mb-1 select-none whitespace-nowrap">
+                        {(data.total / 1000).toLocaleString('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}k
+                      </span>
+                    )}
+
+                    {/* Interactive Bar */}
+                    <div className="w-full rounded-t-md relative overflow-hidden transition-all duration-300 group-hover:brightness-125" style={{ height: `${finalHeight}%` }}>
+                      {/* Background Gradient */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#ff8c00]/60 via-[#ff0055]/70 to-[#00ffcc] shadow-[0_0_10px_rgba(0,255,204,0.1)]"></div>
+                      {/* Active Hover Glow Accent */}
+                      <div className="absolute inset-x-0 top-0 h-1.5 bg-white opacity-0 group-hover:opacity-40 transition-opacity"></div>
+                    </div>
+
+                    {/* Month Label */}
+                    <span className="mt-2 text-[7px] font-black text-gray-500 group-hover:text-white transition-colors uppercase tracking-wider">{data.month}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Dynamic Highlights / Stat Banner below Chart */}
+          <div className="grid grid-cols-2 gap-3 mt-1 pt-1">
+            <div className="bg-black/20 border border-white/5 rounded-xl p-2.5">
+              <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">TỔNG DOANH THU NĂM {chartYear}</p>
+              <h4 className="text-xs font-black text-[#00ffcc] mt-0.5 select-all">
+                {chartData.reduce((sum, m) => sum + m.total, 0).toLocaleString()}đ
+              </h4>
+            </div>
+            <div className="bg-black/20 border border-white/5 rounded-xl p-2.5">
+              <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">TRUNG BÌNH THÁNG</p>
+              <h4 className="text-xs font-black text-amber-500 mt-0.5 select-all">
+                {Math.round(chartData.reduce((sum, m) => sum + m.total, 0) / 12).toLocaleString()}đ
+              </h4>
+            </div>
+          </div>
         </div>
       </div>
 

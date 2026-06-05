@@ -180,13 +180,55 @@ const App: React.FC = () => {
     }
   };
 
+  // Safe date parser to handle all standard, ISO, and Vietnam customs date formats (DD/MM/YYYY etc)
+  const parseAppDate = (str: string | undefined | null): Date | null => {
+    if (!str) return null;
+    const cleaned = str.trim();
+    
+    if (/^\d+$/.test(cleaned)) {
+      return new Date(parseInt(cleaned, 10));
+    }
+
+    const nativeDate = new Date(cleaned);
+    if (!isNaN(nativeDate.getTime()) && cleaned.includes('-')) {
+      return nativeDate;
+    }
+
+    const dateRegex = /(\d{1,2})\/(\d{1,2})\/(\d{4})/;
+    const dateMatch = cleaned.match(dateRegex);
+    
+    if (dateMatch) {
+      const day = parseInt(dateMatch[1], 10);
+      const month = parseInt(dateMatch[2], 10) - 1;
+      const year = parseInt(dateMatch[3], 10);
+      
+      const timeRegex = /(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/;
+      const timeMatch = cleaned.match(timeRegex);
+      
+      let hour = 0, minute = 0, second = 0;
+      if (timeMatch) {
+        hour = parseInt(timeMatch[1], 10) || 0;
+        minute = parseInt(timeMatch[2], 10) || 0;
+        second = parseInt(timeMatch[3], 10) || 0;
+      }
+      
+      const d = new Date(year, month, day, hour, minute, second);
+      if (!isNaN(d.getTime())) return d;
+    }
+    
+    return isNaN(nativeDate.getTime()) ? null : nativeDate;
+  };
+
   // Cleanup budget logs older than 60 days
   useEffect(() => {
     const sixtyDaysAgo = new Date();
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
     
     setBudgetLogs(prev => {
-      const filtered = prev.filter(log => new Date(log.createdAt) > sixtyDaysAgo);
+      const filtered = prev.filter(log => {
+        const parsedDate = parseAppDate(log.createdAt);
+        return parsedDate ? parsedDate > sixtyDaysAgo : false;
+      });
       if (filtered.length !== prev.length) {
         localStorage.setItem('ndv_budget_logs', JSON.stringify(filtered));
       }
@@ -3936,6 +3978,8 @@ const App: React.FC = () => {
             onSyncStats={handleSyncStats}
             onBack={() => setCurrentView(AppView.ADMIN_DASHBOARD)} 
             settings={settings}
+            loans={loans}
+            users={registeredUsers}
           />
         );
       case AppView.ADMIN_SYSTEM:

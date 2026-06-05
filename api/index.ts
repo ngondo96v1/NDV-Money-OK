@@ -53,8 +53,38 @@ const sendPushNotification = async (fcmToken: string, title: string, body: strin
     const response = await admin.messaging().send(message);
     console.log(`[FIREBASE] Push sent successfully: ${response}`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[FIREBASE] Error sending push:`, error);
+    
+    // Check if error is due to an invalid/not-found FCM token
+    const errorString = String(error || "");
+    const errorCode = error?.code || "";
+    const isNotFoundError = errorString.includes("Requested entity was not found") || 
+                            errorString.includes("registration-token-not-registered") ||
+                            errorString.includes("invalid-registration-token") ||
+                            errorCode.includes("not-found") || 
+                            errorCode.includes("not-registered") || 
+                            errorCode.includes("invalid-registration-token");
+                            
+    if (isNotFoundError) {
+      console.log(`[FIREBASE] Stale or invalid FCM token detected. Cleaning up from DB...`);
+      try {
+        const client = initSupabase();
+        if (client) {
+          const { error: dbErr } = await client
+            .from('users')
+            .update({ fcmToken: null })
+            .eq('fcmToken', fcmToken);
+          if (dbErr) {
+            console.error(`[FIREBASE] Failed to clear stale FCM token from DB:`, dbErr);
+          } else {
+            console.log(`[FIREBASE] Stale FCM token cleared from DB successfully.`);
+          }
+        }
+      } catch (dbEx) {
+        console.error(`[FIREBASE] Exception while clearing stale FCM token:`, dbEx);
+      }
+    }
     return false;
   }
 };
@@ -1887,6 +1917,36 @@ router.post("/send-push", async (req: any, res) => {
       };
       
       const response = await admin.messaging().sendEachForMulticast(message);
+      
+      // Clean up any stale tokens in the background
+      if (response.responses && response.responses.length > 0) {
+        const staleTokens: string[] = [];
+        response.responses.forEach((resItem, idx) => {
+          if (!resItem.success && resItem.error) {
+            const errStr = String(resItem.error) || "";
+            const errCode = resItem.error.code || "";
+            const isStale = errStr.includes("Requested entity was not found") || 
+                            errStr.includes("registration-token-not-registered") ||
+                            errStr.includes("invalid-registration-token") ||
+                            errCode.includes("not-found") || 
+                            errCode.includes("not-registered") ||
+                            errCode.includes("invalid-registration-token");
+            if (isStale) {
+              const failedToken = tokens[idx];
+              if (failedToken) staleTokens.push(failedToken);
+            }
+          }
+        });
+
+        if (staleTokens.length > 0) {
+          console.log(`[FIREBASE] Found ${staleTokens.length} stale FCM tokens during multicast. Clearing from DB...`);
+          await client
+            .from('users')
+            .update({ fcmToken: null })
+            .in('fcmToken', staleTokens);
+        }
+      }
+
       return res.json({ 
         success: true, 
         message: `Đã gửi thành công đến ${response.successCount} thiết bị. Thất bại: ${response.failureCount}` 
