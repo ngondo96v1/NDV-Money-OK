@@ -3463,6 +3463,34 @@ const App: React.FC = () => {
   const handleSyncStats = async () => {
     if (!registeredUsers.length || !settings.RANK_CONFIG) return;
 
+    const systemStartDate = settings.SYSTEM_START_DATE;
+
+    const isDateOnOrAfter = (dateStr: string, benchmarkStr: string): boolean => {
+      if (!dateStr || !benchmarkStr) return true;
+      try {
+        let testDate: Date;
+        if (dateStr.includes('-') && dateStr.includes('T')) {
+          testDate = new Date(dateStr);
+        } else if (dateStr.includes('/')) {
+          const parts = dateStr.split('/');
+          if (parts.length === 3) {
+            testDate = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 0, 0, 0);
+          } else {
+            testDate = new Date(dateStr);
+          }
+        } else {
+          testDate = new Date(Number(dateStr) || Date.now());
+        }
+        
+        const benchmarkParts = benchmarkStr.split('-');
+        const benchmarkDate = new Date(Number(benchmarkParts[0]), Number(benchmarkParts[1]) - 1, Number(benchmarkParts[2]), 0, 0, 0);
+        
+        return testDate.getTime() >= benchmarkDate.getTime();
+      } catch (e) {
+        return true;
+      }
+    };
+
     // 1. Calculate Rank Profit - Accurate calculation based on real users
     let derivedRankProfit = 0;
     const upgradePercent = Number(settings.UPGRADE_PERCENT || 0);
@@ -3477,7 +3505,10 @@ const App: React.FC = () => {
       // DISCREPANCY FIX: Loại bỏ các bản ghi ghost 150k (thường là các tài khoản test cũ như ID 5444 hoặc tương đương)
       if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
 
-      if (u.rank && u.rank !== lowestRankId && !u.isFreeUpgrade && u.rankApproved !== false) {
+      // Filter by System start date if configured
+      const isUpgradedAfterStart = systemStartDate ? isDateOnOrAfter(u.updatedAt ? new Date(Number(u.updatedAt)).toISOString() : u.joinDate, systemStartDate) : true;
+
+      if (isUpgradedAfterStart && u.rank && u.rank !== lowestRankId && !u.isFreeUpgrade && u.rankApproved !== false) {
         const rankConf = settings.RANK_CONFIG?.find(r => r.id === u.rank);
         if (rankConf) {
           derivedRankProfit += (rankConf.maxLimit * (upgradePercent / 100));
@@ -3494,12 +3525,19 @@ const App: React.FC = () => {
       const loanUser = registeredUsers.find(u => u.id === loan.userId);
       if (!loanUser || loanUser.isAdmin || loanUser.phone === 'admin' || !loanUser.phone) return;
 
+      const isCreatedAfterStart = systemStartDate ? isDateOnOrAfter(loan.createdAt || loan.date, systemStartDate) : true;
+      const isSettledAfterStart = systemStartDate ? isDateOnOrAfter(loan.settledAt || loan.createdAt || loan.date, systemStartDate) : true;
+
       // Khoản vay bị phong tỏa thì KHÔNG tính phí dịch vụ 15% (chỉ tính 1 lần khi chưa bị phong tỏa)
-      if (['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN', 'ĐANG GIẢI NGÂN'].includes(loan.status)) {
-        derivedFeeProfit += (loan.amount * feePercent);
+      if (isCreatedAfterStart) {
+        if (['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN', 'ĐANG GIẢI NGÂN'].includes(loan.status)) {
+          derivedFeeProfit += (loan.amount * feePercent);
+        }
       }
-      if ((loan.status === 'ĐÃ TẤT TOÁN' || loan.status === 'CHỜ TẤT TOÁN') && loan.fine) {
-        derivedFineProfit += Math.round((loan.fine || 0) / 1000) * 1000;
+      if (isSettledAfterStart) {
+        if ((loan.status === 'ĐÃ TẤT TOÁN' || loan.status === 'CHỜ TẤT TOÁN') && loan.fine) {
+          derivedFineProfit += Math.round((loan.fine || 0) / 1000) * 1000;
+        }
       }
     });
 

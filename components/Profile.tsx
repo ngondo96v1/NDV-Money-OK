@@ -69,9 +69,6 @@ const Profile: React.FC<ProfileProps> = ({ user, onBack, onLogout, onUpdateBank,
             <h1 className="text-base font-black text-white tracking-widest uppercase">Money</h1>
           </div>
         </div>
-        <button onClick={onLogout} className="text-gray-500 hover:text-white transition-colors">
-          <LogOut size={18} />
-        </button>
       </div>
 
       {/* Avatar Section */}

@@ -82,6 +82,47 @@ const AdminSystem: React.FC<AdminSystemProps> = ({ onReset, onImportSuccess, onB
   const [isCheckingBank, setIsCheckingBank] = useState(false);
   const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // States for Re-establishment (Phương án B)
+  const [reEstablishStartDate, setReEstablishStartDate] = useState('2026-07-01');
+  const [reEstablishCapital, setReEstablishCapital] = useState<number>(0);
+  const [deleteOldLogs, setDeleteOldLogs] = useState(true);
+  const [isReEstablishing, setIsReEstablishing] = useState(false);
+  const [showReEstablishConfirm, setShowReEstablishConfirm] = useState(false);
+
+  const handleReEstablishExecute = async () => {
+    setIsReEstablishing(true);
+    try {
+      const response = await authenticatedFetch('/api/re-establish', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          startDate: reEstablishStartDate,
+          startingCapital: reEstablishCapital,
+          deleteOldLogs
+        })
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        toast.success(result.message);
+        if (onRefreshData) {
+          await onRefreshData().catch(e => console.error(e));
+        }
+        if (onImportSuccess) {
+          onImportSuccess(); // Refresh page/state hierarchy
+        }
+      } else {
+        toast.error(result.error || "Không thể xác lập hệ thống");
+      }
+    } catch (e) {
+      toast.error("Lỗi kết nối máy chủ");
+    } finally {
+      setIsReEstablishing(false);
+      setShowReEstablishConfirm(false);
+    }
+  };
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     technical: false,
     business: false,
@@ -1565,6 +1606,74 @@ END $$;`;
             </button>
           </div>
 
+          {/* Re-establish System Section (Phương án B) */}
+          <div className="pt-4 border-t border-white/5 space-y-4">
+            <div className="bg-white/5 rounded-3xl p-5 border border-white/10 space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-orange-500/10 rounded-xl flex items-center justify-center text-orange-500">
+                  <Zap size={16} />
+                </div>
+                <div>
+                  <h5 className="text-[10px] font-black text-white uppercase tracking-widest">XÁC LẬP HỆ THỐNG MỚI (PHƯƠNG ÁN B)</h5>
+                  <p className="text-[7px] font-bold text-gray-500 uppercase mt-0.5">Xác lập thời điểm hoạt động và ngân sách lưu động thực tế</p>
+                </div>
+              </div>
+
+              {/* Date Input */}
+              <div className="space-y-1.5">
+                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest">NGÀY BẮT ĐẦU HOẠT ĐỘNG</label>
+                <input 
+                  type="date" 
+                  value={reEstablishStartDate}
+                  onChange={(e) => setReEstablishStartDate(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl text-white text-xs p-3 focus:border-orange-500 focus:outline-none placeholder-gray-600 font-bold uppercase tracking-widest"
+                />
+              </div>
+
+              {/* Starting Capital Input */}
+              <div className="space-y-1.5">
+                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest">VỐN LƯU ĐỘNG TIỀN MẶT BAN ĐẦU (ĐỒNG)</label>
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    value={formatNumberWithDots(reEstablishCapital)}
+                    onChange={(e) => setReEstablishCapital(parseNumberFromDots(e.target.value))}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl text-white text-xs p-3 pr-10 focus:border-orange-500 focus:outline-none placeholder-gray-600 font-bold"
+                    placeholder="0"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-gray-500">ĐỒNG</span>
+                </div>
+                <div className="bg-orange-500/5 p-2 rounded-lg border border-orange-500/10 text-[7px] font-bold text-gray-400 leading-relaxed uppercase tracking-wider">
+                  💡 Thực tế hệ thống thu phí dịch vụ trước giải ngân. Đối với các khoản vay ĐANG NỢ hiện hành (8 khoản vay - Tổng 58.000.000đ), khi người dùng thanh toán/tất toán quá hạn trên hệ thống sau ngày {reEstablishStartDate}, toàn bộ vốn gốc thu về sẽ tự động cộng dồn vào quỹ Vốn Lưu Động thực tế!
+                </div>
+              </div>
+
+              {/* Delete Old Logs Checkbox */}
+              <div className="flex items-center gap-3 p-1">
+                <input 
+                  type="checkbox" 
+                  id="deleteOldLogsCheckbox"
+                  checked={deleteOldLogs}
+                  onChange={(e) => setDeleteOldLogs(e.target.checked)}
+                  className="w-4 h-4 rounded border-white/10 text-orange-500 bg-black focus:ring-orange-500 focus:ring-2"
+                />
+                <label htmlFor="deleteOldLogsCheckbox" className="text-[8px] font-black text-gray-300 uppercase tracking-wider cursor-pointer select-none">
+                  Xóa lịch sử biến động số dư cũ trước ngày xác lập
+                </label>
+              </div>
+
+              {/* Reset Submit button */}
+              <button 
+                onClick={() => setShowReEstablishConfirm(true)}
+                disabled={isReEstablishing || !reEstablishStartDate}
+                className="w-full bg-orange-500 text-black font-black py-3 rounded-2xl text-[9px] uppercase tracking-widest hover:bg-orange-400 transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-orange-950/20 disabled:opacity-50"
+              >
+                {isReEstablishing ? <Loader2 className="animate-spin" size={12} /> : <Sparkles size={12} />}
+                BẮT ĐẦU XÁC LẬP HỆ THỐNG
+              </button>
+            </div>
+          </div>
+
           {importMessage && (
             <div className={`p-4 rounded-2xl border text-[9px] font-black uppercase tracking-widest flex items-center gap-3 animate-in slide-in-from-top-2 duration-300 ${
               importMessage.type === 'success' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'
@@ -1686,6 +1795,44 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;`, 'rpc_sql')}
                   Đóng
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup xác nhận Xác lập Hệ thống theo Phương án B */}
+      {showReEstablishConfirm && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 animate-in zoom-in duration-300">
+          <div className="bg-[#111111] border border-orange-500/20 w-full max-w-sm rounded-[32px] p-6 space-y-6 relative shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
+            <div className="absolute top-0 left-0 w-full h-1 bg-orange-500"></div>
+            <div className="flex flex-col items-center text-center space-y-3">
+              <div className="w-14 h-14 bg-orange-500/10 rounded-full flex items-center justify-center text-orange-500 animate-pulse">
+                 <AlertCircle size={28} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-sm font-black text-white uppercase tracking-tight">KÍCH HOẠT PHƯƠNG ÁN B?</h3>
+                <p className="text-[9px] font-bold text-gray-400 uppercase leading-relaxed px-3">
+                  Thời điểm hoạt động mới của toàn bộ tài chính sẽ được thiết lập vào ngày <span className="text-orange-500 font-extrabold">{reEstablishStartDate}</span>.
+                </p>
+                <p className="text-[8px] font-bold text-gray-500 uppercase leading-relaxed px-2">
+                  Toàn bộ các khoản vay <span className="text-white font-extrabold">ĐANG HOẠT ĐỘNG (ĐANG NỢ)</span> vẫn được giữ nguyên không đổi. Hệ thống sẽ bắt đầu thống kê doanh thu và tích vốn lưu động từ các giao dịch phát sinh kể từ ngày này trở đi.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2.5">
+               <button 
+                 onClick={() => setShowReEstablishConfirm(false)}
+                 className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black text-gray-500 uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-1.5"
+               >
+                 <X size={11} /> HUỶ BỎ
+               </button>
+               <button 
+                 onClick={handleReEstablishExecute}
+                 className="flex-1 py-3 bg-orange-500 text-black rounded-xl text-[9px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-md shadow-orange-950/40"
+               >
+                 <Check size={11} /> XÁC NHẬN
+               </button>
             </div>
           </div>
         </div>

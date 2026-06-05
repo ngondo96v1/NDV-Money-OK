@@ -4035,6 +4035,76 @@ router.post("/sync", async (req: any, res) => {
   }
 });
 
+router.post("/re-establish", async (req: any, res) => {
+  try {
+    if (!req.user?.isAdmin) {
+      return res.status(403).json({ error: "Chỉ Admin mới có quyền thực hiện thao tác này" });
+    }
+    const client = initSupabase();
+    if (!client) return res.status(503).json({ error: "Supabase not configured" });
+
+    const io = req.app.get("io");
+
+    const { startDate, startingCapital, deleteOldLogs } = req.body;
+    if (!startDate) return res.status(400).json({ error: "Vui lòng chọn ngày bắt đầu" });
+
+    const capital = Number(startingCapital || 0);
+
+    // Update crucial configuration keys
+    const configUpdates = [
+      { key: 'SYSTEM_START_DATE', value: startDate },
+      { key: 'SYSTEM_BUDGET', value: capital.toString() },
+      { key: 'TOTAL_LOAN_PROFIT', value: "0" },
+      { key: 'TOTAL_FINE_PROFIT', value: "0" },
+      { key: 'TOTAL_RANK_PROFIT', value: "0" },
+      { key: 'MONTHLY_STATS', value: "[]" }
+    ];
+
+    const { error: cfgErr } = await client.from('config').upsert(configUpdates, { onConflict: 'key' });
+    if (cfgErr) throw cfgErr;
+
+    // Optional budget logs removal
+    if (deleteOldLogs) {
+      const { error: delLogsErr } = await client.from('budget_logs').delete().neq('id', 'placeholder__');
+      if (delLogsErr) {
+        console.error("[RE-ESTABLISH] Error deleting old budget logs:", delLogsErr);
+      }
+    }
+
+    // Insert the custom INITIAL starting budget log
+    const nowStr = new Date().toISOString();
+    const { error: logErr } = await client.from('budget_logs').insert([{
+      id: `INITIAL_${Date.now()}`,
+      type: 'INITIAL',
+      amount: capital,
+      balanceAfter: capital,
+      note: `Khởi tạo Vốn Lưu Động ban đầu: ${capital.toLocaleString()}đ (Thiết lập dự án bắt đầu từ ngày ${startDate})`,
+      createdAt: nowStr
+    }]);
+    if (logErr) throw logErr;
+
+    // Emit configuration updates instantly to all clients
+    if (io) {
+      io.emit("config_updated", [
+        { key: 'SYSTEM_START_DATE', value: startDate },
+        { key: 'SYSTEM_BUDGET', value: capital.toString() },
+        { key: 'TOTAL_LOAN_PROFIT', value: "0" },
+        { key: 'TOTAL_FINE_PROFIT', value: "0" },
+        { key: 'TOTAL_RANK_PROFIT', value: "0" },
+        { key: 'MONTHLY_STATS', value: "[]" }
+      ]);
+    }
+
+    sendSafeJson(res, { 
+      success: true, 
+      message: `Hệ thống đã được thiết lập thành công theo Ngày bắt đầu ${startDate} với Hạn mức Vốn lưu động là ${capital.toLocaleString()} đ.`
+    });
+  } catch (e: any) {
+    console.error("Lỗi trong /api/re-establish:", e);
+    res.status(500).json({ error: "Lỗi máy chủ nội bộ", message: e.message });
+  }
+});
+
 router.post("/reset", async (req: any, res) => {
   try {
     if (!req.user?.isAdmin) {

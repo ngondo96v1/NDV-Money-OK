@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { User, UserRank, LoanRecord, Notification, AppSettings } from '../types';
-import { TrendingUp, CreditCard, History, FileText, CalendarDays, Star, Activity, AlertCircle, ChevronLeft, ChevronRight, Eye, Bell, RefreshCcw, AlertTriangle, Zap, Trophy, HelpCircle } from 'lucide-react';
+import { LogOut, TrendingUp, CreditCard, History, FileText, CalendarDays, Star, Activity, AlertCircle, ChevronLeft, ChevronRight, Eye, Bell, RefreshCcw, AlertTriangle, Zap, Trophy, HelpCircle } from 'lucide-react';
 import NotificationModal from './NotificationModal';
 import { calculateFine } from '../utils';
 
@@ -195,14 +195,6 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
             <h1 className="text-sm font-black text-white tracking-widest uppercase">Money</h1>
           </div>
           <div className="flex items-center gap-2">
-            {!settings.MAINTENANCE_MODE && (
-              <button 
-                onClick={onOpenLuckySpin}
-                className="w-8 h-8 bg-[#111111] border border-white/5 rounded-full flex items-center justify-center text-[#ff8c00] active:scale-90 transition-all"
-              >
-                <Zap size={16} fill="currentColor" />
-              </button>
-            )}
             <button 
               onClick={onViewManual}
               className="w-8 h-8 bg-[#111111] border border-white/5 rounded-full flex items-center justify-center text-blue-400 active:scale-90 transition-all"
@@ -223,6 +215,13 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
                   <span className="text-[7px] font-black text-white">{unreadCount}</span>
                 </div>
               )}
+            </button>
+            <button 
+              onClick={onLogout}
+              className="w-8 h-8 bg-[#111111] border border-white/5 rounded-full flex items-center justify-center text-gray-500 hover:text-red-500 hover:bg-red-500/10 active:scale-90 transition-all"
+              title="Thoát"
+            >
+              <LogOut size={16} />
             </button>
           </div>
         </div>
