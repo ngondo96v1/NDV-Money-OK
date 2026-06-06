@@ -19,9 +19,7 @@ const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, 
     if (contract.settlementType === 'PARTIAL' && contract.partialAmount && contract.partialAmount > 0) {
       return {
         isPartial: true,
-        date: contract.updatedAt 
-          ? new Date(contract.updatedAt).toLocaleDateString('vi-VN') 
-          : new Date().toLocaleDateString('vi-VN'),
+        date: getContractDate(contract),
         amount: contract.partialAmount
       };
     }
@@ -39,9 +37,7 @@ const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, 
       if (previousPartialLoan) {
         return {
           isPartial: true,
-          date: previousPartialLoan.updatedAt 
-            ? new Date(previousPartialLoan.updatedAt).toLocaleDateString('vi-VN') 
-            : getContractDate(previousPartialLoan),
+          date: getContractDate(previousPartialLoan),
           amount: previousPartialLoan.partialAmount
         };
       }
@@ -49,7 +45,7 @@ const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, 
       // Fallback
       return {
         isPartial: true,
-        date: contract.updatedAt ? new Date(contract.updatedAt).toLocaleDateString('vi-VN') : getContractDate(contract),
+        date: getContractDate(contract),
         amount: 0
       };
     }
@@ -58,6 +54,94 @@ const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, 
   };
 
   const partialDetails = getPartialPaymentDetails();
+
+  // Find the original loan record if this is a renewal/extension/partial payment
+  const getOriginalLoan = () => {
+    if (!loans || loans.length === 0) return contract;
+    // Base ID to compare against
+    const baseId = (contract.originalBaseId || contract.id).trim().toUpperCase();
+    
+    // Clean various potential suffixes or prefixes to get original raw ID
+    const cleanId = baseId.replace(/^(GH\s+|TTMP\s+|GOP\s+|TT\s+)/, '').replace(/\s+(GOP|GỞI|GIA HẠN.*|TTMP.*|GOP-GOP.*)$/, '').trim();
+    
+    const found = loans.filter(l => {
+      const lId = l.id.trim().toUpperCase();
+      const lBaseId = (l.originalBaseId || l.id).trim().toUpperCase();
+      const cleanLId = lId.replace(/^(GH\s+|TTMP\s+|GOP\s+|TT\s+)/, '').replace(/\s+(GOP|GỞI|GIA HẠN.*|TTMP.*|GOP-GOP.*)$/, '').trim();
+      return lId === cleanId || lBaseId === cleanId || cleanLId === cleanId;
+    });
+    
+    if (found.length > 0) {
+      const sorted = [...found].sort((a, b) => Number(a.principalPaymentCount || 0) - Number(b.principalPaymentCount || 0));
+      return sorted[0];
+    }
+    
+    return contract;
+  };
+
+  const originalLoan = getOriginalLoan();
+
+  // Find the exact actual date when this specific change (extension/partial payment) was established
+  const getModificationDate = (): string => {
+    if (contract.status === 'CHỜ TẤT TOÁN') {
+      if (contract.updatedAt) {
+        try {
+          const dateObj = new Date(Number(contract.updatedAt));
+          if (!isNaN(dateObj.getTime())) {
+            return dateObj.toLocaleDateString('vi-VN');
+          }
+        } catch (e) {}
+      }
+      return new Date().toLocaleDateString('vi-VN');
+    }
+
+    const currentCount = Number(contract.principalPaymentCount || 0);
+
+    if (currentCount > 0 && loans && loans.length > 0) {
+      const cleanBaseId = (contract.originalBaseId || '').trim().toUpperCase() || 
+                          contract.id.trim().toUpperCase().replace(/^(GH\s+|TTMP\s+|GOP\s+|TT\s+)/, '').replace(/\s+(GOP|GỞI|GIA HẠN.*|TTMP.*|GOP-GOP.*)$/, '').trim();
+
+      const previousLoan = loans.find(l => {
+        if (l.userId !== contract.userId) return false;
+        
+        const lBaseId = (l.originalBaseId || '').trim().toUpperCase() ||
+                        l.id.trim().toUpperCase().replace(/^(GH\s+|TTMP\s+|GOP\s+|TT\s+)/, '').replace(/\s+(GOP|GỞI|GIA HẠN.*|TTMP.*|GOP-GOP.*)$/, '').trim();
+        
+        const isSameBase = lBaseId === cleanBaseId || l.id.toUpperCase().includes(cleanBaseId);
+        const isPrevCount = Number(l.principalPaymentCount || 0) === currentCount - 1;
+        
+        return isSameBase && isPrevCount;
+      });
+
+      if (previousLoan && previousLoan.settledAt) {
+        try {
+          const dateObj = new Date(previousLoan.settledAt);
+          if (!isNaN(dateObj.getTime())) {
+            return dateObj.toLocaleDateString('vi-VN');
+          }
+        } catch (e) {
+          console.error("Error parsing previous settledAt for modification date:", e);
+        }
+      }
+    }
+
+    const isGH = contract.id.toUpperCase().includes('GH') || (contract.extensionCount || 0) > 0;
+    const isTTMP = contract.id.toUpperCase().includes('TTMP') || (contract.partialPaymentCount || 0) > 0;
+    
+    if ((isGH || isTTMP) && contract.updatedAt) {
+      try {
+        const dateObj = new Date(Number(contract.updatedAt));
+        if (!isNaN(dateObj.getTime())) {
+          return dateObj.toLocaleDateString('vi-VN');
+        }
+      } catch (e) {}
+    }
+
+    return getContractDate(contract);
+  };
+
+  const modificationDate = getModificationDate();
+  const modifiedContract = { ...contract, customDate: modificationDate };
 
   const getMode2Details = () => {
     // 1. If currently in pending queue
@@ -160,14 +244,14 @@ const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, 
             {/* Song song Hai mốc thời gian */}
             <div className="grid grid-cols-2 gap-3 bg-gray-50 border border-gray-100 rounded-xl p-3 shadow-xs relative z-10 flex-none text-left">
               <div className="space-y-1 border-r border-gray-200/50 pr-3">
-                <span className="text-[6.5px] font-black text-gray-400 uppercase tracking-widest block">NGÀY KÝ HĐ</span>
-                <span className="text-[9.5px] font-black text-gray-900 block">{getContractDate(contract)}</span>
+                <span className="text-[6.5px] font-black text-gray-400 uppercase tracking-widest block">NGÀY KÝ HĐ GỐC</span>
+                <span className="text-[9.5px] font-black text-gray-900 block">{getContractDate(originalLoan)}</span>
                 <span className="text-[5.5px] text-gray-400 font-bold block">Thời gian thiết lập hồ sơ vay ban đầu</span>
               </div>
               <div className="space-y-1 pl-1">
                 <span className="text-[6.5px] font-black text-orange-500 uppercase tracking-widest block">{mode2Details.title}</span>
                 <span className="text-[9.5px] font-black text-orange-600 block">
-                  {contract.updatedAt ? new Date(contract.updatedAt).toLocaleDateString('vi-VN') : getContractDate(contract)}
+                  {modificationDate}
                 </span>
                 <span className="text-[5.5px] text-orange-400 font-bold block leading-none">
                   {mode2Details.sub}
@@ -219,24 +303,24 @@ const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, 
                 </div>
                 <div className={`${clause.title.toLowerCase().includes('phí phạt') ? 'bg-red-50/50 border border-red-100' : 'bg-gray-50 border border-gray-100'} rounded-xl p-3 shadow-sm`}>
                   {(() => {
-                    const content = replaceContractPlaceholders(clause.content, user, contract);
+                    const content = replaceContractPlaceholders(clause.content, user, modifiedContract);
                     const isParties = clause.title.toLowerCase().includes('bên giao kết');
                     const isFine = clause.title.toLowerCase().includes('phí phạt');
 
                     const highlightPlaceholders = (text: string) => {
                       if (!user) return text;
                       const placeholders = [
-                        contract.amount ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(contract.amount) : null,
-                        contract.date,
+                        modifiedContract.amount ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(modifiedContract.amount) : null,
+                        modifiedContract.date,
                         user.fullName,
                         user.idNumber,
-                        contract.loanPurpose,
+                        modifiedContract.loanPurpose,
                         user.bankName,
                         user.bankAccountNumber,
                         user.phone,
                         user.address,
-                        contract.id,
-                        getContractDate(contract),
+                        modifiedContract.id,
+                        getContractDate(modifiedContract),
                         '................'
                       ].filter(Boolean);
 

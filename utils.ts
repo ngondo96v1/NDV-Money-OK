@@ -62,19 +62,30 @@ export const calculateFine = (amount: number, dueDateStr: string, fineRate = 0.0
 };
 
 export const getContractDate = (contract: any): string => {
-  if (contract?.createdAt) {
-    try {
-      const parts = contract.createdAt.trim().split(' ');
-      if (parts.length === 2 && parts[1].includes('/')) {
-        return parts[1];
-      } else {
-        const d = new Date(contract.createdAt);
+  const fields = [contract?.customDate, contract?.createdAt, contract?.date];
+  for (const val of fields) {
+    if (val) {
+      try {
+        const trimmed = String(val).trim();
+        // Regular expression matching dd/mm/yyyy or d/m/yyyy regardless of surrounding text
+        const dateRegex = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/;
+        const match = trimmed.match(dateRegex);
+        if (match) {
+          // Normalizing: pad single days/months with leading zero if needed, or return original match
+          const day = match[1].padStart(2, '0');
+          const month = match[2].padStart(2, '0');
+          const year = match[3];
+          return `${day}/${month}/${year}`;
+        }
+        
+        // Secondary try: standard date parsing
+        const d = new Date(trimmed);
         if (!isNaN(d.getTime())) {
           return d.toLocaleDateString('vi-VN');
         }
+      } catch (e) {
+        console.error("Error parsing contractDate:", e);
       }
-    } catch (e) {
-      console.error("Error parsing contractDate:", e);
     }
   }
   return new Date().toLocaleDateString('vi-VN');
