@@ -887,31 +887,41 @@ const App: React.FC = () => {
     };
 
     if (userId === 'ADMIN') {
+      let nextList: Notification[] = [];
       setAdminNotifications(prev => {
         const exists = prev.some(n => n.id === newNotif.id);
         if (exists) return prev;
-        const next = [newNotif, ...prev].slice(0, 100);
-        
-        authenticatedFetch('/api/notifications', {
-          method: 'POST',
-          body: JSON.stringify(next.slice(0, 3))
-        }).catch(e => console.error("Lỗi lưu thông báo admin:", e));
-        
-        return next;
+        nextList = [newNotif, ...prev].slice(0, 100);
+        return nextList;
       });
+      
+      // Execute side effect outside state updater
+      setTimeout(() => {
+        if (nextList.length > 0) {
+          authenticatedFetch('/api/notifications', {
+            method: 'POST',
+            body: JSON.stringify(nextList.slice(0, 3))
+          }).catch(e => console.error("Lỗi lưu thông báo admin:", e));
+        }
+      }, 0);
     } else {
+      let nextList: Notification[] = [];
       setNotifications(prev => {
         const exists = prev.some(n => n.id === newNotif.id);
         if (exists) return prev;
-        const next = [newNotif, ...prev].slice(0, 50); 
-        
-        authenticatedFetch('/api/notifications', {
-          method: 'POST',
-          body: JSON.stringify(next.slice(0, 3))
-        }).catch(e => console.error("Lỗi lưu thông báo:", e));
-        
-        return next;
+        nextList = [newNotif, ...prev].slice(0, 50); 
+        return nextList;
       });
+      
+      // Execute side effect outside state updater
+      setTimeout(() => {
+        if (nextList.length > 0) {
+          authenticatedFetch('/api/notifications', {
+            method: 'POST',
+            body: JSON.stringify(nextList.slice(0, 3))
+          }).catch(e => console.error("Lỗi lưu thông báo:", e));
+        }
+      }, 0);
     }
   };
 

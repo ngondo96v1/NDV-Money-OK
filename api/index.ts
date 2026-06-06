@@ -3986,9 +3986,21 @@ router.post("/sync", async (req: any, res) => {
     }
     
     // 5. Update Notifications
+    const existingNotificationIds = new Set<string>();
     if (notifications && Array.isArray(notifications) && notifications.length > 0) {
       const sanitizedNotifications = sanitizeData(notifications, NOTIFICATION_COLUMNS);
       if (sanitizedNotifications.length > 0) {
+        // Query existing notification IDs first to check for duplicates
+        const incomingIds = sanitizedNotifications.map(n => n.id);
+        const { data: existingNotifs } = await client
+          .from('notifications')
+          .select('id')
+          .in('id', incomingIds);
+          
+        if (existingNotifs) {
+          existingNotifs.forEach((e: any) => existingNotificationIds.add(e.id));
+        }
+
         const { error } = await client.from('notifications').upsert(sanitizedNotifications, { onConflict: 'id' });
         if (error) {
           console.error("[SYNC] Notifications upsert failed:", JSON.stringify(error));
@@ -4011,8 +4023,8 @@ router.post("/sync", async (req: any, res) => {
       if (notifications) {
         notifications.forEach((n: any) => {
           io.to(`user_${n.userId}`).emit("notification_updated", n);
-          // Only trigger push for new notifications, not updates of read status
-          if (n.userId !== 'ADMIN' && !n.read) {
+          // Only trigger push for BRAND NEW unread notifications, not updates or existing ones
+          if (!existingNotificationIds.has(n.id) && n.userId !== 'ADMIN' && !n.read) {
             triggerPushForUser(n.userId, n.title, n.message, client);
           }
         });

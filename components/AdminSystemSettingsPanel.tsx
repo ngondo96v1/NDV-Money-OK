@@ -132,7 +132,7 @@ const AdminSystemSettingsPanel: React.FC<AdminSystemSettingsPanelProps> = ({
   handleSaveSettings,
   sqlSchema
 }) => {
-  const [settingsTab, setSettingsTab] = useState<'security_tech' | 'payment_gate' | 'finance_ranks' | 'contracts_formats' | 'gift_rewards' | 'system_utils'>('security_tech');
+  const [settingsTab, setSettingsTab] = useState<'security_tech' | 'payment_gate' | 'finance_ranks' | 'contracts_formats' | 'gift_rewards' | 'system_utils' | null>(null);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
   const toggleSection = (sectionKey: string) => {
@@ -143,50 +143,104 @@ const AdminSystemSettingsPanel: React.FC<AdminSystemSettingsPanelProps> = ({
   };
 
   const menuItems = [
-    { id: 'security_tech', label: '🛡️ BẢO MẬT & KỸ THUẬT', desc: 'CSDL, API, Admin và Bảo trì' },
-    { id: 'payment_gate', label: '💳 TÀI KHOẢN NHẬN TIỀN', desc: 'PayOS & Bank thụ nhận VietQR' },
-    { id: 'finance_ranks', label: '💵 HẠN MỨC & TÀI CHÍNH', desc: 'Hạn mức vay, Phí dịch vụ, Hạng VIP' },
-    { id: 'contracts_formats', label: '📄 ĐỊNH DẠNG & HỢP ĐỒNG', desc: 'Sửa điều khoản và thiết lập mã ID' },
-    { id: 'gift_rewards', label: '🎁 SỰ KIỆN & QUÀ TẶNG', desc: 'Vòng quay và danh sách Vouchers' },
-    { id: 'system_utils', label: '⚙️ TIỆN ÍCH HỆ THỐNG', desc: 'Link Zalo, Chữ chạy, Giả lập Robot' }
+    { id: 'security_tech', label: '🛡️ BẢO MẬT & KỸ THUẬT', desc: 'Bảo mật CSDL, API, sđt hotline, mật khẩu Admin và chế độ bảo trì' },
+    { id: 'payment_gate', label: '💳 TÀI KHOẢN NHẬN TIỀN', desc: 'Cổng nhận tiền tự động bằng PayOS và tài khoản VietQR thụ nhận' },
+    { id: 'finance_ranks', label: '💵 HẠN MỨC & TÀI CHÍNH', desc: 'Cấu hình hạn mức vay tối đa, lãi phạt, nâng hạng, đặc quyền VIP' },
+    { id: 'contracts_formats', label: '📄 ĐỊNH DẠNG & HỢP ĐỒNG', desc: 'Mẫu văn bản ký số trực tuyến kết hợp bảng định dạng ID thông minh' },
+    { id: 'gift_rewards', label: '🎁 SỰ KIỆN & QUÀ TẶNG', desc: 'Thiết lập dải tỉ lệ vàng trúng quà và mốc Voucher vòng quay Lucky Spin' },
+    { id: 'system_utils', label: '⚙️ TIỆN ÍCH HỆ THỐNG', desc: 'Nhóm Zalo, thông báo chữ chạy, lệnh phát thông báo nổi FCM' }
   ];
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="w-full space-y-6">
       
-      {/* Sidebar Navigation */}
-      <div className="w-full lg:w-64 flex-none flex flex-col gap-2 self-start bg-black/40 p-2.5 rounded-2xl border border-white/5 shadow-inner">
-        <div className="px-3 py-2 border-b border-white/5 mb-1.5">
-          <span className="text-[8px] font-black tracking-widest text-[#ff8c00] uppercase">MỤC CẤU HÌNH</span>
-        </div>
-        {menuItems.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setSettingsTab(tab.id as any)}
-            className={`w-full text-left p-3.5 rounded-xl border transition-all duration-300 relative overflow-hidden group flex flex-col gap-1 ${
-              settingsTab === tab.id
-                ? 'bg-[#ff8c00]/15 border-[#ff8c00]/35 text-white shadow-lg shadow-orange-950/20'
-                : 'bg-white/0 border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
-            }`}
-          >
-            {settingsTab === tab.id && (
-              <div className="absolute top-0 left-0 w-1 h-full bg-[#ff8c00]"></div>
-            )}
-            <div className="flex items-center justify-between">
-              <span className={`text-[9px] font-black tracking-wide uppercase ${settingsTab === tab.id ? 'text-[#ff8c00]' : 'text-gray-300 group-hover:text-white'}`}>
-                {tab.label}
+      {/* Categories Bento Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
+        {menuItems.map((tab) => {
+          const iconMap: Record<string, any> = {
+            'security_tech': <Shield size={24} className="text-red-400" />,
+            'payment_gate': <CreditCard size={24} className="text-orange-400" />,
+            'finance_ranks': <Wallet size={24} className="text-green-400" />,
+            'contracts_formats': <FileText size={24} className="text-blue-400" />,
+            'gift_rewards': <Trophy size={24} className="text-yellow-400" />,
+            'system_utils': <Wrench size={24} className="text-cyan-400" />
+          };
+          const badgeMap: Record<string, string> = {
+            'security_tech': 'Hệ Thống',
+            'payment_gate': 'Thanh Toán',
+            'finance_ranks': 'Tài Chính',
+            'contracts_formats': 'Hợp Đống',
+            'gift_rewards': 'Sự Kiện',
+            'system_utils': 'Tiện Ích'
+          };
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setSettingsTab(tab.id as any)}
+              className="group text-left bg-gradient-to-b from-white/[0.03] to-transparent border border-white/10 rounded-3xl p-6 hover:border-[#ff8c00]/40 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-950/10 flex flex-col justify-between min-h-[160px] relative overflow-hidden active:scale-[0.98]"
+            >
+              <div className="absolute top-0 right-0 w-24 h-24 bg-[#ff8c00]/5 rounded-full blur-2xl filter group-hover:bg-[#ff8c00]/10 transition-colors duration-500 pointer-events-none"></div>
+              
+              <div className="space-y-3.5 w-full">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center group-hover:border-[#ff8c00]/25 group-hover:bg-[#ff8c00]/10 transition-colors duration-300">
+                    {iconMap[tab.id]}
+                  </div>
+                  <span className="text-[7.5px] font-black tracking-widest text-[#ff8c00] bg-[#ff8c00]/5 border border-[#ff8c00]/25 px-2.5 py-1 rounded-lg">
+                    {badgeMap[tab.id]}
+                  </span>
+                </div>
+                
+                <div className="space-y-1">
+                  <h4 className="text-[10.5px] font-black text-white tracking-wide uppercase group-hover:text-[#ff8c00] transition-colors">{tab.label.replace(/^[^\s]+\s+/, '')}</h4>
+                  <p className="text-[8px] font-semibold text-gray-500 leading-normal uppercase group-hover:text-gray-400 transition-colors">{tab.desc}</p>
+                </div>
+              </div>
+              
+              <span className="text-[7.5px] font-black text-gray-400 group-hover:text-white uppercase tracking-widest mt-4 flex items-center gap-1 group-hover:translate-x-1.5 transition-transform duration-300">
+                MỞ THIẾT LẬP <ChevronRight size={10} className="text-[#ff8c00] flex-none" />
               </span>
-              <ChevronRight size={12} className={`transition-transform duration-300 ${settingsTab === tab.id ? 'translate-x-1 text-[#ff8c00]' : 'text-gray-600 group-hover:text-gray-400'}`} />
-            </div>
-            <span className="text-[7.5px] font-bold text-gray-500 uppercase leading-relaxed group-hover:text-gray-400">
-              {tab.desc}
-            </span>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Main Settings Panel */}
-      <div className="flex-1 min-w-0 bg-[#111111] border border-white/5 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+      {/* Settings Modal overlay */}
+      {settingsTab !== null && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-300">
+          <div className="bg-[#111111] border border-white/10 w-full max-w-4xl rounded-[32px] overflow-hidden flex flex-col shadow-2xl relative max-h-[90vh]">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-white/5 bg-black/60">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-[#ff8c00]/10 border border-[#ff8c00]/20 flex items-center justify-center text-[#ff8c00]">
+                  {settingsTab === 'security_tech' && <Shield size={16} />}
+                  {settingsTab === 'payment_gate' && <CreditCard size={16} />}
+                  {settingsTab === 'finance_ranks' && <Wallet size={16} />}
+                  {settingsTab === 'contracts_formats' && <FileText size={16} />}
+                  {settingsTab === 'gift_rewards' && <Trophy size={16} />}
+                  {settingsTab === 'system_utils' && <Wrench size={16} />}
+                </div>
+                <div>
+                  <h3 className="text-xs font-black text-white uppercase tracking-widest">
+                    {menuItems.find(m => m.id === settingsTab)?.label}
+                  </h3>
+                  <p className="text-[7.5px] font-bold text-gray-500 uppercase tracking-wider mt-0.5">
+                    {menuItems.find(m => m.id === settingsTab)?.desc}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSettingsTab(null)}
+                className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white text-gray-400 flex items-center justify-center transition-all duration-300 active:scale-95"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Scrollable Contents Section */}
+            <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6 custom-scrollbar bg-black/20">
+
         
         {/* TAB 1: BẢO MẬT & KỸ THUẬT */}
         {settingsTab === 'security_tech' && (
@@ -2163,7 +2217,21 @@ const AdminSystemSettingsPanel: React.FC<AdminSystemSettingsPanelProps> = ({
           </div>
         )}
 
-      </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-black/50 border-t border-white/5 flex justify-end gap-3.5">
+              <button 
+                onClick={() => setSettingsTab(null)}
+                className="px-5 py-3.5 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-black rounded-xl text-[9px] uppercase tracking-widest active:scale-95 transition-all text-center"
+              >
+                HOÀN TẤT & ĐÓNG
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

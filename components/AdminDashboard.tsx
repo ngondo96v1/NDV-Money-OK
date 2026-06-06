@@ -806,18 +806,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
                     </div>
 
                     {/* Revenue Text Overlay Above the Bar */}
-                    {data.total > 0 && (
-                      <span className="text-[6px] sm:text-[7px] font-black text-[#00ffcc] mb-1 select-none whitespace-nowrap">
-                        {(data.total / 1000).toLocaleString('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}k
-                      </span>
-                    )}
+                    <div className="h-4 flex items-center justify-center select-none mb-1">
+                      {data.total > 0 ? (
+                        <span className="text-[6px] sm:text-[7px] font-black text-[#00ffcc] whitespace-nowrap">
+                          {(data.total / 1000).toLocaleString('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}k
+                        </span>
+                      ) : (
+                        <span className="text-[6px] text-gray-700/40 font-bold select-none">0</span>
+                      )}
+                    </div>
 
-                    {/* Interactive Bar */}
-                    <div className="w-full rounded-t-md relative overflow-hidden transition-all duration-300 group-hover:brightness-125" style={{ height: `${finalHeight}%` }}>
-                      {/* Background Gradient */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-[#ff8c00]/60 via-[#ff0055]/70 to-[#00ffcc] shadow-[0_0_10px_rgba(0,255,204,0.1)]"></div>
-                      {/* Active Hover Glow Accent */}
-                      <div className="absolute inset-x-0 top-0 h-1.5 bg-white opacity-0 group-hover:opacity-40 transition-opacity"></div>
+                    {/* Stable insulated height base container for the bar */}
+                    <div className="w-full h-28 flex flex-col justify-end items-center relative">
+                      {/* Interactive Bar */}
+                      <div 
+                        className="w-full rounded-t-md relative overflow-hidden transition-all duration-300 group-hover:brightness-125" 
+                        style={{ height: `${finalHeight}%` }}
+                      >
+                        {/* Background Gradient */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#ff8c00]/60 via-[#ff0055]/70 to-[#00ffcc] shadow-[0_0_10px_rgba(0,255,204,0.1)]"></div>
+                        {/* Active Hover Glow Accent */}
+                        <div className="absolute inset-x-0 top-0 h-1.5 bg-white opacity-0 group-hover:opacity-40 transition-opacity"></div>
+                      </div>
                     </div>
 
                     {/* Month Label */}
