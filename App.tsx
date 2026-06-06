@@ -2856,9 +2856,7 @@ const App: React.FC = () => {
           type: 'LOAN_DISBURSE',
           amount: disburseAmount,
           balanceAfter: calculatedBudget,
-          note: isConsolidatedDisburse 
-            ? `Giải ngân và cộng dồn khoản vay ${loan.id} vào nợ cũ của ${loan.userName}`
-            : `Giải ngân khoản vay ${loan.id} cho ${loan.userName}`,
+          note: `[Hệ thống] Giải ngân${isConsolidatedDisburse ? ' (Cộng dồn)' : ''} cho ${(loan.userName || '').toUpperCase()} (${loan.userId || ''})`,
           createdAt: new Date().toISOString()
         };
         setBudgetLogs(prev => {
@@ -2867,12 +2865,13 @@ const App: React.FC = () => {
           return next;
         });
       } else if (action === 'SETTLE') {
+        const settleName = loan.settlementType === 'PRINCIPAL' ? 'Gia hạn' : loan.settlementType === 'PARTIAL' ? 'TTMP' : 'Tất toán';
         newBudgetLog = {
           id: `BL${Date.now()}`,
           type: 'LOAN_REPAY',
           amount: budgetDelta,
           balanceAfter: calculatedBudget,
-          note: `Thu hồi khoản vay ${loan.id} từ ${loan.userName} (${loan.settlementType === 'PRINCIPAL' ? 'Gia hạn' : loan.settlementType === 'PARTIAL' ? 'TTMP' : 'Tất toán'})`,
+          note: `[Hệ thống] Thu hồi (${settleName}) của ${(loan.userName || '').toUpperCase()} (${loan.userId || ''})`,
           createdAt: new Date().toISOString()
         };
         setBudgetLogs(prev => {
@@ -3075,7 +3074,7 @@ const App: React.FC = () => {
             type: 'ADD',
             amount: upgradeFeeSize,
             balanceAfter: calculatedBudget,
-            note: `Phí nâng hạng từ ${targetUser.fullName} (${rankName})`,
+            note: `[Hệ thống] Nâng hạng ${rankName} của ${(targetUser.fullName || '').toUpperCase()} (${targetUser.id || ''})`,
             createdAt: new Date().toISOString()
           };
           setBudgetLogs(prev => {
@@ -3351,12 +3350,15 @@ const App: React.FC = () => {
         financialUpdated = true;
         if (Math.abs(budgetDiff) > 0) {
           newBudget += budgetDiff;
+          const targetU = registeredUsers.find(u => u.id === targetLoan.userId);
+          const customerName = targetU?.fullName || targetLoan.userName || targetLoan.userId || 'Người dùng';
+          const diffLabel = budgetDiff > 0 ? 'Điều chỉnh tăng ngân sách' : 'Điều chỉnh giảm ngân sách';
           newBudgetLog = {
             id: `BL${Date.now()}`,
             type: budgetDiff > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
             amount: Math.abs(budgetDiff),
             balanceAfter: newBudget,
-            note: `Điều chỉnh thủ công khoản vay ${loanId} (${oldStatus} -> ${newStatus})`,
+            note: `[Hệ thống] Điều chỉnh (${budgetDiff > 0 ? '+' : '-'}) của ${(customerName || '').toUpperCase()} (${targetLoan.userId || ''})`,
             createdAt: new Date().toISOString()
           };
         }

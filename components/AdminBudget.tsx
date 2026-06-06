@@ -69,6 +69,128 @@ const AdminBudget: React.FC<AdminBudgetProps> = ({ currentBudget, logs, onUpdate
         }
       });
     }
+
+    // ON-THE-FLY REFORMATTER FOR CONSISTENT & GORGEOUS LOG LAYOUT
+    try {
+      const lower = formattedNote.toLowerCase();
+      const isThuHoi = lower.includes('thu hồi');
+      const isGiaiNgan = lower.includes('giải ngân');
+      const isUpgrade = lower.includes('nâng hạng');
+      const isAdjust = lower.includes('điều chỉnh');
+
+      if (isThuHoi || isGiaiNgan || isUpgrade || isAdjust) {
+        // Extract prefix
+        const prefix = formattedNote.includes('[Tự động]') ? '[Tự động]' : '[Hệ thống]';
+
+        // Extract potential user identity ID from parenthesis at the end
+        const matchEndParenthesis = formattedNote.match(/\(([^)]+)\)$/);
+        let finalUserId = '';
+        let matchedLoanId = '';
+
+        if (matchEndParenthesis) {
+          const content = matchEndParenthesis[1].trim();
+          // Is it a loan ID?
+          const foundLoan = (loans || []).find(l => l.id === content);
+          if (foundLoan) {
+            matchedLoanId = foundLoan.id;
+            finalUserId = foundLoan.userId || '';
+          } else {
+            // Check if it's a user ID
+            const foundUser = (users || []).find(u => u.id === content || (u.phone === content));
+            if (foundUser) {
+              finalUserId = foundUser.id;
+            } else {
+              // Fallback
+              finalUserId = content;
+            }
+          }
+        }
+
+        // If we didn't find the user ID, try scanning the entire string for any loan ID we know
+        if (!finalUserId && loans && loans.length > 0) {
+          for (const l of loans) {
+            if (l.id && formattedNote.includes(l.id)) {
+              matchedLoanId = l.id;
+              finalUserId = l.userId || '';
+              break;
+            }
+          }
+        }
+
+        // If we still don't have matching user ID, search for user phone or custom id in the text
+        if (!finalUserId && users && users.length > 0) {
+          for (const u of users) {
+             if (u.id && formattedNote.includes(u.id)) {
+               finalUserId = u.id;
+               break;
+             }
+          }
+        }
+
+        // Extract Customer Name from the text
+        let customerName = '';
+        const nameMatch = formattedNote.match(/(?:KH|của khách hàng|của|cho)\s+([^+-:\d(]+)/i);
+        if (nameMatch) {
+          customerName = nameMatch[1].trim().split(' với')[0].split(' -')[0].split(' +')[0].trim();
+        }
+
+        // Fallback name search via found user
+        if (!customerName && finalUserId && users) {
+          const matchedU = users.find(u => u.id === finalUserId);
+          if (matchedU) {
+            customerName = matchedU.fullName || matchedU.phone;
+          }
+        }
+
+        if (customerName) {
+          customerName = customerName.toUpperCase();
+        }
+
+        // Now based on type, output the exact desired message format
+        if (isThuHoi) {
+          // Settle type name (All, Partial, Extension)
+          let settleType = 'Tất toán';
+          const settleTypeMatch = formattedNote.match(/Thu hồi\s*\(([^)]+)\)/i);
+          if (settleTypeMatch) {
+            settleType = settleTypeMatch[1].trim();
+          }
+          const idSuffix = finalUserId ? ` (${finalUserId})` : '';
+          return `${prefix} Thu hồi (${settleType}) của ${customerName || 'KH'}${idSuffix}`;
+        }
+
+        if (isGiaiNgan) {
+          // Check if it is consolidated (cộng dồn)
+          const isCongDon = lower.includes('cộng dồn');
+          const actionLabel = isCongDon ? 'Giải ngân (Cộng dồn)' : 'Giải ngân';
+          const idSuffix = finalUserId ? ` (${finalUserId})` : '';
+          return `${prefix} ${actionLabel} cho ${customerName || 'KH'}${idSuffix}`;
+        }
+
+        if (isUpgrade) {
+          let rankLabel = '';
+          const rankMatch = formattedNote.match(/Nâng hạng\s+([A-ZĐa-zÀ-ỹ\s]+?)(?:\s+của|\s+\(|$)/i);
+          if (rankMatch) {
+            rankLabel = rankMatch[1].trim();
+          }
+          const idSuffix = finalUserId ? ` (${finalUserId})` : '';
+          return `${prefix} Nâng hạng ${rankLabel || 'VIP'} của ${customerName || 'KH'}${idSuffix}`;
+        }
+
+        if (isAdjust) {
+          let sign = '';
+          const signMatch = formattedNote.match(/Điều chỉnh\s*\(([^)]+)\)/i);
+          if (signMatch) {
+            sign = signMatch[1].trim();
+          }
+          const signText = sign ? ` (${sign})` : '';
+          const idSuffix = finalUserId ? ` (${finalUserId})` : '';
+          return `${prefix} Điều chỉnh${signText} của ${customerName || 'KH'}${idSuffix}`;
+        }
+      }
+    } catch (err) {
+      console.warn("Error inside on-the-fly budget log formatter:", err);
+    }
+
     return formattedNote;
   };
 

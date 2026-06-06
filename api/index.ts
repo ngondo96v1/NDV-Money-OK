@@ -4305,7 +4305,7 @@ router.post("/re-establish", async (req: any, res) => {
               id: `UPGRADE_${u.id}_${parsedDate.getTime()}`,
               type: 'ADD',
               amount: amt,
-              note: `[Hệ thống] Thu phí nâng hạng ${rankConf.name} của ${u.fullName} (${u.phone})`,
+              note: `[Hệ thống] Nâng hạng ${rankConf.name} của KH ${u.fullName} với +${amt.toLocaleString('vi-VN')} đ`,
               createdAt: parsedDate
             });
           }
@@ -4325,11 +4325,12 @@ router.post("/re-establish", async (req: any, res) => {
         if (isCreatedAfterStart && ['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN', 'ĐANG GIẢI NGÂN'].includes(loan.status)) {
           const cDate = parseDateStringServer(loan.createdAt || loan.date);
           if (cDate) {
+            const disburseActual = Number(loan.amount) * (1 - feePercent);
             compiledEvents.push({
               id: `DISBURSE_${loan.id}_${cDate.getTime()}`,
               type: 'LOAN_DISBURSE',
-              amount: Number(loan.amount),
-              note: `[Hệ thống] Giải ngân khoản vay hợp đồng ${loan.id} cho ${loanUser?.fullName || loan.userName || 'Người dùng'} - Phí dịch vụ 15%: ${((loan.amount || 0) * feePercent).toLocaleString()}đ`,
+              amount: disburseActual,
+              note: `[Hệ thống] Giải ngân cho ${(loanUser?.fullName || loan.userName || 'KH').toUpperCase()} (${loanUser?.id || loan.userId || ''})`,
               createdAt: cDate
             });
           }
@@ -4338,11 +4339,53 @@ router.post("/re-establish", async (req: any, res) => {
         if (isSettledAfterStart && (loan.status === 'ĐÃ TẤT TOÁN' || loan.status === 'CHỜ TẤT TOÁN')) {
           const sDate = parseDateStringServer(loan.settledAt || loan.createdAt || loan.date);
           if (sDate) {
+            let sType = loan.settlementType;
+            if (!sType) {
+              const baseId = (loan.originalBaseId || loan.id).trim().toLowerCase();
+              const nextLc = loans.find((l: any) => {
+                const lBase = (l.originalBaseId || l.id).trim().toLowerCase();
+                return lBase === baseId && Number(l.principalPaymentCount || 0) === (Number(loan.principalPaymentCount || 0) + 1);
+              });
+              if (nextLc) {
+                if (Number(nextLc.extensionCount || 0) > Number(loan.extensionCount || 0)) {
+                  sType = 'PRINCIPAL';
+                } else if (Number(nextLc.partialPaymentCount || 0) > Number(loan.partialPaymentCount || 0)) {
+                  sType = 'PARTIAL';
+                } else {
+                  sType = 'PRINCIPAL';
+                }
+              } else {
+                sType = 'ALL';
+              }
+            }
+
+            const settleName = sType === 'PRINCIPAL' ? 'Gia hạn' : sType === 'PARTIAL' ? 'TTMP' : 'Tất toán';
+            let repayAmt = 0;
+            if (sType === 'PRINCIPAL') {
+              repayAmt = (Number(loan.amount) * feePercent) + (Number(loan.fine) || 0);
+            } else if (sType === 'PARTIAL') {
+              const pAmount = Number(loan.partialAmount || 0);
+              const remainingPrincipal = Number(loan.amount) - pAmount;
+              repayAmt = pAmount + (remainingPrincipal * feePercent) + (Number(loan.fine) || 0);
+            } else {
+              let voucherDiscount = 0;
+              if (loan.voucherId && loanUser && loanUser.vouchers) {
+                const vouchersList = typeof loanUser.vouchers === 'string' ? JSON.parse(loanUser.vouchers) : loanUser.vouchers;
+                if (Array.isArray(vouchersList)) {
+                  const v = vouchersList.find((v: any) => v.id === loan.voucherId);
+                  if (v) {
+                    voucherDiscount = Number(v.amount) || 0;
+                  }
+                }
+              }
+              repayAmt = Math.max(0, (Number(loan.amount) + (Number(loan.fine) || 0)) - voucherDiscount);
+            }
+
             compiledEvents.push({
               id: `REPAY_${loan.id}_${sDate.getTime()}`,
               type: 'LOAN_REPAY',
-              amount: (Number(loan.partialAmount || loan.amount) || 0) + (Number(loan.fine) || 0),
-              note: `[Hệ thống] Thu hồi gốc & phạt cho HĐ ${loan.id} từ ${loanUser?.fullName || loan.userName || 'Người dùng'} (Số gốc: ${Number(loan.partialAmount || loan.amount).toLocaleString()}đ, Phạt: ${Number(loan.fine || 0).toLocaleString()}đ)`,
+              amount: repayAmt,
+              note: `[Hệ thống] Thu hồi (${settleName}) của ${(loanUser?.fullName || loan.userName || 'KH').toUpperCase()} (${loanUser?.id || loan.userId || ''})`,
               createdAt: sDate
             });
           }
@@ -5072,7 +5115,7 @@ router.post("/payment/webhook", async (req, res) => {
               type: 'LOAN_REPAY',
               amount: budgetUpdate,
               balanceAfter: newBudget,
-              note: `[Tự động] PayOS: ${settleLabelShort} khoản vay ${loanId} từ ${user.fullName || user.phone}`,
+              note: `[Tự động] Thu hồi (${settleLabelShort}) của ${(user.fullName || user.phone || 'KH').toUpperCase()} (${user.id || user.phone || ''})`,
               createdAt: new Date().toISOString()
             };
             await client.from('budget_logs').insert([budgetLog]);
@@ -5341,7 +5384,7 @@ router.post("/payment/webhook", async (req, res) => {
               type: 'ADD',
               amount: upgradeFee,
               balanceAfter: newBudget,
-              note: `[Tự động] PayOS: Nâng hạng ${rankLabel} cho ${user.fullName || user.phone}`,
+              note: `[Tự động] Nâng hạng ${rankLabel} của ${(user.fullName || user.phone || 'KH').toUpperCase()} (${user.id})`,
               createdAt: new Date().toISOString()
             };
             await client.from('budget_logs').insert([budgetLog]);
