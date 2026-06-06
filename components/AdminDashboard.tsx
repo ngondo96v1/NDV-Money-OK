@@ -190,6 +190,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
   const getItemRevenueDate = useCallback((item: any, type: 'loan' | 'user' | 'log'): Date | null => {
     if (type === 'loan') {
       const loan = item as LoanRecord;
+      const loanUser = (users || []).find(u => u.id === loan.userId);
+      if (loanUser?.isLocked) {
+        // Tài khoản bị phong toả chỉ tính doanh thu phí dịch vụ theo ngày giải ngân (createdAt) ban đầu, 
+        // không tính theo ngày gia hạn/đến hạn vốn thay đổi và dịch chuyển qua các kỳ sau này.
+        if (loan.createdAt) {
+          return parseDateString(loan.createdAt);
+        }
+      }
       if (loan.date) {
         const dueDate = parseDateString(loan.date);
         if (dueDate && !isNaN(dueDate.getTime())) {
@@ -215,7 +223,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       }
     }
     return null;
-  }, []);
+  }, [users]);
 
   const isItemRevenueMatched = useCallback((item: any, type: 'loan' | 'user' | 'log') => {
     if (revenueFilter === 'all') return true;
@@ -263,7 +271,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
 
   const availableYears = useMemo(() => {
     const years = new Set<number>([new Date().getFullYear()]);
-    filteredLoans.forEach(l => {
+    loans.forEach(l => {
       let revDate: Date | null = null;
       if (l.date) {
         const dueDate = parseDateString(l.date);
@@ -279,14 +287,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
         years.add(revDate.getFullYear());
       }
     });
-    filteredUsers.forEach(u => {
+    users.forEach(u => {
       const d = parseDateString(u.joinDate);
       if (d && !isNaN(d.getTime())) {
         years.add(d.getFullYear());
       }
     });
     return Array.from(years).sort((a, b) => b - a);
-  }, [filteredLoans, filteredUsers]);
+  }, [loans, users]);
 
   const chartData = useMemo(() => {
     const months = Array.from({ length: 12 }, (_, i) => ({
@@ -301,21 +309,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 0) / 100;
     const upgradePercent = Number(settings.UPGRADE_PERCENT || 0);
 
-    filteredLoans.forEach(loan => {
+    loans.forEach(loan => {
       const loanUser = users.find(u => u.id === loan.userId);
       if (!loanUser || loanUser.isAdmin || loanUser.phone === 'admin' || !loanUser.phone) return;
       if (loanUser.id === '5444' || loanUser.fullName?.toLowerCase().includes('test')) return;
 
       let revDate: Date | null = null;
-      if (loan.date) {
-        const dueDate = parseDateString(loan.date);
-        if (dueDate && !isNaN(dueDate.getTime())) {
-          revDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
-          revDate.setMonth(revDate.getMonth() - 1);
+      if (loanUser.isLocked) {
+        if (loan.createdAt) {
+          revDate = parseDateString(loan.createdAt);
         }
-      }
-      if (!revDate && loan.createdAt) {
-        revDate = parseDateString(loan.createdAt);
+      } else {
+        if (loan.date) {
+          const dueDate = parseDateString(loan.date);
+          if (dueDate && !isNaN(dueDate.getTime())) {
+            revDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+            revDate.setMonth(revDate.getMonth() - 1);
+          }
+        }
+        if (!revDate && loan.createdAt) {
+          revDate = parseDateString(loan.createdAt);
+        }
       }
 
       if (revDate && !isNaN(revDate.getTime()) && revDate.getFullYear() === chartYear) {
@@ -332,7 +346,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     const sortedRanks = settings.RANK_CONFIG ? [...settings.RANK_CONFIG].sort((a, b) => a.maxLimit - b.maxLimit) : [];
     const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'bronze';
 
-    filteredUsers.forEach(u => {
+    users.forEach(u => {
       if (u.isAdmin || u.phone === 'admin' || u.id === 'admin' || !u.phone || u.phone.length < 10) return;
       if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
 
@@ -353,7 +367,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     });
 
     return months;
-  }, [filteredLoans, filteredUsers, chartYear, settings, users]);
+  }, [loans, users, chartYear, settings]);
 
   const maxTotalRevenue = useMemo(() => {
     const maxVal = Math.max(...chartData.map(d => d.total), 0);
@@ -462,11 +476,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       const isRevenueFilterMatched = isItemRevenueMatched(loan, 'loan');
       if (!isRevenueFilterMatched) return;
 
-      if (activeStatuses.includes(loan.status)) {
-        serviceProfit += (loan.amount * feePercent);
-      }
-      if ((loan.status === 'ĐÃ TẤT TOÁN' || loan.status === 'CHỜ TẤT TOÁN') && loan.fine) {
-        penaltyProfit += Math.round((loan.fine || 0) / 1000) * 1000;
+      if (tempStartDate) {
+        // Chỉ giới hạn phí dịch vụ phát sinh từ ngày giải ngân (revDate) của giai đoạn hoạt động mới
+        const revDate = getItemRevenueDate(loan, 'loan');
+        const revDateStr = revDate ? revDate.toISOString().split('T')[0] : null;
+        const isFeeInPeriod = revDateStr ? isAfterOrEqualMatch(revDateStr, tempStartDate) : false;
+        
+        // Chỉ giới hạn tiền phạt phát sinh từ ngày tất toán (settledAt) hoặc ngày hiện hành của giai đoạn hoạt động mới
+        const settledDateStr = loan.settledAt || loan.updatedAt ? new Date(loan.settledAt || Number(loan.updatedAt || Date.now())).toISOString().split('T')[0] : null;
+        const isSettledInPeriod = settledDateStr ? isAfterOrEqualMatch(settledDateStr, tempStartDate) : false;
+        
+        if (activeStatuses.includes(loan.status) && isFeeInPeriod) {
+          serviceProfit += (loan.amount * feePercent);
+        }
+        if ((loan.status === 'ĐÃ TẤT TOÁN' || loan.status === 'CHỜ TẤT TOÁN') && loan.fine && isSettledInPeriod) {
+          penaltyProfit += Math.round((loan.fine || 0) / 1000) * 1000;
+        }
+      } else {
+        if (activeStatuses.includes(loan.status)) {
+          serviceProfit += (loan.amount * feePercent);
+        }
+        if ((loan.status === 'ĐÃ TẤT TOÁN' || loan.status === 'CHỜ TẤT TOÁN') && loan.fine) {
+          penaltyProfit += Math.round((loan.fine || 0) / 1000) * 1000;
+        }
       }
     });
 
@@ -496,7 +528,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       filteredFineProfit: penaltyProfit,
       filteredRankProfit: rProfit
     };
-  }, [revenueFilter, filteredLoans, filteredUsers, settings, isItemRevenueMatched, users]);
+  }, [revenueFilter, filteredLoans, filteredUsers, settings, isItemRevenueMatched, getItemRevenueDate, tempStartDate, users]);
 
   const isBudgetAlarm = useMemo(() => systemBudget <= Number(settings.MIN_SYSTEM_BUDGET || 2000000), [systemBudget, settings.MIN_SYSTEM_BUDGET]);
   
@@ -639,24 +671,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
                   {(filteredLoanProfit + filteredFineProfit + filteredRankProfit).toLocaleString()}
                   <span className="text-xs font-black text-[#00ffcc]/60 uppercase ml-1 align-middle">VND</span>
                 </h3>
-              </div>
-
-              {/* Revenue Filter Dropdown */}
-              <div className="flex items-center gap-1.5 shrink-0 select-none">
-                <select
-                  value={revenueFilter}
-                  onChange={(e) => {
-                    const val = e.target.value as 'all' | 'month' | 'year';
-                    setRevenueFilter(val);
-                    const label = val === 'all' ? 'Tất cả' : val === 'month' ? 'Tháng' : 'Năm';
-                    toast.success(`Đã lọc doanh thu: ${label}`);
-                  }}
-                  className="bg-[#1c1c1e] text-[9px] font-black uppercase tracking-widest text-[#00ffcc] border border-[#00ffcc]/20 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-[#00ffcc] focus:ring-1 focus:ring-[#00ffcc]/30 transition-all cursor-pointer shadow-md [color-scheme:dark]"
-                >
-                  <option value="all" className="bg-[#111111] text-white">Tất Cả</option>
-                  <option value="month" className="bg-[#111111] text-white">Tháng</option>
-                  <option value="year" className="bg-[#111111] text-white">Năm</option>
-                </select>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-2">

@@ -89,6 +89,7 @@ const AdminSystem: React.FC<AdminSystemProps> = ({ onReset, onImportSuccess, onB
   const [deleteOldLogs, setDeleteOldLogs] = useState(false);
   const [isReEstablishing, setIsReEstablishing] = useState(false);
   const [showReEstablishConfirm, setShowReEstablishConfirm] = useState(false);
+  const [showReEstablishModal, setShowReEstablishModal] = useState(false);
 
   const handleReEstablishExecute = async () => {
     setIsReEstablishing(true);
@@ -107,6 +108,7 @@ const AdminSystem: React.FC<AdminSystemProps> = ({ onReset, onImportSuccess, onB
       const result = await response.json();
       if (response.ok && result.success) {
         toast.success(result.message);
+        setShowReEstablishModal(false);
         if (onRefreshData) {
           await onRefreshData().catch(e => console.error(e));
         }
@@ -1505,40 +1507,38 @@ END $$;`;
 
       {activeTab === 'data' ? (
         /* Data Management Section */
-        <div className="bg-[#111111] border border-white/5 rounded-3xl p-6 space-y-6 mb-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="flex items-center gap-2.5">
+        <div className="bg-[#111111] border border-white/5 rounded-3xl p-6 mb-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex items-center gap-2.5 mb-5">
             <Database className="text-[#ff8c00]" size={18} />
             <h4 className="text-[10px] font-black text-white uppercase tracking-widest">TRÌNH QUẢN TRỊ DỮ LIỆU</h4>
           </div>
 
-          {/* Backup & Restore */}
+          {/* New Space-Saving Grid of Action Buttons */}
           <div className="grid grid-cols-2 gap-3">
+            {/* Export */}
             <button 
               onClick={handleExport}
               disabled={isExporting}
-              className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col items-center gap-3 hover:bg-white/10 active:scale-95 transition-all disabled:opacity-50"
+              className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/10 active:scale-95 transition-all disabled:opacity-50 text-center"
             >
-              <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-500">
-                {isExporting ? <Loader2 className="animate-spin" size={20} /> : <Download size={20} />}
+              <div className="w-8 h-8 bg-blue-500/15 rounded-xl flex items-center justify-center text-blue-500">
+                {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
               </div>
-              <div className="text-center">
-                <h5 className="text-[9px] font-black text-white uppercase tracking-widest">XUẤT DỮ LIỆU</h5>
-                <p className="text-[7px] font-bold text-gray-500 uppercase mt-1">Xuất toàn bộ cấu hình ra file</p>
-              </div>
+              <h5 className="text-[9px] font-black text-white uppercase tracking-wider">XUẤT SAO LƯU</h5>
+              <p className="text-[6.5px] font-bold text-gray-500 uppercase tracking-tight">Tải cấu hình hệ thống về máy</p>
             </button>
 
+            {/* Import */}
             <button 
               onClick={handleImportClick}
               disabled={isImporting}
-              className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col items-center gap-3 hover:bg-white/10 active:scale-95 transition-all disabled:opacity-50"
+              className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/10 active:scale-95 transition-all disabled:opacity-50 text-center"
             >
-              <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center text-green-500">
-                {isImporting ? <Loader2 className="animate-spin" size={20} /> : <Upload size={20} />}
+              <div className="w-8 h-8 bg-green-500/15 rounded-xl flex items-center justify-center text-green-500">
+                {isImporting ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />}
               </div>
-              <div className="text-center">
-                <h5 className="text-[9px] font-black text-white uppercase tracking-widest">NHẬP DỮ LIỆU</h5>
-                <p className="text-[7px] font-bold text-gray-500 uppercase mt-1">Nạp dữ liệu từ file backup</p>
-              </div>
+              <h5 className="text-[9px] font-black text-white uppercase tracking-wider">NHẬP SAO LƯU</h5>
+              <p className="text-[6.5px] font-bold text-gray-500 uppercase tracking-tight">Nạp dữ liệu từ file backup</p>
               <input 
                 type="file" 
                 ref={fileInputRef} 
@@ -1547,135 +1547,64 @@ END $$;`;
                 className="hidden" 
               />
             </button>
-          </div>
 
-          {/* SQL Migration Button */}
-          <div className="pt-2">
+            {/* SQL Sync */}
             <button 
               onClick={handleSqlAutoUpdate}
               disabled={isMigratingUnified}
-              className="w-full bg-blue-600/10 border border-blue-500/20 rounded-2xl p-4 flex items-center justify-between hover:bg-blue-600/20 active:scale-95 transition-all disabled:opacity-50 group"
+              className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/10 active:scale-95 transition-all disabled:opacity-50 text-center"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
-                  {isMigratingUnified ? <Loader2 className="animate-spin" size={20} /> : <Database size={20} />}
-                </div>
-                <div className="text-left">
-                  <h5 className="text-[9px] font-black text-white uppercase tracking-widest">ĐỒNG BỘ CẤU TRÚC SQL</h5>
-                  <p className="text-[7px] font-bold text-gray-500 uppercase mt-1">Tự động chuẩn hóa Schema & Database</p>
-                </div>
+              <div className="w-8 h-8 bg-cyan-500/15 rounded-xl flex items-center justify-center text-cyan-500">
+                {isMigratingUnified ? <Loader2 className="animate-spin" size={16} /> : <Database size={16} />}
               </div>
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
-                <ChevronRight size={16} />
-              </div>
+              <h5 className="text-[9px] font-black text-white uppercase tracking-wider">ĐỒNG BỘ SQL</h5>
+              <p className="text-[6.5px] font-bold text-gray-500 uppercase tracking-tight">Chuẩn hóa cấu trúc Database</p>
             </button>
-            
-            {migrationStatus && (
-              <div className={`mt-3 p-3 rounded-xl border text-[8px] font-bold uppercase tracking-widest flex items-center gap-2 ${
-                migrationStatus.type === 'success' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
-                migrationStatus.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
-                'bg-blue-500/10 border-blue-500/20 text-blue-500'
-              }`}>
-                {migrationStatus.type === 'success' ? <Check size={12} /> : 
-                 migrationStatus.type === 'error' ? <AlertCircle size={12} /> : 
-                 <Loader2 size={12} className="animate-spin" />}
-                {migrationStatus.message}
-              </div>
-            )}
-          </div>
 
-          {/* Format Sync Section */}
-          <div className="pt-2">
+            {/* Format Sync */}
             <button 
               onClick={handleSyncFormats}
               disabled={isSyncingFormats}
-              className="w-full bg-[#ff8c00]/10 border border-[#ff8c00]/20 rounded-2xl p-4 flex items-center justify-between hover:bg-[#ff8c00]/20 active:scale-95 transition-all disabled:opacity-50 group"
+              className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/10 active:scale-95 transition-all disabled:opacity-50 text-center"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-[#ff8c00]/20 rounded-xl flex items-center justify-center text-[#ff8c00] group-hover:scale-110 transition-transform">
-                  {isSyncingFormats ? <Loader2 className="animate-spin" size={20} /> : <RefreshCw size={20} />}
-                </div>
-                <div className="text-left">
-                  <h5 className="text-[9px] font-black text-white uppercase tracking-widest">ĐỒNG BỘ ĐỊNH DẠNG MÃ HỢP ĐỒNG</h5>
-                  <p className="text-[7px] font-bold text-gray-500 uppercase mt-1">Cập nhật toàn bộ mã hợp đồng & lịch sử theo thiết lập mới</p>
-                </div>
+              <div className="w-8 h-8 bg-orange-500/15 rounded-xl flex items-center justify-center text-orange-500">
+                {isSyncingFormats ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
               </div>
-              <div className="w-8 h-8 rounded-lg bg-[#ff8c00]/10 flex items-center justify-center text-[#ff8c00]">
-                <ChevronRight size={16} />
+              <h5 className="text-[9px] font-black text-white uppercase tracking-wider">CHUẨN MÃ HĐ</h5>
+              <p className="text-[6.5px] font-bold text-gray-500 uppercase tracking-tight">Đồng bộ chuẩn định dạng mã hợp đồng</p>
+            </button>
+
+            {/* Re-establish System Configuration (Phương án B) */}
+            <button 
+              onClick={() => setShowReEstablishModal(true)}
+              className="col-span-2 bg-[#ff8c00]/10 border border-[#ff8c00]/20 rounded-2xl p-4 flex items-center justify-center gap-3 hover:bg-[#ff8c00]/20 active:scale-95 transition-all"
+            >
+              <div className="w-8 h-8 bg-[#ff8c00]/20 rounded-xl flex items-center justify-center text-[#ff8c00]">
+                <Zap size={16} />
+              </div>
+              <div className="text-left">
+                <h5 className="text-[9px] font-black text-white uppercase tracking-wider">XÁC LẬP CHU KỲ MỚI (PHƯƠNG ÁN B)</h5>
+                <p className="text-[6.5px] font-bold text-[#ff8c00] uppercase tracking-normal mt-0.5">Xác lập thời điểm bắt đầu và vốn lưu động ban đầu</p>
               </div>
             </button>
           </div>
 
-          {/* Re-establish System Section (Phương án B) */}
-          <div className="pt-4 border-t border-white/5 space-y-4">
-            <div className="bg-white/5 rounded-3xl p-5 border border-white/10 space-y-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-orange-500/10 rounded-xl flex items-center justify-center text-orange-500">
-                  <Zap size={16} />
-                </div>
-                <div>
-                  <h5 className="text-[10px] font-black text-white uppercase tracking-widest">XÁC LẬP HỆ THỐNG MỚI (PHƯƠNG ÁN B)</h5>
-                  <p className="text-[7px] font-bold text-gray-500 uppercase mt-0.5">Xác lập thời điểm hoạt động và ngân sách lưu động thực tế</p>
-                </div>
-              </div>
-
-              {/* Date Input */}
-              <div className="space-y-1.5">
-                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest">NGÀY BẮT ĐẦU HOẠT ĐỘNG</label>
-                <input 
-                  type="date" 
-                  value={reEstablishStartDate}
-                  onChange={(e) => setReEstablishStartDate(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl text-white text-xs p-3 focus:border-orange-500 focus:outline-none placeholder-gray-600 font-bold uppercase tracking-widest"
-                />
-              </div>
-
-              {/* Starting Capital Input */}
-              <div className="space-y-1.5">
-                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest">VỐN LƯU ĐỘNG TIỀN MẶT BAN ĐẦU (ĐỒNG)</label>
-                <div className="relative">
-                  <input 
-                    type="text" 
-                    value={formatNumberWithDots(reEstablishCapital)}
-                    onChange={(e) => setReEstablishCapital(parseNumberFromDots(e.target.value))}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl text-white text-xs p-3 pr-10 focus:border-orange-500 focus:outline-none placeholder-gray-600 font-bold"
-                    placeholder="0"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-gray-500">ĐỒNG</span>
-                </div>
-                <div className="bg-orange-500/5 p-2 rounded-lg border border-orange-500/10 text-[7px] font-bold text-gray-400 leading-relaxed uppercase tracking-wider">
-                  💡 Thực tế hệ thống thu phí dịch vụ trước giải ngân. Đối với các khoản vay ĐANG NỢ hiện hành (8 khoản vay - Tổng 58.000.000đ), khi người dùng thanh toán/tất toán quá hạn trên hệ thống sau ngày {reEstablishStartDate}, toàn bộ vốn gốc thu về sẽ tự động cộng dồn vào quỹ Vốn Lưu Động thực tế!
-                </div>
-              </div>
-
-              {/* Delete Old Logs Checkbox */}
-              <div className="flex items-center gap-3 p-1">
-                <input 
-                  type="checkbox" 
-                  id="deleteOldLogsCheckbox"
-                  checked={deleteOldLogs}
-                  onChange={(e) => setDeleteOldLogs(e.target.checked)}
-                  className="w-4 h-4 rounded border-white/10 text-orange-500 bg-black focus:ring-orange-500 focus:ring-2"
-                />
-                <label htmlFor="deleteOldLogsCheckbox" className="text-[8px] font-black text-gray-300 uppercase tracking-wider cursor-pointer select-none">
-                  Dọn dẹp lịch sử biến động số dư cũ theo quy tắc hệ thống (&gt;60 ngày)
-                </label>
-              </div>
-
-              {/* Reset Submit button */}
-              <button 
-                onClick={() => setShowReEstablishConfirm(true)}
-                disabled={isReEstablishing || !reEstablishStartDate}
-                className="w-full bg-orange-500 text-black font-black py-3 rounded-2xl text-[9px] uppercase tracking-widest hover:bg-orange-400 transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-orange-950/20 disabled:opacity-50"
-              >
-                {isReEstablishing ? <Loader2 className="animate-spin" size={12} /> : <Sparkles size={12} />}
-                BẮT ĐẦU XÁC LẬP HỆ THỐNG
-              </button>
+          {/* Outcome logging / outputs */}
+          {migrationStatus && (
+            <div className={`mt-4 p-3 rounded-xl border text-[8px] font-bold uppercase tracking-widest flex items-center gap-2 ${
+              migrationStatus.type === 'success' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
+              migrationStatus.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
+              'bg-blue-500/10 border-blue-500/20 text-blue-500'
+            }`}>
+              {migrationStatus.type === 'success' ? <Check size={12} /> : 
+               migrationStatus.type === 'error' ? <AlertCircle size={12} /> : 
+               <Loader2 size={12} className="animate-spin" />}
+              {migrationStatus.message}
             </div>
-          </div>
+          )}
 
           {importMessage && (
-            <div className={`p-4 rounded-2xl border text-[9px] font-black uppercase tracking-widest flex items-center gap-3 animate-in slide-in-from-top-2 duration-300 ${
+            <div className={`mt-4 p-4 rounded-2xl border text-[9px] font-black uppercase tracking-widest flex items-center gap-3 animate-in slide-in-from-top-2 duration-300 ${
               importMessage.type === 'success' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'
             }`}>
               {importMessage.type === 'success' ? <Check size={14} /> : <AlertCircle size={14} />}
@@ -1795,6 +1724,91 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;`, 'rpc_sql')}
                   Đóng
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Cấu hình Xác lập Hệ thống theo Phương án B */}
+      {showReEstablishModal && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="bg-[#111111] border border-white/10 w-full max-w-sm rounded-[32px] p-6 space-y-5 relative shadow-2xl overflow-y-auto max-h-[90vh]">
+            <button 
+              onClick={() => setShowReEstablishModal(false)}
+              className="absolute top-5 right-5 text-gray-500 hover:text-white transition-colors"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="flex items-center gap-2 pb-2 border-b border-white/5">
+              <div className="w-8 h-8 bg-[#ff8c00]/15 rounded-xl flex items-center justify-center text-[#ff8c00]">
+                <Zap size={16} />
+              </div>
+              <div>
+                <h3 className="text-xs font-black text-white uppercase tracking-widest">XÁC LẬP HOẠT ĐỘNG</h3>
+                <p className="text-[7px] font-bold text-gray-500 uppercase tracking-wider">Thiết lập mốc hoạt động mới</p>
+              </div>
+            </div>
+
+            {/* Date Input */}
+            <div className="space-y-1.5">
+              <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest">NGÀY BẮT ĐẦU HOẠT ĐỘNG</label>
+              <input 
+                type="date" 
+                value={reEstablishStartDate}
+                onChange={(e) => setReEstablishStartDate(e.target.value)}
+                className="w-full bg-black/40 border border-white/10 rounded-xl text-white text-xs p-3 focus:border-orange-500 focus:outline-none placeholder-gray-600 font-bold uppercase tracking-widest"
+              />
+            </div>
+
+            {/* Starting Capital Input */}
+            <div className="space-y-1.5">
+              <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest">VỐN LƯU ĐỘNG TIỀM MẶT BAN ĐẦU (ĐỒNG)</label>
+              <div className="relative">
+                <input 
+                  type="text" 
+                  value={formatNumberWithDots(reEstablishCapital)}
+                  onChange={(e) => setReEstablishCapital(parseNumberFromDots(e.target.value))}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl text-white text-xs p-3 pr-10 focus:border-orange-500 focus:outline-none placeholder-gray-600 font-bold"
+                  placeholder="0"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-gray-500">ĐỒNG</span>
+              </div>
+              <div className="bg-orange-500/5 p-2 rounded-lg border border-orange-500/10 text-[7px] font-bold text-gray-400 leading-normal uppercase tracking-wider">
+                💡 Thực tế hệ thống thu phí dịch vụ trước giải ngân. Đối với các khoản vay ĐANG NỢ hiện hành, khi người dùng thanh toán/tất toán quá hạn trên hệ thống sau ngày {reEstablishStartDate}, toàn bộ vốn gốc thu về sẽ tự động cộng dồn vào quỹ Vốn Lưu Động thực tế!
+              </div>
+            </div>
+
+            {/* Delete Old Logs Checkbox */}
+            <div className="flex items-center gap-3 p-1">
+              <input 
+                type="checkbox" 
+                id="deleteOldLogsCheckboxModal"
+                checked={deleteOldLogs}
+                onChange={(e) => setDeleteOldLogs(e.target.checked)}
+                className="w-4 h-4 rounded border-white/10 text-orange-500 bg-black focus:ring-orange-500 focus:ring-2"
+              />
+              <label htmlFor="deleteOldLogsCheckboxModal" className="text-[8px] font-black text-gray-300 uppercase tracking-wider cursor-pointer select-none">
+                Dọn dẹp lịch sử biến động số dư cũ theo quy tắc hệ thống (&gt;60 ngày)
+              </label>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2 pt-2">
+              <button 
+                onClick={() => setShowReEstablishModal(false)}
+                className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black text-gray-400 uppercase tracking-widest hover:text-white transition-all active:scale-95"
+              >
+                HỦY BỎ
+              </button>
+              <button 
+                onClick={() => setShowReEstablishConfirm(true)}
+                disabled={isReEstablishing || !reEstablishStartDate}
+                className="flex-[1.5] py-3 bg-orange-500 text-black font-black rounded-xl text-[9px] uppercase tracking-widest hover:bg-orange-400 active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-orange-950/20 disabled:opacity-50"
+              >
+                {isReEstablishing ? <Loader2 className="animate-spin" size={12} /> : <Sparkles size={11} />}
+                XÁC LẬP NGAY
+              </button>
             </div>
           </div>
         </div>
