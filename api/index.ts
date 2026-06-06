@@ -4246,22 +4246,6 @@ router.post("/re-establish", async (req: any, res) => {
       return (bY - aY) !== 0 ? (bY - aY) : (bM - aM);
     }).slice(0, 6);
 
-    // Calculate final budget
-    const finalBudget = capital + derivedFeeProfit + derivedFineProfit + derivedRankProfit - activeDebt;
-
-    // Save accurate configuration keys
-    const configUpdates = [
-      { key: 'SYSTEM_START_DATE', value: startDate },
-      { key: 'SYSTEM_BUDGET', value: finalBudget.toString() },
-      { key: 'TOTAL_LOAN_PROFIT', value: derivedFeeProfit.toString() },
-      { key: 'TOTAL_FINE_PROFIT', value: derivedFineProfit.toString() },
-      { key: 'TOTAL_RANK_PROFIT', value: derivedRankProfit.toString() },
-      { key: 'MONTHLY_STATS', value: JSON.stringify(monthlyStats) }
-    ];
-
-    const { error: cfgErr } = await client.from('config').upsert(configUpdates, { onConflict: 'key' });
-    if (cfgErr) throw cfgErr;
-
     // Maintain Budget Logs
     const { data: existingLogs } = await client.from('budget_logs').select('*');
     const manualLogs = existingLogs ? existingLogs.filter((log: any) => 
@@ -4305,7 +4289,7 @@ router.post("/re-establish", async (req: any, res) => {
               id: `UPGRADE_${u.id}_${parsedDate.getTime()}`,
               type: 'ADD',
               amount: amt,
-              note: `[Hệ thống] Nâng hạng ${rankConf.name} của KH ${u.fullName} với +${amt.toLocaleString('vi-VN')} đ`,
+              note: `[Hệ thống] Nâng hạng ${rankConf.name} của ${(u.fullName || '').toUpperCase()} (${u.id})`,
               createdAt: parsedDate
             });
           }
@@ -4396,16 +4380,35 @@ router.post("/re-establish", async (req: any, res) => {
     // Sort chronologically ascending
     compiledEvents.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
-    // Generate rolling balances
-    let runningBalance = capital;
+    // Trace logs chronologically to determine peak deficit and auto-re-adjust initial capital
+    let testBalance = capital;
+    let peakDeficit = 0;
+    compiledEvents.forEach((ev: any) => {
+      if (ev.type === 'ADD' || ev.type === 'LOAN_REPAY') {
+        testBalance += ev.amount;
+      } else if (ev.type === 'LOAN_DISBURSE' || ev.type === 'WITHDRAW') {
+        testBalance -= ev.amount;
+      }
+      if (testBalance < 0) {
+        const gap = Math.abs(testBalance);
+        if (gap > peakDeficit) {
+          peakDeficit = gap;
+        }
+      }
+    });
+
+    const finalStartingCapital = capital + peakDeficit;
+
+    // Generate rolling balances starting with finalStartingCapital
+    let runningBalance = finalStartingCapital;
     const reconstructedLogs: any[] = [];
 
     reconstructedLogs.push({
       id: `INITIAL_${Date.now()}`,
       type: 'INITIAL',
-      amount: capital,
-      balanceAfter: capital,
-      note: `Khởi tạo Vốn Lưu Động ban đầu: ${capital.toLocaleString()}đ (Thiết lập dự án bắt đầu từ ngày ${startDate})`,
+      amount: finalStartingCapital,
+      balanceAfter: finalStartingCapital,
+      note: `Khởi tạo Vốn Lưu Động ban đầu: ${finalStartingCapital.toLocaleString()}đ (Thiết lập dự án bắt đầu từ ngày ${startDate})${peakDeficit > 0 ? ' [Tự động cân đối bù trừ âm]' : ''}`,
       createdAt: new Date(startDate).toISOString()
     });
 
@@ -4424,6 +4427,22 @@ router.post("/re-establish", async (req: any, res) => {
         createdAt: ev.createdAt.toISOString()
       });
     });
+
+    // Calculate final budget safely using simulated runningBalance (never negative!)
+    const finalBudget = Math.max(0, runningBalance);
+
+    // Save accurate configuration keys
+    const configUpdates = [
+      { key: 'SYSTEM_START_DATE', value: startDate },
+      { key: 'SYSTEM_BUDGET', value: finalBudget.toString() },
+      { key: 'TOTAL_LOAN_PROFIT', value: derivedFeeProfit.toString() },
+      { key: 'TOTAL_FINE_PROFIT', value: derivedFineProfit.toString() },
+      { key: 'TOTAL_RANK_PROFIT', value: derivedRankProfit.toString() },
+      { key: 'MONTHLY_STATS', value: JSON.stringify(monthlyStats) }
+    ];
+
+    const { error: cfgErr } = await client.from('config').upsert(configUpdates, { onConflict: 'key' });
+    if (cfgErr) throw cfgErr;
 
     // Wipe previous logs and save chunked reconstructed logs
     const { error: clearErr } = await client.from('budget_logs').delete().neq('id', 'KEEP_NONE');
