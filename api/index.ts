@@ -694,7 +694,7 @@ export const runBatchPenalties = async (io: any) => {
     
     // Fetch all active/overdue loans
     const { data: allActiveLoans, error: loanError } = await client.from('loans')
-      .select('id,userId,status,date')
+      .select('id,userId,status,date,amount')
       .in('status', ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG VAY', 'CHỜ DUYỆT TÍNH PHÍ']);
       
     if (loanError) throw loanError;
@@ -1378,9 +1378,13 @@ const resolveMasterConfigServer = (
   const userPart = context.userId || "USER";
 
   // Align with utils.ts resolveMasterConfig legacy logic:
-  // {ID} and {USER} become userId
+  // {USER} becomes userId
   // {MHD} and {CONTRACT} become originalId
-  result = result.replace(/\{ID\}|\{USER\}/gi, userPart);
+  result = result.replace(/\{USER\}/gi, userPart);
+  result = result.replace(/\{ID\}/gi, () => {
+    if (context.originalId) return context.originalId;
+    return userPart;
+  });
   result = result.replace(/\{MHD\}|\{CONTRACT\}/gi, () => {
     if (context.originalId) return context.originalId;
     // Generate 4 random digits as fallback for {MHD} if no originalId provided
@@ -2073,7 +2077,7 @@ router.get("/data", async (req, res) => {
           try {
             const settings = await getMergedSettings(client);
             // Need loans for penalty calculation
-            const { data: userLoans } = await client.from('loans').select('id,userId,status,date').eq('userId', data[0].id);
+            const { data: userLoans } = await client.from('loans').select('id,userId,status,date,amount').eq('userId', data[0].id);
             const processedUser = await processRankPenalties(data[0], userLoans || [], settings, client, (req as any).app.get("io"));
             data[0] = { ...data[0], ...processedUser };
           } catch (penaltyErr) {
@@ -4035,6 +4039,63 @@ router.post("/sync", async (req: any, res) => {
   }
 });
 
+const parseDateStringServer = (str: string | undefined | null): Date | null => {
+  if (!str) return null;
+  if (typeof str === 'number') return new Date(str);
+  const cleaned = str.trim();
+  
+  if (/^\d+$/.test(cleaned)) {
+    return new Date(parseInt(cleaned, 10));
+  }
+
+  const nativeDate = new Date(cleaned);
+  if (!isNaN(nativeDate.getTime()) && cleaned.includes('-')) {
+    return nativeDate;
+  }
+
+  const dateRegex = /(\d{1,2})\/(\d{1,2})\/(\d{4})/;
+  const dateMatch = cleaned.match(dateRegex);
+  
+  if (dateMatch) {
+    const day = parseInt(dateMatch[1], 10);
+    const month = parseInt(dateMatch[2], 10) - 1;
+    const year = parseInt(dateMatch[3], 10);
+    
+    const timeRegex = /(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/;
+    const timeMatch = cleaned.match(timeRegex);
+    
+    let hour = 0, minute = 0, second = 0;
+    if (timeMatch) {
+      hour = parseInt(timeMatch[1], 10) || 0;
+      minute = parseInt(timeMatch[2], 10) || 0;
+      second = parseInt(timeMatch[3], 10) || 0;
+    }
+    
+    const d = new Date(year, month, day, hour, minute, second);
+    if (!isNaN(d.getTime())) return d;
+  }
+  
+  return isNaN(nativeDate.getTime()) ? null : nativeDate;
+};
+
+const isDateOnOrAfterServer = (dateStr: string | undefined | null, benchmarkStr: string | null): boolean => {
+  if (!dateStr || !benchmarkStr) return true;
+  try {
+    const testDate = parseDateStringServer(dateStr);
+    if (!testDate || isNaN(testDate.getTime())) return false;
+    
+    const benchmarkParts = benchmarkStr.split('-');
+    const benchmarkDate = new Date(Number(benchmarkParts[0]), Number(benchmarkParts[1]) - 1, Number(benchmarkParts[2]), 0, 0, 0);
+    
+    const testMidnight = new Date(testDate.getFullYear(), testDate.getMonth(), testDate.getDate()).getTime();
+    const benchmarkMidnight = new Date(benchmarkDate.getFullYear(), benchmarkDate.getMonth(), benchmarkDate.getDate()).getTime();
+    
+    return testMidnight >= benchmarkMidnight;
+  } catch (e) {
+    return true;
+  }
+};
+
 router.post("/re-establish", async (req: any, res) => {
   try {
     if (!req.user?.isAdmin) {
@@ -4050,54 +4111,313 @@ router.post("/re-establish", async (req: any, res) => {
 
     const capital = Number(startingCapital || 0);
 
-    // Update crucial configuration keys
+    // Dynamic Reconstruction and recovery of actual data
+    const [{ data: users }, { data: loans }, { data: settingsList }] = await Promise.all([
+      client.from('users').select('*'),
+      client.from('loans').select('*'),
+      client.from('config').select('*')
+    ]);
+
+    const settings: any = {};
+    if (settingsList) {
+      settingsList.forEach((r: any) => {
+        settings[r.key] = r.value;
+      });
+    }
+
+    const upgradePercent = Number(settings.UPGRADE_PERCENT || 5);
+    const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 15) / 100;
+    
+    // Calculate Rank Profit
+    let derivedRankProfit = 0;
+    const sortedRanks = settings.RANK_CONFIG ? (typeof settings.RANK_CONFIG === 'string' ? JSON.parse(settings.RANK_CONFIG) : settings.RANK_CONFIG).sort((a: any, b: any) => a.maxLimit - b.maxLimit) : [];
+    const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'bronze';
+
+    if (users) {
+      users.forEach((u: any) => {
+        if (u.isAdmin || u.phone === 'admin' || !u.phone || u.phone.length < 10) return;
+        if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
+
+        const isUpgradedAfterStart = isDateOnOrAfterServer(u.updatedAt ? new Date(Number(u.updatedAt)).toISOString() : u.joinDate, startDate);
+        if (isUpgradedAfterStart && u.rank && u.rank !== lowestRankId && !u.isFreeUpgrade && u.rankApproved !== false) {
+          const rankConf = sortedRanks.find((r: any) => r.id === u.rank);
+          if (rankConf) {
+            derivedRankProfit += (rankConf.maxLimit * (upgradePercent / 100));
+          }
+        }
+      });
+    }
+
+    // Calculate Loan & Fine Profit
+    let derivedFeeProfit = 0;
+    let derivedFineProfit = 0;
+    let activeDebt = 0;
+    const activeStatuses = ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'CHỜ DUYỆT TÍNH PHÍ'];
+
+    if (loans) {
+      loans.forEach((loan: any) => {
+        const loanUser = users ? users.find((u: any) => u.id === loan.userId) : null;
+        if (loanUser && (loanUser.isAdmin || !loanUser.phone)) return;
+
+        const isCreatedAfterStart = isDateOnOrAfterServer(loan.createdAt || loan.date, startDate);
+        const isSettledAfterStart = isDateOnOrAfterServer(loan.settledAt || loan.createdAt || loan.date, startDate);
+
+        if (isCreatedAfterStart) {
+          if (['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN', 'ĐANG GIẢI NGÂN'].includes(loan.status)) {
+            derivedFeeProfit += (Number(loan.amount || 0) * feePercent);
+          }
+          if (activeStatuses.includes(loan.status)) {
+            activeDebt += Number(loan.amount || 0);
+          }
+        }
+        if (isSettledAfterStart) {
+          if ((loan.status === 'ĐÃ TẤT TOÁN' || loan.status === 'CHỜ TẤT TOÁN') && loan.fine) {
+            derivedFineProfit += Math.round((Number(loan.fine) || 0) / 1000) * 1000;
+          }
+        }
+      });
+    }
+
+    // Reconstruct Monthly stats
+    const monthlyData: Record<string, { month: string, rankProfit: number, loanProfit: number, fineProfit: number, totalProfit: number }> = {};
+    if (users) {
+      users.forEach((u: any) => {
+        if (u.isAdmin || u.phone === 'admin' || !u.phone || u.phone.length < 10) return;
+        if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
+
+        const dateStr = u.updatedAt ? new Date(Number(u.updatedAt)).toISOString() : u.joinDate;
+        const parsedDate = parseDateStringServer(dateStr);
+        if (!parsedDate || isNaN(parsedDate.getTime())) return;
+
+        const isUpgradedAfter = isDateOnOrAfterServer(dateStr, startDate);
+        if (isUpgradedAfter && u.rank && u.rank !== lowestRankId && !u.isFreeUpgrade && u.rankApproved !== false) {
+          const rankConf = sortedRanks.find((r: any) => r.id === u.rank);
+          if (rankConf) {
+            const mKey = `${(parsedDate.getMonth() + 1).toString().padStart(2, '0')}/${parsedDate.getFullYear()}`;
+            if (!monthlyData[mKey]) {
+              monthlyData[mKey] = { month: mKey, rankProfit: 0, loanProfit: 0, fineProfit: 0, totalProfit: 0 };
+            }
+            const amt = (rankConf.maxLimit * (upgradePercent / 100));
+            monthlyData[mKey].rankProfit += amt;
+            monthlyData[mKey].totalProfit += amt;
+          }
+        }
+      });
+    }
+
+    if (loans) {
+      loans.forEach((loan: any) => {
+        const loanUser = users ? users.find((u: any) => u.id === loan.userId) : null;
+        if (loanUser && (loanUser.isAdmin || !loanUser.phone)) return;
+
+        const createdDate = parseDateStringServer(loan.createdAt || loan.date);
+        if (createdDate && !isNaN(createdDate.getTime())) {
+          const isCreatedAfter = isDateOnOrAfterServer(loan.createdAt || loan.date, startDate);
+          if (isCreatedAfter && ['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN', 'ĐANG GIẢI NGÂN'].includes(loan.status)) {
+            const mKey = `${(createdDate.getMonth() + 1).toString().padStart(2, '0')}/${createdDate.getFullYear()}`;
+            if (!monthlyData[mKey]) {
+              monthlyData[mKey] = { month: mKey, rankProfit: 0, loanProfit: 0, fineProfit: 0, totalProfit: 0 };
+            }
+            const amt = (Number(loan.amount) || 0) * feePercent;
+            monthlyData[mKey].loanProfit += amt;
+            monthlyData[mKey].totalProfit += amt;
+          }
+        }
+
+        const settledDate = parseDateStringServer(loan.settledAt || loan.createdAt || loan.date);
+        if (settledDate && !isNaN(settledDate.getTime())) {
+          const isSettledAfter = isDateOnOrAfterServer(loan.settledAt || loan.createdAt || loan.date, startDate);
+          if (isSettledAfter && (loan.status === 'ĐÃ TẤT TOÁN' || loan.status === 'CHỜ TẤT TOÁN') && loan.fine) {
+            const mKey = `${(settledDate.getMonth() + 1).toString().padStart(2, '0')}/${settledDate.getFullYear()}`;
+            if (!monthlyData[mKey]) {
+              monthlyData[mKey] = { month: mKey, rankProfit: 0, loanProfit: 0, fineProfit: 0, totalProfit: 0 };
+            }
+            const amt = Math.round((Number(loan.fine) || 0) / 1000) * 1000;
+            monthlyData[mKey].fineProfit += amt;
+            monthlyData[mKey].totalProfit += amt;
+          }
+        }
+      });
+    }
+
+    const monthlyStats = Object.values(monthlyData).sort((a: any, b: any) => {
+      const [aM, aY] = a.month.split('/').map(Number);
+      const [bM, bY] = b.month.split('/').map(Number);
+      return (bY - aY) !== 0 ? (bY - aY) : (bM - aM);
+    }).slice(0, 6);
+
+    // Calculate final budget
+    const finalBudget = capital + derivedFeeProfit + derivedFineProfit + derivedRankProfit - activeDebt;
+
+    // Save accurate configuration keys
     const configUpdates = [
       { key: 'SYSTEM_START_DATE', value: startDate },
-      { key: 'SYSTEM_BUDGET', value: capital.toString() },
-      { key: 'TOTAL_LOAN_PROFIT', value: "0" },
-      { key: 'TOTAL_FINE_PROFIT', value: "0" },
-      { key: 'TOTAL_RANK_PROFIT', value: "0" },
-      { key: 'MONTHLY_STATS', value: "[]" }
+      { key: 'SYSTEM_BUDGET', value: finalBudget.toString() },
+      { key: 'TOTAL_LOAN_PROFIT', value: derivedFeeProfit.toString() },
+      { key: 'TOTAL_FINE_PROFIT', value: derivedFineProfit.toString() },
+      { key: 'TOTAL_RANK_PROFIT', value: derivedRankProfit.toString() },
+      { key: 'MONTHLY_STATS', value: JSON.stringify(monthlyStats) }
     ];
 
     const { error: cfgErr } = await client.from('config').upsert(configUpdates, { onConflict: 'key' });
     if (cfgErr) throw cfgErr;
 
-    // Optional budget logs removal
-    if (deleteOldLogs) {
-      const { error: delLogsErr } = await client.from('budget_logs').delete().neq('id', 'placeholder__');
-      if (delLogsErr) {
-        console.error("[RE-ESTABLISH] Error deleting old budget logs:", delLogsErr);
+    // Maintain Budget Logs
+    const { data: existingLogs } = await client.from('budget_logs').select('*');
+    const manualLogs = existingLogs ? existingLogs.filter((log: any) => 
+      (log.type === 'ADD' || log.type === 'WITHDRAW') && 
+      !log.note?.includes('[Hệ thống]') && 
+      !log.note?.includes('PayOS:')
+    ) : [];
+
+    const compiledEvents: any[] = [];
+    
+    // Add manual logs
+    manualLogs.forEach((log: any) => {
+      const logDate = parseDateStringServer(log.createdAt);
+      if (logDate && isDateOnOrAfterServer(log.createdAt, startDate)) {
+        compiledEvents.push({
+          id: log.id,
+          type: log.type,
+          amount: Number(log.amount),
+          note: log.note,
+          createdAt: logDate
+        });
       }
+    });
+
+    // Reconstruct VIP upgrades
+    if (users) {
+      users.forEach((u: any) => {
+        if (u.isAdmin || u.phone === 'admin' || !u.phone || u.phone.length < 10) return;
+        if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
+
+        const dateStr = u.updatedAt ? new Date(Number(u.updatedAt)).toISOString() : u.joinDate;
+        const parsedDate = parseDateStringServer(dateStr);
+        if (!parsedDate) return;
+
+        const isUpgradedAfter = isDateOnOrAfterServer(dateStr, startDate);
+        if (isUpgradedAfter && u.rank && u.rank !== lowestRankId && !u.isFreeUpgrade && u.rankApproved !== false) {
+          const rankConf = sortedRanks.find((r: any) => r.id === u.rank);
+          if (rankConf) {
+            const amt = (rankConf.maxLimit * (upgradePercent / 100));
+            compiledEvents.push({
+              id: `UPGRADE_${u.id}_${parsedDate.getTime()}`,
+              type: 'ADD',
+              amount: amt,
+              note: `[Hệ thống] Thu phí nâng hạng ${rankConf.name} của ${u.fullName} (${u.phone})`,
+              createdAt: parsedDate
+            });
+          }
+        }
+      });
     }
 
-    // Insert the custom INITIAL starting budget log
-    const nowStr = new Date().toISOString();
-    const { error: logErr } = await client.from('budget_logs').insert([{
+    // Reconstruct loan disbursements & collections
+    if (loans) {
+      loans.forEach((loan: any) => {
+        const loanUser = users ? users.find((u: any) => u.id === loan.userId) : null;
+        if (loanUser && (loanUser.isAdmin || !loanUser.phone)) return;
+
+        const isCreatedAfterStart = isDateOnOrAfterServer(loan.createdAt || loan.date, startDate);
+        const isSettledAfterStart = isDateOnOrAfterServer(loan.settledAt || loan.createdAt || loan.date, startDate);
+
+        if (isCreatedAfterStart && ['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN', 'ĐANG GIẢI NGÂN'].includes(loan.status)) {
+          const cDate = parseDateStringServer(loan.createdAt || loan.date);
+          if (cDate) {
+            compiledEvents.push({
+              id: `DISBURSE_${loan.id}_${cDate.getTime()}`,
+              type: 'LOAN_DISBURSE',
+              amount: Number(loan.amount),
+              note: `[Hệ thống] Giải ngân khoản vay hợp đồng ${loan.id} cho ${loanUser?.fullName || loan.userName || 'Người dùng'} - Phí dịch vụ 15%: ${((loan.amount || 0) * feePercent).toLocaleString()}đ`,
+              createdAt: cDate
+            });
+          }
+        }
+
+        if (isSettledAfterStart && (loan.status === 'ĐÃ TẤT TOÁN' || loan.status === 'CHỜ TẤT TOÁN')) {
+          const sDate = parseDateStringServer(loan.settledAt || loan.createdAt || loan.date);
+          if (sDate) {
+            compiledEvents.push({
+              id: `REPAY_${loan.id}_${sDate.getTime()}`,
+              type: 'LOAN_REPAY',
+              amount: (Number(loan.partialAmount || loan.amount) || 0) + (Number(loan.fine) || 0),
+              note: `[Hệ thống] Thu hồi gốc & phạt cho HĐ ${loan.id} từ ${loanUser?.fullName || loan.userName || 'Người dùng'} (Số gốc: ${Number(loan.partialAmount || loan.amount).toLocaleString()}đ, Phạt: ${Number(loan.fine || 0).toLocaleString()}đ)`,
+              createdAt: sDate
+            });
+          }
+        }
+      });
+    }
+
+    // Sort chronologically ascending
+    compiledEvents.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+    // Generate rolling balances
+    let runningBalance = capital;
+    const reconstructedLogs: any[] = [];
+
+    reconstructedLogs.push({
       id: `INITIAL_${Date.now()}`,
       type: 'INITIAL',
       amount: capital,
       balanceAfter: capital,
       note: `Khởi tạo Vốn Lưu Động ban đầu: ${capital.toLocaleString()}đ (Thiết lập dự án bắt đầu từ ngày ${startDate})`,
-      createdAt: nowStr
-    }]);
-    if (logErr) throw logErr;
+      createdAt: new Date(startDate).toISOString()
+    });
+
+    compiledEvents.forEach((ev: any) => {
+      if (ev.type === 'ADD' || ev.type === 'LOAN_REPAY') {
+        runningBalance += ev.amount;
+      } else if (ev.type === 'LOAN_DISBURSE' || ev.type === 'WITHDRAW') {
+        runningBalance = Math.max(0, runningBalance - ev.amount);
+      }
+      reconstructedLogs.push({
+        id: ev.id,
+        type: ev.type,
+        amount: ev.amount,
+        balanceAfter: runningBalance,
+        note: ev.note,
+        createdAt: ev.createdAt.toISOString()
+      });
+    });
+
+    // Wipe previous logs and save chunked reconstructed logs
+    const { error: clearErr } = await client.from('budget_logs').delete().neq('id', 'KEEP_NONE');
+    if (clearErr) throw clearErr;
+
+    if (reconstructedLogs.length > 0) {
+      reconstructedLogs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      for (let i = 0; i < reconstructedLogs.length; i += 200) {
+        const chunk = reconstructedLogs.slice(i, i + 200);
+        const { error: insErr } = await client.from('budget_logs').insert(chunk);
+        if (insErr) {
+          console.error(`[RE-ESTABLISH] Error inserting logs at chunk ${i}:`, insErr);
+        }
+      }
+    }
 
     // Emit configuration updates instantly to all clients
     if (io) {
       io.emit("config_updated", [
         { key: 'SYSTEM_START_DATE', value: startDate },
-        { key: 'SYSTEM_BUDGET', value: capital.toString() },
-        { key: 'TOTAL_LOAN_PROFIT', value: "0" },
-        { key: 'TOTAL_FINE_PROFIT', value: "0" },
-        { key: 'TOTAL_RANK_PROFIT', value: "0" },
-        { key: 'MONTHLY_STATS', value: "[]" }
+        { key: 'SYSTEM_BUDGET', value: finalBudget.toString() },
+        { key: 'TOTAL_LOAN_PROFIT', value: derivedFeeProfit.toString() },
+        { key: 'TOTAL_FINE_PROFIT', value: derivedFineProfit.toString() },
+        { key: 'TOTAL_RANK_PROFIT', value: derivedRankProfit.toString() },
+        { key: 'MONTHLY_STATS', value: JSON.stringify(monthlyStats) }
       ]);
+      io.to("admin").emit("sync_completed", { 
+        users: users || [], 
+        loans: loans || [], 
+        configUpdates 
+      });
     }
 
     sendSafeJson(res, { 
       success: true, 
-      message: `Hệ thống đã được thiết lập thành công theo Ngày bắt đầu ${startDate} với Hạn mức Vốn lưu động là ${capital.toLocaleString()} đ.`
+      message: `Hệ thống đã được đồng bộ phục hồi thành công dữ liệu thực tế từ Ngày ${startDate}. Vốn lưu động còn lại: ${finalBudget.toLocaleString()} đ, Phí dịch vụ: ${derivedFeeProfit.toLocaleString()} đ, Phạt: ${derivedFineProfit.toLocaleString()} đ, Phí nâng hạng: ${derivedRankProfit.toLocaleString()} đ, Tổng số Log tích lũy: ${reconstructedLogs.length}.`
     });
   } catch (e: any) {
     console.error("Lỗi trong /api/re-establish:", e);
@@ -4402,7 +4722,7 @@ router.post("/payment/create-link", async (req, res) => {
       const masterConfigs = Array.isArray(settings?.MASTER_CONFIGS) ? settings.MASTER_CONFIGS : [];
       
       if (type === 'UPGRADE') {
-        const masterUpgrade = masterConfigs.find((c: any) => c.systemMeaning === 'transfer_upgrade');
+        const masterUpgrade = masterConfigs.find((c: any) => c.systemMeaning === 'transfer_upgrade' || c.systemMeaning === 'UPGRADE');
         const template = masterUpgrade?.format || "HANG {RANK} {USER}";
         
         const rankNames: Record<string, string> = {
@@ -4424,6 +4744,14 @@ router.post("/payment/create-link", async (req, res) => {
           rank: rankName,
           abbr: masterUpgrade?.abbreviation || 'NH'
         });
+
+        // Perfect client-side equivalence pass for trailing custom variables
+        finalDescription = finalDescription
+          .replace(/\{ID\}|\{Mã Hợp Đồng\}|\{LOAN_ID\}|\{MHD\}|\{HD\}|\{CONTRACT\}/gi, id)
+          .replace(/\{USER_ID\}|\{USER\}|\{MÃ USER\}|\{NGƯỜI DÙNG\}/gi, id)
+          .replace(/\{PHONE\}|\{SĐT\}|\{SDT\}|\{SỐ ĐIỆN THOẠI\}|\{SO DIEN THOAI\}/gi, userPhone)
+          .replace(/\{RANK\}|\{HẠNG\}|\{HANG\}|\{TÊN HẠNG CẦN NÂNG\}|\{TEN HANG NANG CAP\}|\{TEN HANG\}|\{TÊN HẠNG\}/gi, rankName)
+          .replace(/\{VT\}|\{VIẾT TẮT\}|\{VIET TAT\}/gi, masterUpgrade?.abbreviation || 'NH');
       } else {
         let template = "";
         let loanData: any = null;
@@ -4435,11 +4763,11 @@ router.post("/payment/create-link", async (req, res) => {
           loanData = data;
           
           if (settleType === 'PARTIAL') {
-            const masterPartial = masterConfigs.find((c: any) => c.systemMeaning === 'transfer_partial');
+            const masterPartial = masterConfigs.find((c: any) => c.systemMeaning === 'transfer_partial' || c.systemMeaning === 'PARTIAL_SETTLEMENT');
             template = masterPartial?.format || "TTMP {ID} LAN {SLTTMP}";
             currentAbbr = masterPartial?.abbreviation || 'TTMP';
           } else {
-            const masterExtension = masterConfigs.find((c: any) => c.systemMeaning === 'transfer_extension');
+            const masterExtension = masterConfigs.find((c: any) => c.systemMeaning === 'transfer_extension' || c.systemMeaning === 'EXTENSION');
             template = masterExtension?.format || "GIA HAN {ID} LAN {SLGH}";
             currentAbbr = masterExtension?.abbreviation || 'GH';
           }
@@ -4447,7 +4775,7 @@ router.post("/payment/create-link", async (req, res) => {
           // Fetch loan for full settlement to get user info and originalBaseId
           const { data } = await client.from('loans').select('userId, originalBaseId, users(phone)').eq('id', id).single();
           loanData = data;
-          const masterFull = masterConfigs.find((c: any) => c.systemMeaning === 'transfer_full');
+          const masterFull = masterConfigs.find((c: any) => c.systemMeaning === 'transfer_full' || c.systemMeaning === 'FULL_SETTLEMENT');
           template = masterFull?.format || "TAT TOAN {ID}";
           currentAbbr = masterFull?.abbreviation || 'TT';
         }
@@ -4483,7 +4811,7 @@ router.post("/payment/create-link", async (req, res) => {
 
         finalDescription = resolveMasterConfigServer(template, settings, {
           userId: loanData?.userId || '',
-          originalId: baseId || id,
+          originalId: settleType === 'ALL' ? id : (baseId || id),
           fullId: id,
           sequence: settleType === 'PARTIAL' ? (partialCount + 1) : (extensionCount + 1),
           n: settleType === 'PARTIAL' ? (partialCount + 1) : (extensionCount + 1),
@@ -4493,11 +4821,29 @@ router.post("/payment/create-link", async (req, res) => {
           rank: '',
           abbr: currentAbbr
         });
+
+        // Perfect client-side equivalence pass for trailing custom variables
+        finalDescription = finalDescription
+          .replace(/\{ID\}|\{Mã Hợp Đồng\}|\{LOAN_ID\}|\{MHD\}|\{HD\}|\{CONTRACT\}/gi, id)
+          .replace(/\{USER_ID\}|\{USER\}|\{MÃ USER\}|\{NGƯỜI DÙNG\}/gi, loanData?.userId || id.split('NDV')[0] || id.slice(-4).toUpperCase())
+          .replace(/\{PHONE\}|\{SĐT\}|\{SDT\}|\{SỐ ĐIỆN THOẠI\}|\{SO DIEN THOAI\}/gi, userPhone)
+          .replace(/\{SLGH\}|\{SỐ LẦN GIA HẠN\}|\{EXTENSION_COUNT\}/gi, settleType === 'PRINCIPAL' ? (extensionCount + 1).toString() : '')
+          .replace(/\{SLTTMP\}|\{SỐ LẦN TTMP\}|\{PARTIAL_COUNT\}/gi, settleType === 'PARTIAL' ? (partialCount + 1).toString() : '')
+          .replace(/\{VT\}|\{VIẾT TẮT\}|\{VIET TAT\}/gi, currentAbbr);
       }
     }
 
-    // PayOS strictly limits description to 25 characters. 
-    // We must truncate to avoid API errors, but we should do it after all replacements.
+    // PayOS strictly limits description to 25 characters and rejects accents or special symbols.
+    finalDescription = finalDescription
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .toUpperCase()
+      .replace(/[^A-Z0-9\s-_]/g, '') // Only standard alphanumeric characters plus space, dash, or underscore
+      .replace(/\s+/g, ' ')
+      .trim();
+
     if (finalDescription.length > 25) {
       finalDescription = finalDescription.substring(0, 25);
     }
@@ -4788,12 +5134,30 @@ router.post("/payment/webhook", async (req, res) => {
             const nextExtensionCount = settleType === 'PRINCIPAL' ? (loan.extensionCount || 0) + 1 : (loan.extensionCount || 0);
             const nextPartialCount = settleType === 'PARTIAL' ? (loan.partialPaymentCount || 0) + 1 : (loan.partialPaymentCount || 0);
             
+            // Use originalBaseId if available, otherwise strip prefixes from current ID
+            let cleanBaseId = loan.originalBaseId || loan.id;
+            if (!loan.originalBaseId) {
+              const allAbbrs = (settings.MASTER_CONFIGS || [])
+                .filter((c: any) => c.category === 'ABBREVIATION' || c.category === 'TRANSFER_CONTENT' || c.category === 'CONTRACT_NEW')
+                .map((c: any) => c.abbreviation)
+                .filter(Boolean);
+              const systemAbbrs = ['TTMP', 'GH', 'GN', 'NH', 'TT', 'TATTOAN', 'GIAHAN', 'GIAINGAN'];
+              const combinedAbbrs = [...new Set([...allAbbrs, ...systemAbbrs])];
+              const stripRegex = new RegExp(`^(${combinedAbbrs.join('|')})`, 'i');
+              
+              const oldId = cleanBaseId;
+              cleanBaseId = cleanBaseId.replace(stripRegex, '').trim();
+              if (oldId !== cleanBaseId) {
+                cleanBaseId = cleanBaseId.replace(/(LAN|LẦN|L|#)\s*\d+$/i, '').replace(/\d+$/, '').trim();
+              }
+            }
+
             // Generate new ID using Admin configured formats
             const format = settleType === 'PRINCIPAL' 
               ? getFormatFromSettings(settings, 'EXTENSION', settings.CONTRACT_FORMAT_EXTENSION || "{ID}GH{N}", 'SYSTEM_CONTRACT_FORMATS_CONFIG')
               : getFormatFromSettings(settings, 'PARTIAL_SETTLEMENT', settings.CONTRACT_FORMAT_PARTIAL_SETTLEMENT || "{ID}TTMP{N}", 'SYSTEM_CONTRACT_FORMATS_CONFIG');
             
-            const newId = generateContractIdServer(loan.userId, format, settings, loan.id, undefined, nextCount, nextExtensionCount, nextPartialCount);
+            const newId = generateContractIdServer(loan.userId, format, settings, cleanBaseId, undefined, nextCount, nextExtensionCount, nextPartialCount);
             
             // Calculate new due date (1st of next month)
             let newDueDate = loan.date;
@@ -4811,6 +5175,7 @@ router.post("/payment/webhook", async (req, res) => {
             nextLoan = {
               ...loan,
               id: newId,
+              originalBaseId: cleanBaseId,
               status: 'ĐANG NỢ',
               date: newDueDate,
               amount: nextLoanAmount,

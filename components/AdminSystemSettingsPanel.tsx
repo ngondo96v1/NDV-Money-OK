@@ -1569,8 +1569,15 @@ const AdminSystemSettingsPanel: React.FC<AdminSystemSettingsPanelProps> = ({
                                           <optgroup label="Cấu trúc Độc quyền" className="bg-[#111] text-white">
                                             <option value="user_format">Định dạng UserID mẫu</option>
                                             <option value="contract_original_format">Định dạng HĐ Gốc mẫu</option>
-                                            <option value="contract_partial_format">Biến động: Chuyển khoản Tất toán một phần</option>
-                                            <option value="contract_extension_format">Biến động: Chuyển khoản Gia hạn Hợp đồng</option>
+                                            <option value="contract_partial_format">Biến động: MHD Tất Toán Một Phần</option>
+                                            <option value="contract_extension_format">Biến động: MHD Gia Hạn</option>
+                                          </optgroup>
+                                          <optgroup label="Nội dung Chuyển khoản" className="bg-[#111] text-white">
+                                            <option value="transfer_full">Nội dung CK: Tất toán hoàn toàn</option>
+                                            <option value="transfer_partial">Nội dung CK: Tất toán một phần</option>
+                                            <option value="transfer_extension">Nội dung CK: Gia hạn hợp đồng</option>
+                                            <option value="transfer_upgrade">Nội dung CK: Nâng hạng tài khoản</option>
+                                            <option value="transfer_disburse">Nội dung CK: Giải ngân khoản vay</option>
                                           </optgroup>
                                         </select>
                                       </div>
@@ -1600,8 +1607,13 @@ const AdminSystemSettingsPanel: React.FC<AdminSystemSettingsPanelProps> = ({
                                         {(() => {
                                           const getBaseVal = (cfg: any) => {
                                             const m = cfg.systemMeaning;
-                                            if (m === 'random') return '789123';
-                                            if (m === 'sequence') return '77';
+                                            if (m === 'random') {
+                                              const lengthMatch = (cfg.originalName || '')?.match(/\d+/);
+                                              const length = lengthMatch ? parseInt(lengthMatch[0]) : 6;
+                                              const mockDigits = '789123456789';
+                                              return mockDigits.slice(0, length) || '789123';
+                                            }
+                                            if (m === 'sequence') return '1';
                                             if (m === 'prefix') return cfg.format || 'NDV';
                                             if (m === 'user_id') return 'U9901';
                                             if (m === 'date_now') return new Date().toLocaleDateString('vi-VN').replace(/\//g, '');
@@ -1624,17 +1636,36 @@ const AdminSystemSettingsPanel: React.FC<AdminSystemSettingsPanelProps> = ({
                                               }
                                             });
 
-                                            pattern = pattern.replace(/\{RD\}|\{RANDOM\}/gi, '333444')
-                                                             .replace(/\{N\}|\{SEQUENCE\}/gi, '1');
+                                            pattern = pattern.replace(/\{RD\}|\{RANDOM\}/gi, () => {
+                                              const rdConfig = allConfigs.find((c: any) => c.abbreviation === 'RD' || c.systemMeaning === 'random');
+                                              if (rdConfig) return getBaseVal(rdConfig);
+                                              return '7891';
+                                            }).replace(/\{N\}|\{SEQUENCE\}/gi, '1');
 
                                             if (pattern.includes('{ID}')) {
-                                              pattern = pattern.replace(/\{ID\}/gi, 'U9901');
+                                              const idConfig = allConfigs.find((c: any) => c.abbreviation === 'ID' || c.systemMeaning === 'user_format');
+                                              if (idConfig) {
+                                                pattern = pattern.replace(/\{ID\}/gi, resMock(idConfig, limit + 1));
+                                              } else {
+                                                pattern = pattern.replace(/\{ID\}/gi, 'U9901');
+                                              }
                                             }
-                                            if (pattern.includes('{MHD}')) {
-                                              pattern = pattern.replace(/\{MHD\}/gi, 'HD0095');
+                                            if (pattern.includes('{MHD}') || pattern.includes('{HD}')) {
+                                              const mhdConfig = allConfigs.find((c: any) => c.abbreviation === 'MHD' || c.abbreviation === 'HD' || c.systemMeaning === 'contract_original_format');
+                                              if (mhdConfig) {
+                                                pattern = pattern.replace(/\{MHD\}|\{HD\}/gi, resMock(mhdConfig, limit + 1));
+                                              } else {
+                                                pattern = pattern.replace(/\{MHD\}|\{HD\}/gi, 'HD0095');
+                                              }
                                             }
 
-                                            return pattern.replace(/\{DATE\}/gi, '150426').replace(/\{RANK\}/gi, 'PLATINUM');
+                                            return pattern
+                                              .replace(/\{DATE\}/gi, '150426')
+                                              .replace(/\{RANK\}|\{RK\}/gi, 'PLATINUM')
+                                              .replace(/\{USER\}|\{USER_ID\}/gi, 'U9901')
+                                              .replace(/\{PHONE\}|\{SDT\}/gi, '0398888999')
+                                              .replace(/\{SLGH\}|\{EXTENSION_COUNT\}/gi, '1')
+                                              .replace(/\{SLTTMP\}|\{PARTIAL_COUNT\}/gi, '1');
                                           };
 
                                           return resMock(config);

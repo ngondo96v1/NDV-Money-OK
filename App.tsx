@@ -93,6 +93,34 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 }
 
+export const isDateOnOrAfter = (dateStr: string, benchmarkStr: string): boolean => {
+  if (!dateStr || !benchmarkStr) return true;
+  try {
+    let testDate: Date;
+    if (dateStr.includes('-') && dateStr.includes('T')) {
+      testDate = new Date(dateStr);
+    } else if (dateStr.includes('/')) {
+      const parts = dateStr.trim().split(' ');
+      const datePart = parts.length === 2 ? parts[1] : parts[0];
+      const dateSubparts = datePart.split('/');
+      if (dateSubparts.length === 3) {
+        testDate = new Date(Number(dateSubparts[2]), Number(dateSubparts[1]) - 1, Number(dateSubparts[0]), 0, 0, 0);
+      } else {
+        testDate = new Date(dateStr);
+      }
+    } else {
+      testDate = new Date(Number(dateStr) || Date.now());
+    }
+    
+    const benchmarkParts = benchmarkStr.split('-');
+    const benchmarkDate = new Date(Number(benchmarkParts[0]), Number(benchmarkParts[1]) - 1, Number(benchmarkParts[2]), 0, 0, 0);
+    
+    return testDate.getTime() >= benchmarkDate.getTime();
+  } catch (e) {
+    return true;
+  }
+};
+
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(() => {
     const savedLocal = localStorage.getItem('vnv_user');
@@ -2079,6 +2107,10 @@ const App: React.FC = () => {
           setLastKeepAlive(data.lastKeepAlive);
           if (data.lastKeepAlive) localStorage.setItem('ndv_last_keep_alive', data.lastKeepAlive);
         }
+        if (data.budgetLogs !== undefined && Array.isArray(data.budgetLogs)) {
+          setBudgetLogs(data.budgetLogs);
+          localStorage.setItem('ndv_budget_logs', JSON.stringify(data.budgetLogs));
+        }
 
         if (data.notifications) {
           const allNotifs = deduplicateNotifications(data.notifications);
@@ -3465,32 +3497,6 @@ const App: React.FC = () => {
 
     const systemStartDate = settings.SYSTEM_START_DATE;
 
-    const isDateOnOrAfter = (dateStr: string, benchmarkStr: string): boolean => {
-      if (!dateStr || !benchmarkStr) return true;
-      try {
-        let testDate: Date;
-        if (dateStr.includes('-') && dateStr.includes('T')) {
-          testDate = new Date(dateStr);
-        } else if (dateStr.includes('/')) {
-          const parts = dateStr.split('/');
-          if (parts.length === 3) {
-            testDate = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 0, 0, 0);
-          } else {
-            testDate = new Date(dateStr);
-          }
-        } else {
-          testDate = new Date(Number(dateStr) || Date.now());
-        }
-        
-        const benchmarkParts = benchmarkStr.split('-');
-        const benchmarkDate = new Date(Number(benchmarkParts[0]), Number(benchmarkParts[1]) - 1, Number(benchmarkParts[2]), 0, 0, 0);
-        
-        return testDate.getTime() >= benchmarkDate.getTime();
-      } catch (e) {
-        return true;
-      }
-    };
-
     // 1. Calculate Rank Profit - Accurate calculation based on real users
     let derivedRankProfit = 0;
     const upgradePercent = Number(settings.UPGRADE_PERCENT || 0);
@@ -4007,10 +4013,14 @@ const App: React.FC = () => {
       );
       case AppView.ADMIN_USERS: return <AdminUserManagement users={registeredUsers} loans={loans} isGlobalProcessing={isGlobalProcessing} onAction={handleAdminUserAction} onLoanAction={handleAdminLoanAction} onEditUser={handleAdminEditUser} onResetPassword={handleAdminResetPassword} onLockUser={handleLockUser} onUnlockUser={handleUnlockUser} onEditLoan={handleAdminEditLoan} onDeleteUser={handleDeleteUser} onDeleteLoan={handleDeleteLoan} onAutoCleanup={handleAutoCleanupUsers} onFetchFullData={fetchFullData} onFetchUserDetail={handleFetchUserDetail} onRefresh={() => fetchFullData(true)} onBack={() => setCurrentView(AppView.ADMIN_DASHBOARD)} totalUsers={totalUsers} totalLoans={totalLoans} onSearchUsers={(term: string) => setUserSearchTerm(term)} onSearchLoans={(term: string) => setLoanSearchTerm(term)} userRange={userRange} loanRange={loanRange} onSetUserRange={setUserRange} onSetLoanRange={setLoanRange} settings={settings} />;
       case AppView.ADMIN_BUDGET: 
+        const systemStartDateForBudget = settings.SYSTEM_START_DATE;
+        const filteredBudgetLogsForAdmin = systemStartDateForBudget 
+          ? budgetLogs.filter(log => isDateOnOrAfter(log.createdAt, systemStartDateForBudget))
+          : budgetLogs;
         return (
           <AdminBudget 
             currentBudget={systemBudget} 
-            logs={budgetLogs}
+            logs={filteredBudgetLogsForAdmin}
             onUpdateBudget={handleUpdateBudget}
             onDeleteLog={handleDeleteBudgetLog}
             onSyncStats={handleSyncStats}

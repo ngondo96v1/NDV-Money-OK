@@ -280,7 +280,11 @@ const resolveMasterConfig = (
   const userPart = context.userId || "USER";
 
   // Legacy placeholders
-  result = result.replace(/\{ID\}|\{USER\}/gi, userPart);
+  result = result.replace(/\{USER\}/gi, userPart);
+  result = result.replace(/\{ID\}/gi, () => {
+    if (context.originalId) return context.originalId;
+    return userPart;
+  });
   result = result.replace(/\{MHD\}|\{CONTRACT\}/gi, () => {
     if (context.originalId) return context.originalId;
     // Generate 4 random digits as fallback for {MHD} if no originalId provided

@@ -86,7 +86,7 @@ const AdminSystem: React.FC<AdminSystemProps> = ({ onReset, onImportSuccess, onB
   // States for Re-establishment (Phương án B)
   const [reEstablishStartDate, setReEstablishStartDate] = useState('2026-07-01');
   const [reEstablishCapital, setReEstablishCapital] = useState<number>(0);
-  const [deleteOldLogs, setDeleteOldLogs] = useState(true);
+  const [deleteOldLogs, setDeleteOldLogs] = useState(false);
   const [isReEstablishing, setIsReEstablishing] = useState(false);
   const [showReEstablishConfirm, setShowReEstablishConfirm] = useState(false);
 
@@ -1658,7 +1658,7 @@ END $$;`;
                   className="w-4 h-4 rounded border-white/10 text-orange-500 bg-black focus:ring-orange-500 focus:ring-2"
                 />
                 <label htmlFor="deleteOldLogsCheckbox" className="text-[8px] font-black text-gray-300 uppercase tracking-wider cursor-pointer select-none">
-                  Xóa lịch sử biến động số dư cũ trước ngày xác lập
+                  Dọn dẹp lịch sử biến động số dư cũ theo quy tắc hệ thống (&gt;60 ngày)
                 </label>
               </div>
 

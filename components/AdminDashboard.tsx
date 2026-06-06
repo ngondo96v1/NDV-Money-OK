@@ -233,9 +233,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     return true;
   }, [revenueFilter, getItemRevenueDate]);
 
+  const isAfterOrEqualMatch = (itemDateStr: string | undefined | null, boundaryDateStr: string | null) => {
+    if (!boundaryDateStr) return true;
+    const itemDate = parseDateString(itemDateStr);
+    if (!itemDate || isNaN(itemDate.getTime())) return false;
+    const boundaryDate = parseDateString(boundaryDateStr);
+    if (!boundaryDate || isNaN(boundaryDate.getTime())) return true;
+    
+    const itemMidnight = new Date(itemDate.getFullYear(), itemDate.getMonth(), itemDate.getDate());
+    const boundaryMidnight = new Date(boundaryDate.getFullYear(), boundaryDate.getMonth(), boundaryDate.getDate());
+    return itemMidnight >= boundaryMidnight;
+  };
+
+  // Filtered datasets based on selected Start Date
+  const filteredLoans = useMemo(() => {
+    if (!tempStartDate) return loans;
+    const lockedUserIds = new Set((users || []).filter(u => u.isLocked).map(u => u.id));
+    return loans.filter(l => {
+      // LOẠI LOẠI TRỪ CHO KHOẢN VAY PHONG TOẢ: Luôn giữ lại để tránh bỏ sót
+      if (lockedUserIds.has(l.userId)) return true;
+      return isAfterOrEqualMatch(l.createdAt || l.date, tempStartDate);
+    });
+  }, [loans, tempStartDate, users]);
+
+  const filteredUsers = useMemo(() => {
+    if (!tempStartDate) return users;
+    return users.filter(u => isAfterOrEqualMatch(u.joinDate, tempStartDate));
+  }, [users, tempStartDate]);
+
   const availableYears = useMemo(() => {
     const years = new Set<number>([new Date().getFullYear()]);
-    loans.forEach(l => {
+    filteredLoans.forEach(l => {
       let revDate: Date | null = null;
       if (l.date) {
         const dueDate = parseDateString(l.date);
@@ -251,14 +279,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
         years.add(revDate.getFullYear());
       }
     });
-    users.forEach(u => {
+    filteredUsers.forEach(u => {
       const d = parseDateString(u.joinDate);
       if (d && !isNaN(d.getTime())) {
         years.add(d.getFullYear());
       }
     });
     return Array.from(years).sort((a, b) => b - a);
-  }, [loans, users]);
+  }, [filteredLoans, filteredUsers]);
 
   const chartData = useMemo(() => {
     const months = Array.from({ length: 12 }, (_, i) => ({
@@ -273,7 +301,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 0) / 100;
     const upgradePercent = Number(settings.UPGRADE_PERCENT || 0);
 
-    loans.forEach(loan => {
+    filteredLoans.forEach(loan => {
       const loanUser = users.find(u => u.id === loan.userId);
       if (!loanUser || loanUser.isAdmin || loanUser.phone === 'admin' || !loanUser.phone) return;
       if (loanUser.id === '5444' || loanUser.fullName?.toLowerCase().includes('test')) return;
@@ -304,7 +332,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     const sortedRanks = settings.RANK_CONFIG ? [...settings.RANK_CONFIG].sort((a, b) => a.maxLimit - b.maxLimit) : [];
     const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'bronze';
 
-    users.forEach(u => {
+    filteredUsers.forEach(u => {
       if (u.isAdmin || u.phone === 'admin' || u.id === 'admin' || !u.phone || u.phone.length < 10) return;
       if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
 
@@ -325,40 +353,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     });
 
     return months;
-  }, [loans, users, chartYear, settings]);
+  }, [filteredLoans, filteredUsers, chartYear, settings, users]);
 
   const maxTotalRevenue = useMemo(() => {
     const maxVal = Math.max(...chartData.map(d => d.total), 0);
     return maxVal === 0 ? 1000000 : maxVal;
   }, [chartData]);
-
-  const isAfterOrEqualMatch = (itemDateStr: string | undefined | null, boundaryDateStr: string | null) => {
-    if (!boundaryDateStr) return true;
-    const itemDate = parseDateString(itemDateStr);
-    if (!itemDate || isNaN(itemDate.getTime())) return false;
-    const boundaryDate = parseDateString(boundaryDateStr);
-    if (!boundaryDate || isNaN(boundaryDate.getTime())) return true;
-    
-    const itemMidnight = new Date(itemDate.getFullYear(), itemDate.getMonth(), itemDate.getDate());
-    const boundaryMidnight = new Date(boundaryDate.getFullYear(), boundaryDate.getMonth(), boundaryDate.getDate());
-    return itemMidnight >= boundaryMidnight;
-  };
-
-  // Filtered datasets based on selected Start Date
-  const filteredLoans = useMemo(() => {
-    if (!tempStartDate) return loans;
-    const lockedUserIds = new Set((users || []).filter(u => u.isLocked).map(u => u.id));
-    return loans.filter(l => {
-      // LOẠI LOẠI TRỪ CHO KHOẢN VAY PHONG TOẢ: Luôn giữ lại để tránh bỏ sót
-      if (lockedUserIds.has(l.userId)) return true;
-      return isAfterOrEqualMatch(l.createdAt || l.date, tempStartDate);
-    });
-  }, [loans, tempStartDate, users]);
-
-  const filteredUsers = useMemo(() => {
-    if (!tempStartDate) return users;
-    return users.filter(u => isAfterOrEqualMatch(u.joinDate, tempStartDate));
-  }, [users, tempStartDate]);
 
   const filteredBudgetLogs = useMemo(() => {
     let result = budgetLogs;
@@ -414,7 +414,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     };
 
     // Total disbursed counts ONLY the initial/original loan capital dispatched (not renewed rollovers)
-    const originalLoans = loans.filter(l => 
+    const originalLoans = filteredLoans.filter(l => 
       !isRollover(l) && 
       l.status !== 'BỊ TỪ CHỐI' && 
       l.status !== 'CHỜ DUYỆT' && 
@@ -425,8 +425,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     const disbursed = originalLoans.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
 
     // Current real active debt in distribution / outstanding (includes any active rollovers)
-    const debt = loans
-      ? loans.filter((l: any) => activeStatuses.includes(l.status) && !lockedUserIds.has(l.userId)).reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
+    const debt = filteredLoans
+      ? filteredLoans.filter((l: any) => activeStatuses.includes(l.status) && !lockedUserIds.has(l.userId)).reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
       : 0;
 
     // True collected capital is the initial real money dispersed minus what is still active/outstanding
@@ -440,7 +440,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       activeDebt: debt,
       collectionRate: rate
     };
-  }, [loans, users]);
+  }, [filteredLoans, users]);
 
   // Precise Dynamic Profits calculation for specified Date range filter
   const { filteredLoanProfit, filteredFineProfit, filteredRankProfit } = useMemo(() => {
@@ -452,7 +452,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     const activeStatuses = ['ĐANG NỢ', 'ĐÃ TẤT TOÁN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT', 'QUÁ HẠN', 'ĐANG GIẢI NGÂN'];
     
     // Báo cáo doanh thu mặc định hiển thị toàn bộ hệ thống, lọc chính xác theo bộ chọn Tháng/Năm
-    const targetLoans = loans;
+    const targetLoans = filteredLoans;
 
     targetLoans.forEach(loan => {
       const loanUser = users.find(u => u.id === loan.userId);
@@ -474,7 +474,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     const sortedRanks = settings.RANK_CONFIG ? [...settings.RANK_CONFIG].sort((a, b) => a.maxLimit - b.maxLimit) : [];
     const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'bronze';
 
-    const targetUsers = users;
+    const targetUsers = filteredUsers;
 
     targetUsers.forEach(u => {
       if (u.isAdmin || u.phone === 'admin' || u.id === 'admin' || !u.phone || u.phone.length < 10) return;
@@ -496,7 +496,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       filteredFineProfit: penaltyProfit,
       filteredRankProfit: rProfit
     };
-  }, [revenueFilter, loans, users, settings, isItemRevenueMatched]);
+  }, [revenueFilter, filteredLoans, filteredUsers, settings, isItemRevenueMatched, users]);
 
   const isBudgetAlarm = useMemo(() => systemBudget <= Number(settings.MIN_SYSTEM_BUDGET || 2000000), [systemBudget, settings.MIN_SYSTEM_BUDGET]);
   
@@ -547,9 +547,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     if (settings.JWT_SECRET === 'your-secret-key') issues.push('JWT Secret mặc định');
     if (settings.ADMIN_PASSWORD === 'admin123') issues.push('Mật khẩu Admin mặc định');
     if (!settings.IMGBB_API_KEY || settings.IMGBB_API_KEY.includes('your-imgbb')) issues.push('Chưa cấu hình ImgBB');
-    if (!settings.PAYOS_API_KEY) issues.push('Chưa cấu hình PayOS');
     
-    const score = 100 - (issues.length * 25);
+    const score = issues.length === 0 ? 100 : Math.max(0, 100 - (issues.length * 33));
     return { score, issues };
   }, [settings]);
 
