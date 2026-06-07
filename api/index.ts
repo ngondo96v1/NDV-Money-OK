@@ -137,22 +137,21 @@ const broadcastPushNotification = async (title: string, body: string, client: an
   try {
     const { data: users, error } = await client
       .from('users')
-      .select('id, fcmToken')
-      .not('fcmToken', 'is', null);
+      .select('id, fcmToken');
       
     if (error) {
       console.error(`[PUSH] Error fetching users for broadcast:`, error);
       return;
     }
     
-    if (users && users.length > 0) {
-      console.log(`[PUSH] Broadcasting to ${users.length} users with FCM tokens...`);
-      for (const u of users) {
-        if (u.fcmToken) {
-          sendPushNotification(u.fcmToken, title, body).catch(e => {
-            console.error(`[PUSH] Broadcast failed for user ${u.id}:`, e);
-          });
-        }
+    const usersWithTokens = users?.filter((u: any) => u.fcmToken && u.fcmToken.trim() !== '') || [];
+    
+    if (usersWithTokens.length > 0) {
+      console.log(`[PUSH] Broadcasting to ${usersWithTokens.length} users with FCM tokens...`);
+      for (const u of usersWithTokens) {
+        sendPushNotification(u.fcmToken, title, body).catch(e => {
+          console.error(`[PUSH] Broadcast failed for user ${u.id}:`, e);
+        });
       }
     }
   } catch (err) {
@@ -3336,6 +3335,13 @@ router.post("/budget", async (req: any, res) => {
 
     const { error } = await client.from('config').upsert({ key: 'SYSTEM_BUDGET', value: finalBudget }, { onConflict: 'key' });
     if (error) throw error;
+
+    // Send push notification broadcast for budget addition
+    if (type === 'ADD' && amount !== undefined && amount >= 1000000) {
+      const title = "Hệ thống bổ sung ngân sách giải ngân";
+      const body = `Cập nhật: Nguồn quỹ giải ngân đã được bổ sung thêm ${Number(amount).toLocaleString('vi-VN')} đ. Quý khách có nhu cầu vay có thể đăng ký vay hoặc nâng hạng mức vay ngay bây giờ!`;
+      broadcastPushNotification(title, body, client);
+    }
 
     // Invalidate cache and emit real-time update
     settingsCache = null;
