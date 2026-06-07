@@ -131,6 +131,35 @@ const triggerPushForUser = async (userId: string, title: string, body: string, c
   }
 };
 
+// Helper to broadcast push notifications to all users with FCM tokens
+const broadcastPushNotification = async (title: string, body: string, client: any) => {
+  if (!title || !body || !client) return;
+  try {
+    const { data: users, error } = await client
+      .from('users')
+      .select('id, fcmToken')
+      .not('fcmToken', 'is', null);
+      
+    if (error) {
+      console.error(`[PUSH] Error fetching users for broadcast:`, error);
+      return;
+    }
+    
+    if (users && users.length > 0) {
+      console.log(`[PUSH] Broadcasting to ${users.length} users with FCM tokens...`);
+      for (const u of users) {
+        if (u.fcmToken) {
+          sendPushNotification(u.fcmToken, title, body).catch(e => {
+            console.error(`[PUSH] Broadcast failed for user ${u.id}:`, e);
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[PUSH] Unexpected broadcast error:`, err);
+  }
+};
+
 const CONFIG_PATH = path.resolve(process.cwd(), "config.json");
 
 const loadConfig = () => {
@@ -976,6 +1005,9 @@ router.post("/settings", async (req: any, res) => {
   }
 
   const client = initSupabase();
+  const oldSettings = await getMergedSettings(client);
+  const oldBudget = Number(oldSettings.SYSTEM_BUDGET || 0);
+  const oldMaintenanceMode = oldSettings.MAINTENANCE_MODE === true || oldSettings.MAINTENANCE_MODE === 'true';
   
   // 1. Save credentials to file (still needed for initial boot)
   const fileConfig: any = {};
@@ -1092,6 +1124,25 @@ router.post("/settings", async (req: any, res) => {
   
   // Fetch full merged settings after save to return to client
   const fullSettings = await getMergedSettings(client);
+
+  const newBudget = newConfig.SYSTEM_BUDGET !== undefined ? Number(newConfig.SYSTEM_BUDGET) : oldBudget;
+  const newMaintenanceMode = newConfig.MAINTENANCE_MODE !== undefined ? (newConfig.MAINTENANCE_MODE === true || newConfig.MAINTENANCE_MODE === 'true') : oldMaintenanceMode;
+
+  // Send notifications for budget additions or maintenance mode toggles
+  if (newConfig.SYSTEM_BUDGET !== undefined && newBudget > oldBudget && (newBudget - oldBudget) >= 1000000) {
+    const extraBudget = newBudget - oldBudget;
+    const title = "Hệ thống bổ sung ngân sách giải ngân";
+    const body = `Cập nhật: Nguồn quỹ giải ngân đã được bổ sung thêm ${extraBudget.toLocaleString('vi-VN')} đ. Quý khách có nhu cầu vay có thể đăng ký vay hoặc nâng hạng mức vay ngay bây giờ!`;
+    broadcastPushNotification(title, body, client);
+  } else if (newConfig.MAINTENANCE_MODE !== undefined && newMaintenanceMode && !oldMaintenanceMode) {
+    const title = "Thông báo bảo trì hệ thống";
+    const body = "Hệ thống đang tiến hành bảo trì định kỳ nguồn quỹ giải ngân. Các chức năng đăng ký vay mới sẽ tạm ngưng hoạt động cho tới khi bảo trì hoàn tất.";
+    broadcastPushNotification(title, body, client);
+  } else if (newConfig.MAINTENANCE_MODE !== undefined && !newMaintenanceMode && oldMaintenanceMode) {
+    const title = "Bảo trì hoàn tất - Nguồn quỹ giải ngân hoạt động trở lại";
+    const body = "Hệ thống đã hoàn tất bảo trì nguồn quỹ giải ngân. Chức năng nhận hồ sơ vay mới đã hoạt động bình thường.";
+    broadcastPushNotification(title, body, client);
+  }
   
   // Emit real-time update to all clients
   if (io) {
@@ -2903,13 +2954,13 @@ router.post("/loans", async (req: any, res) => {
         }
 
         // 3. Check System Budget
-        const minBudget = Number(settings.MIN_SYSTEM_BUDGET || 1000000);
+        const minBudget = (settings.MIN_SYSTEM_BUDGET !== undefined && settings.MIN_SYSTEM_BUDGET !== null) ? Number(settings.MIN_SYSTEM_BUDGET) : 1000000;
         const currentBudget = Number(settings.SYSTEM_BUDGET || 0);
         
         if (currentBudget < minBudget) {
           return res.status(400).json({ 
             error: "Hệ thống bảo trì", 
-            message: "Hệ thống đang bảo trì nguồn vốn (vốn còn lại dưới 1 triệu). Vui lòng quay lại sau." 
+            message: `Hệ thống đang bảo trì nguồn vốn (vốn còn lại dưới ${minBudget.toLocaleString()} đ). Vui lòng quay lại sau.` 
           });
         }
       }
@@ -4367,23 +4418,33 @@ router.post("/sync", async (req: any, res) => {
     // 1. Update Config first (Budget is critical)
     const configUpdates: { key: string; value: any }[] = [];
     let finalPayloadBudget = budget;
+    let budgetWasIncreased = false;
+    let extraBudget = 0;
 
     if (budgetDelta !== undefined && budgetDelta !== 0) {
       const { data: currentBudgetData } = await client.from('config').select('value').eq('key', 'SYSTEM_BUDGET').single();
       const currentVal = Number(currentBudgetData?.value || 0);
       finalPayloadBudget = currentVal + budgetDelta;
       configUpdates.push({ key: 'SYSTEM_BUDGET', value: finalPayloadBudget });
+      if (budgetDelta >= 1000000) {
+        budgetWasIncreased = true;
+        extraBudget = budgetDelta;
+      }
     } else if (budget !== undefined) {
+      const { data: currentBudgetData } = await client.from('config').select('value').eq('key', 'SYSTEM_BUDGET').single();
+      const currentBudget = Number(currentBudgetData?.value || 0);
       // Security: Validate budget change if it's a decrease (disbursement)
       if (budgetLog && budgetLog.type === 'LOAN_DISBURSE') {
-        const { data: currentBudgetData } = await client.from('config').select('value').eq('key', 'SYSTEM_BUDGET').single();
-        const currentBudget = Number(currentBudgetData?.value || 0);
         if (budget > currentBudget) {
           console.error("[SYNC] Security Alert: Client tried to increase budget during disbursement");
           return res.status(400).json({ error: "Dữ liệu ngân sách không hợp lệ" });
         }
       }
       configUpdates.push({ key: 'SYSTEM_BUDGET', value: budget });
+      if (budget > currentBudget && (budget - currentBudget) >= 1000000) {
+        budgetWasIncreased = true;
+        extraBudget = budget - currentBudget;
+      }
     }
     if (rankProfit !== undefined) configUpdates.push({ key: 'TOTAL_RANK_PROFIT', value: rankProfit });
     if (loanProfit !== undefined) configUpdates.push({ key: 'TOTAL_LOAN_PROFIT', value: loanProfit });
@@ -4395,6 +4456,13 @@ router.post("/sync", async (req: any, res) => {
       if (error) throw error;
       // Invalidate cache
       settingsCache = null;
+
+      // Send push notification broadcast for budget addition
+      if (budgetWasIncreased) {
+        const title = "Hệ thống bổ sung ngân sách giải ngân";
+        const body = `Cập nhật: Nguồn quỹ giải ngân đã được bổ sung thêm ${extraBudget.toLocaleString('vi-VN')} đ. Quý khách có nhu cầu vay có thể đăng ký vay hoặc nâng hạng mức vay ngay bây giờ!`;
+        broadcastPushNotification(title, body, client);
+      }
     }
 
     // 2. Update Budget Log (Ensure balanceAfter matches server-side authoritative budget strictly)
