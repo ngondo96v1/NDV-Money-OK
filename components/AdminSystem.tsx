@@ -74,6 +74,7 @@ const AdminSystem: React.FC<AdminSystemProps> = ({ onReset, onImportSuccess, onB
   const [isImporting, setIsImporting] = useState(false);
   const [isMigratingUnified, setIsMigratingUnified] = useState(false);
   const [isSyncingFormats, setIsSyncingFormats] = useState(false);
+  const [isCheckingOverdueTasks, setIsCheckingOverdueTasks] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
@@ -877,6 +878,34 @@ END $$;`;
     });
   };
 
+  const handleRunDailyOverdueChecksExecute = async () => {
+    setIsCheckingOverdueTasks(true);
+    try {
+      const response = await authenticatedFetch('/api/admin/run-daily-tasks', { method: 'POST' });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        toast.success(result.message || "Đã rà soát & tự động khóa nợ quá hạn thành công!");
+        if (onRefreshData) {
+          await onRefreshData().catch(e => console.error("Lỗi làm mới dữ liệu sau đối soát:", e));
+        }
+      } else {
+        toast.error(result.error || 'Lỗi bất ngờ xảy ra khi chạy đối soát');
+      }
+    } catch (e: any) {
+      toast.error('Lỗi kết nối khi gửi yêu cầu đối soát');
+    } finally {
+      setIsCheckingOverdueTasks(false);
+    }
+  };
+
+  const handleRunDailyOverdueChecks = () => {
+    setConfirmDialog({
+      title: "CHẠY ĐỐI SOÁT & KHÓA NỢ QUÁ HẠN?",
+      message: "Bạn có muốn khởi chạy hệ thống rà soát kỳ hạn các khoản vay, tự động gửi thông báo sắp đến hạn/quá hạn đến app APK của user và quét tự động KHÓA các tài khoản nợ quá hạn trên 15 ngày ngay lập tức không?",
+      onConfirm: handleRunDailyOverdueChecksExecute
+    });
+  };
+
   const handleAddMasterConfig = (category: string = 'ABBREVIATION') => {
     const newConfigs = [...(localSettings.MASTER_CONFIGS || [])];
     const newIdx = newConfigs.length;
@@ -1654,6 +1683,8 @@ END $$;`;
           parseNumberFromDots={parseNumberFromDots}
           handleSaveSettings={handleSaveSettings}
           sqlSchema={sqlSchema}
+          handleRunDailyOverdueChecks={handleRunDailyOverdueChecks}
+          isCheckingOverdueTasks={isCheckingOverdueTasks}
         />
       )}
 

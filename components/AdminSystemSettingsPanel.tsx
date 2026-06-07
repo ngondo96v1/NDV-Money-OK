@@ -31,7 +31,8 @@ import {
   Trophy, 
   GripVertical, 
   ChevronRight, 
-  Power
+  Power,
+  Bell
 } from 'lucide-react';
 import BankSearchableSelect from './BankSearchableSelect';
 
@@ -75,6 +76,8 @@ interface AdminSystemSettingsPanelProps {
   parseNumberFromDots: (val: string) => number;
   handleSaveSettings: (filterKeys?: string[]) => Promise<void>;
   sqlSchema: string;
+  handleRunDailyOverdueChecks: () => void;
+  isCheckingOverdueTasks: boolean;
 }
 
 const ICON_COLORS = [
@@ -130,7 +133,9 @@ const AdminSystemSettingsPanel: React.FC<AdminSystemSettingsPanelProps> = ({
   formatNumberWithDots,
   parseNumberFromDots,
   handleSaveSettings,
-  sqlSchema
+  sqlSchema,
+  handleRunDailyOverdueChecks,
+  isCheckingOverdueTasks
 }) => {
   const [settingsTab, setSettingsTab] = useState<'security_tech' | 'payment_gate' | 'finance_ranks' | 'contracts_formats' | 'gift_rewards' | 'system_utils' | null>(null);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
@@ -1066,9 +1071,83 @@ const AdminSystemSettingsPanel: React.FC<AdminSystemSettingsPanelProps> = ({
                 </div>
               )}
             </div>
+            {/* Overdue Reminders & Automatic Locking Config */}
+            <div className="bg-white/[0.02]/50 border border-white/5 rounded-2xl p-5 space-y-4">
+              <div 
+                onClick={() => toggleSection('overdue_reminders')}
+                className="flex items-center justify-between border-b border-white/10 pb-2 cursor-pointer select-none group/hd"
+              >
+                <div className="flex items-center gap-2">
+                  <Bell size={14} className="text-[#ff8c00]" />
+                  <h6 className="text-[9px] font-black text-white uppercase tracking-widest group-hover/hd:text-orange-400 transition-colors font-sans">CẤU HÌNH NHẮC NHỞ & KHÓA NỢ TỰ ĐỘNG</h6>
+                </div>
+                <div className="text-gray-500 group-hover/hd:text-white transition-colors pl-1">
+                  {openSections['overdue_reminders'] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </div>
+              </div>
+
+              {openSections['overdue_reminders'] && (
+                <div className="animate-in fade-in duration-200 mt-2 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[7.5px] font-black text-gray-500 uppercase px-1">SỐ NGÀY NHẮC NHỞ TRƯỚC KỲ HẠN KHOẢN VAY (DAYS)</label>
+                      <input 
+                        type="text" 
+                        inputMode="numeric"
+                        value={localSettings.REMINDER_DAYS_BEFORE_DUE !== undefined ? formatNumberWithDots(localSettings.REMINDER_DAYS_BEFORE_DUE) : '1'}
+                        placeholder="1"
+                        onChange={(e) => {
+                          setLocalSettings({...localSettings, REMINDER_DAYS_BEFORE_DUE: parseNumberFromDots(e.target.value)});
+                          setHasChanges(true);
+                        }}
+                        className="w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-[#ff8c00]"
+                      />
+                      <p className="text-[6.5px] font-semibold text-gray-400 uppercase tracking-wide leading-normal px-1 mt-1">
+                        Hệ thống sẽ gửi thông báo đẩy nhắc nợ tự động đến App (.apk) user trước số ngày thiết lập này.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[7.5px] font-black text-gray-500 uppercase px-1">SỐ NGÀY NỢ QUÁ HẠN ĐỂ TỰ ĐỘNG KHÓA USER (DAYS)</label>
+                      <input 
+                        type="text" 
+                        inputMode="numeric"
+                        value={localSettings.AUTO_LOCK_OVERDUE_DAYS !== undefined ? formatNumberWithDots(localSettings.AUTO_LOCK_OVERDUE_DAYS) : '15'}
+                        placeholder="15"
+                        onChange={(e) => {
+                          setLocalSettings({...localSettings, AUTO_LOCK_OVERDUE_DAYS: parseNumberFromDots(e.target.value)});
+                          setHasChanges(true);
+                        }}
+                        className="w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2.5 text-[10px] font-bold text-white outline-none focus:border-[#ff8c00]"
+                      />
+                      <p className="text-[6.5px] font-semibold text-gray-400 uppercase tracking-wide leading-normal px-1 mt-1">
+                        Khách hàng quá hạn quá mốc ngày này sẽ tự động bị Khóa tài khoản, nhưng vẫn cộng dồn phí phạt nợ xấu hằng ngày.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Manual Run / Scan Button inside this configuration section */}
+                  <div className="pt-2 border-t border-white/5 space-y-2">
+                    <span className="text-[7.5px] font-black text-[#ff8c00] uppercase tracking-widest block px-1">ĐỐI SOÁT & QUÉT NỢ THỦ CÔNG</span>
+                    <button 
+                      type="button"
+                      onClick={handleRunDailyOverdueChecks}
+                      disabled={isCheckingOverdueTasks}
+                      className="w-full bg-red-600/10 border border-red-600/25 hover:bg-red-600/20 text-red-500 font-extrabold py-3.5 rounded-xl text-[9px] uppercase tracking-widest active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isCheckingOverdueTasks ? <Loader2 className="animate-spin" size={13} /> : <Power size={13} />}
+                      KÍCH HOẠT ĐỐI SOÁT & QUÉT NỢ TỨC THÌ
+                    </button>
+                    <p className="text-[6.5px] font-bold text-gray-500 uppercase tracking-widest text-center leading-normal">
+                      * Chạy quét tức thì toàn bộ dư nợ hiện tại để tự động gia tăng trạng thái Quá hạn, tự động Khóa nợ nợ xấu và gửi thông báo nhắc nhở đến App APK người dùng.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <button 
-              onClick={() => handleSaveSettings(['PRE_DISBURSEMENT_FEE', 'UPGRADE_PERCENT', 'FINE_RATE', 'MAX_SINGLE_LOAN_AMOUNT', 'MIN_LOAN_AMOUNT', 'RANK_CONFIG', 'MAX_EXTENSIONS', 'MAX_FINE_PERCENT', 'MAX_LOAN_PER_CYCLE', 'MIN_SYSTEM_BUDGET', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE'])}
+              onClick={() => handleSaveSettings(['PRE_DISBURSEMENT_FEE', 'UPGRADE_PERCENT', 'FINE_RATE', 'MAX_SINGLE_LOAN_AMOUNT', 'MIN_LOAN_AMOUNT', 'RANK_CONFIG', 'MAX_EXTENSIONS', 'MAX_FINE_PERCENT', 'MAX_LOAN_PER_CYCLE', 'MIN_SYSTEM_BUDGET', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE', 'REMINDER_DAYS_BEFORE_DUE', 'AUTO_LOCK_OVERDUE_DAYS'])}
               disabled={isSavingSettings}
               className="w-full bg-[#ff8c00]/10 border border-[#ff8c00]/25 hover:bg-[#ff8c00]/20 text-[#ff8c00] font-black py-4 rounded-xl text-[9px] uppercase tracking-widest active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >

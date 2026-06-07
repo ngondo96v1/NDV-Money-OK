@@ -226,7 +226,8 @@ const loadSystemSettings = async (client: any) => {
         'LUCKY_SPIN_PAYMENTS_REQUIRED', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE', 'CONTRACT_CLAUSES',
         'RANK_CONFIG', 'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG', 
         'CONTRACT_FORMATS_CONFIG', 'TRANSFER_CONTENTS_CONFIG', 'SYSTEM_CONTRACT_FORMATS_CONFIG', 'MASTER_CONFIGS', 'lastKeepAlive',
-        'ENABLE_SIMULATION', 'SIMULATION_INTERVAL', 'SYSTEM_START_DATE'
+        'ENABLE_SIMULATION', 'SIMULATION_INTERVAL', 'SYSTEM_START_DATE',
+        'REMINDER_DAYS_BEFORE_DUE', 'AUTO_LOCK_OVERDUE_DAYS'
       ];
       if (systemKeys.includes(item.key)) {
         if (['MONTHLY_STATS', 'PAYMENT_ACCOUNT', 'LUCKY_SPIN_VOUCHERS', 'RANK_CONFIG', 'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG', 'CONTRACT_FORMATS_CONFIG', 'TRANSFER_CONTENTS_CONFIG', 'SYSTEM_CONTRACT_FORMATS_CONFIG', 'MASTER_CONFIGS', 'CONTRACT_CLAUSES'].includes(item.key)) {
@@ -235,7 +236,7 @@ const loadSystemSettings = async (client: any) => {
           } catch (e) {
             settings[item.key] = item.value;
           }
-        } else if (['SYSTEM_BUDGET', 'TOTAL_LOAN_PROFIT', 'TOTAL_FINE_PROFIT', 'TOTAL_RANK_PROFIT', 'UPGRADE_PERCENT', 'PRE_DISBURSEMENT_FEE', 'MAX_EXTENSIONS', 'FINE_RATE', 'MAX_FINE_PERCENT', 'MAX_LOAN_PER_CYCLE', 'MIN_SYSTEM_BUDGET', 'MAX_SINGLE_LOAN_AMOUNT', 'INITIAL_LIMIT', 'MIN_LOAN_AMOUNT', 'LUCKY_SPIN_WIN_RATE', 'LUCKY_SPIN_PAYMENTS_REQUIRED', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE', 'SIMULATION_INTERVAL'].includes(item.key)) {
+        } else if (['SYSTEM_BUDGET', 'TOTAL_LOAN_PROFIT', 'TOTAL_FINE_PROFIT', 'TOTAL_RANK_PROFIT', 'UPGRADE_PERCENT', 'PRE_DISBURSEMENT_FEE', 'MAX_EXTENSIONS', 'FINE_RATE', 'MAX_FINE_PERCENT', 'MAX_LOAN_PER_CYCLE', 'MIN_SYSTEM_BUDGET', 'MAX_SINGLE_LOAN_AMOUNT', 'INITIAL_LIMIT', 'MIN_LOAN_AMOUNT', 'LUCKY_SPIN_WIN_RATE', 'LUCKY_SPIN_PAYMENTS_REQUIRED', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE', 'SIMULATION_INTERVAL', 'REMINDER_DAYS_BEFORE_DUE', 'AUTO_LOCK_OVERDUE_DAYS'].includes(item.key)) {
           settings[item.key] = Number(item.value);
         } else if (['ENABLE_PAYOS', 'ENABLE_VIETQR', 'SHOW_SYSTEM_NOTIFICATION', 'MAINTENANCE_MODE', 'ENABLE_SIMULATION'].includes(item.key)) {
           settings[item.key] = item.value === true || item.value === 'true';
@@ -383,7 +384,9 @@ const getMergedSettings = async (client: any) => {
       { key: 'EXTENSION', original: 'Gia hạn', abbr: 'GH', value: '{ID}GH{N}' }
     ],
     MASTER_CONFIGS: dbSettings.MASTER_CONFIGS || config.MASTER_CONFIGS || [],
-    SYSTEM_START_DATE: dbSettings.SYSTEM_START_DATE !== undefined ? dbSettings.SYSTEM_START_DATE : (config.SYSTEM_START_DATE !== undefined ? config.SYSTEM_START_DATE : "")
+    SYSTEM_START_DATE: dbSettings.SYSTEM_START_DATE !== undefined ? dbSettings.SYSTEM_START_DATE : (config.SYSTEM_START_DATE !== undefined ? config.SYSTEM_START_DATE : ""),
+    REMINDER_DAYS_BEFORE_DUE: Number(dbSettings.REMINDER_DAYS_BEFORE_DUE !== undefined ? dbSettings.REMINDER_DAYS_BEFORE_DUE : 1),
+    AUTO_LOCK_OVERDUE_DAYS: Number(dbSettings.AUTO_LOCK_OVERDUE_DAYS !== undefined ? dbSettings.AUTO_LOCK_OVERDUE_DAYS : 15)
   };
 };
 
@@ -742,6 +745,7 @@ export const runDailySystemTasks = async (io: any) => {
   
   await Promise.all([
     runBatchPenalties(io),
+    runDailyOverdueChecksAndAutoLock(io),
     autoCleanupStorage(),
     keepAliveSupabase()
   ]);
@@ -999,7 +1003,7 @@ router.post("/settings", async (req: any, res) => {
     'LUCKY_SPIN_PAYMENTS_REQUIRED', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE', 'CONTRACT_CLAUSES',
     'RANK_CONFIG', 'TOTAL_RANK_PROFIT', 'TOTAL_LOAN_PROFIT', 'TOTAL_FINE_PROFIT', 'SYSTEM_BUDGET', 'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG',
     'CONTRACT_FORMATS_CONFIG', 'TRANSFER_CONTENTS_CONFIG', 'SYSTEM_CONTRACT_FORMATS_CONFIG', 'MASTER_CONFIGS', 'SYSTEM_START_DATE',
-    'ENABLE_SIMULATION', 'SIMULATION_INTERVAL'
+    'ENABLE_SIMULATION', 'SIMULATION_INTERVAL', 'REMINDER_DAYS_BEFORE_DUE', 'AUTO_LOCK_OVERDUE_DAYS'
   ];
   
   systemKeys.forEach(key => {
@@ -1878,6 +1882,178 @@ const processRankPenalties = async (user: any, userLoans: any[], settings: any, 
   }
 
   return updatedUserWithPenalty;
+};
+
+// Helper: Insert system notifications & trigger Push Notifications for user APK devices
+export const insertSystemNotificationHelper = async (client: any, io: any, userId: string, title: string, message: string, type = 'SYSTEM') => {
+  try {
+    const notifId = `SYS-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const timeStr = `${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ${new Date().toLocaleDateString('vi-VN')}`;
+    const notif = {
+      id: notifId,
+      userId,
+      title,
+      message,
+      time: timeStr,
+      read: false,
+      type
+    };
+    
+    await client.from('notifications').insert([notif]);
+    if (io) {
+      io.to(`user_${userId}`).emit("notification_updated", notif);
+    }
+    
+    // Send Push Notification to device APK
+    await triggerPushForUser(userId, title, message, client);
+  } catch (err) {
+    console.error("[insertSystemNotificationHelper] Error:", err);
+  }
+};
+
+// Daily Overdue Loan Reminder, Status Updater, and Auto Locking Mechanism
+export const runDailyOverdueChecksAndAutoLock = async (io: any) => {
+  console.log("[OverdueCheck] Starting daily overdue checks and auto-lock runner...");
+  try {
+    const client = initSupabase();
+    if (!client) return;
+
+    // Load dynamic setting parameters
+    const settings = await getMergedSettings(client);
+    const reminderDaysBeforeDue = Number(settings.REMINDER_DAYS_BEFORE_DUE !== undefined ? settings.REMINDER_DAYS_BEFORE_DUE : 1);
+    const autoLockOverdueDays = Number(settings.AUTO_LOCK_OVERDUE_DAYS !== undefined ? settings.AUTO_LOCK_OVERDUE_DAYS : 15);
+
+    // 1. Fetch active status loans
+    const activeStatuses = ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG VAY', 'CHỜ DUYỆT TÍNH PHÍ'];
+    const { data: loans, error: loanErr } = await client
+      .from('loans')
+      .select('*')
+      .in('status', activeStatuses);
+
+    if (loanErr) throw loanErr;
+    if (!loans || loans.length === 0) {
+      console.log("[OverdueCheck] No active loans found.");
+      return;
+    }
+
+    // 2. Fetch non-admin users
+    const { data: users, error: userErr } = await client
+      .from('users')
+      .select('*')
+      .eq('isAdmin', false);
+
+    if (userErr) throw userErr;
+    if (!users || users.length === 0) return;
+
+    const userMap = new Map<string, any>(users.map(u => [u.id, u]));
+
+    for (const loan of loans) {
+      const user = userMap.get(loan.userId);
+      if (!user) continue;
+
+      const daysOverdue = calculateOverdueDays(loan.date);
+      
+      // Calculate days remaining helper
+      const daysRemaining = (() => {
+        if (!loan.date) return -999;
+        try {
+          const [d, m, y] = loan.date.split('/').map(Number);
+          if (isNaN(d) || isNaN(m) || isNaN(y)) return -999;
+          const dueDate = new Date(y, m - 1, d);
+          dueDate.setHours(0, 0, 0, 0);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const diffTime = dueDate.getTime() - today.getTime();
+          return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        } catch (e) {
+          return -999;
+        }
+      })();
+
+      const amountStr = Number(loan.amount).toLocaleString('vi-VN');
+
+      // Task 1: Auto-update status of overdue loans to 'QUÁ HẠN' in DB
+      if (daysOverdue > 0) {
+        if (loan.status !== 'QUÁ HẠN' && loan.status !== 'CHỜ TẤT TOÁN') {
+          await client.from('loans').update({ status: 'QUÁ HẠN', updatedAt: Date.now() }).eq('id', loan.id);
+          loan.status = 'QUÁ HẠN';
+          if (io) {
+            io.to(`user_${loan.userId}`).emit("loan_updated", { ...loan, status: 'QUÁ HẠN' });
+          }
+        }
+
+        // Task 3: If overdue > autoLockOverdueDays, auto-lock user (non-admin)
+        if (daysOverdue > autoLockOverdueDays && !user.isLocked) {
+          const lockedReasonText = `Khoản vay mã ${loan.id} quá hạn ${daysOverdue} ngày chưa thanh toán (Từ ngày ${loan.date})`;
+          console.log(`[OverdueCheck] Auto-locking user ${user.id} due to ${autoLockOverdueDays}+ days overdue loan ${loan.id}`);
+          
+          await client.from('users').update({
+            isLocked: true,
+            lockedAt: new Date().toISOString(),
+            lockedReason: lockedReasonText,
+            updatedAt: Date.now()
+          }).eq('id', user.id);
+
+          const updatedUser = {
+            ...user,
+            isLocked: true,
+            lockedAt: new Date().toISOString(),
+            lockedReason: lockedReasonText
+          };
+
+          if (io) {
+            io.to(`user_${user.id}`).emit("user_updated", updatedUser);
+            io.to("admin").emit("users_updated", [updatedUser]);
+          }
+
+          // Insert system notification & push warning
+          await insertSystemNotificationHelper(
+            client,
+            io,
+            user.id,
+            "Tài khoản bị khóa tự động",
+            `Tài khoản của bạn đã bị khóa tự động theo quy định do khoản vay mã ${loan.id} trị giá ${amountStr} đ quá hạn ${daysOverdue} ngày chưa tất toán. Vui lòng liên hệ bộ phận hỗ trợ khách hàng để thanh toán và mở khóa tài khoản.`,
+            'SYSTEM'
+          );
+        } else {
+          // Regular daily overdue alert reminder notification (if not locked or just under lock threshold overdue)
+          await insertSystemNotificationHelper(
+            client,
+            io,
+            user.id,
+            "Khoản vay quá hạn",
+            `Cảnh báo! Khoản vay mã ${loan.id} trị giá ${amountStr} đ của bạn đã quá hạn ${daysOverdue} ngày. Vui lòng thanh toán ngay lập tức để tránh điểm phạt nâng cao hoặc bị khóa tài khoản tự động sau ${autoLockOverdueDays} ngày quá hạn.`,
+            'LOAN'
+          );
+        }
+      } else if (daysRemaining === reminderDaysBeforeDue && reminderDaysBeforeDue > 0) {
+        // Loan will be due in reminderDaysBeforeDue days
+        const dayStr = reminderDaysBeforeDue === 1 ? "vào ngày mai" : `sau ${reminderDaysBeforeDue} ngày`;
+        await insertSystemNotificationHelper(
+          client,
+          io,
+          user.userId || user.id,
+          "Khoản vay sắp đến hạn",
+          `Nhắc nhở: Khoản vay mã ${loan.id} trị giá ${amountStr} đ của quý khách sẽ đến hạn thanh toán ${dayStr} (${loan.date}). Quý khách vui lòng lưu ý và thanh toán đúng hạn.`,
+          'LOAN'
+        );
+      } else if (daysRemaining === 0) {
+        // Loan is due today
+        await insertSystemNotificationHelper(
+          client,
+          io,
+          user.id,
+          "Khoản vay đến hạn trả hôm nay",
+          `Cảnh báo: Hôm nay (${loan.date}) là hạn thanh toán cuối cùng cho khoản vay mã ${loan.id} trị giá ${amountStr} đ của quý khách. Vui lòng thanh toán đầy đủ trong ngày hôm nay.`,
+          'LOAN'
+        );
+      }
+    }
+
+    console.log("[OverdueCheck] Daily overdue checks and auto-lock completed successfully.");
+  } catch (error) {
+    console.error("[OverdueCheck] Error running daily overdue checks / auto-locking:", error);
+  }
 };
 
 router.post("/update-fcm-token", async (req: any, res) => {
@@ -3729,6 +3905,25 @@ router.post("/admin/user/unlock", authenticateToken, async (req: any, res) => {
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Manual endpoint for Admin to trigger daily system checks and auto-locking manually for instantaneous tests
+router.post("/admin/run-daily-tasks", authenticateToken, async (req: any, res) => {
+  try {
+    if (!req.user?.isAdmin) return res.status(403).json({ error: "Không có quyền" });
+    const io = req.app.get("io");
+    
+    console.log("[ManualTrigger] Admin triggered daily system tasks & checks manually.");
+    
+    // Run forced penalties and overdue locking checks instantly
+    await runBatchPenalties(io);
+    await runDailyOverdueChecksAndAutoLock(io);
+    
+    res.json({ success: true, message: "Đã chạy đối soát kỳ hạn, thông báo sắp đến hạn/quá hạn và tính năng tự động khóa tài khoản thành công!" });
+  } catch (error: any) {
+    console.error("[ManualTrigger] Error:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
