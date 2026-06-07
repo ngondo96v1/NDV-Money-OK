@@ -1300,6 +1300,46 @@ const App: React.FC = () => {
     return () => clearInterval(pollInterval);
   }, [user?.id, user?.isAdmin, isTabActive, fetchUserProfile]);
 
+  // LIGHTWEIGHT BACKGROUND BUDGET AUTO-POLLING: Fetch fresh system budget every 4 seconds if tab is active
+  // This ensures the Trang chủ (Homepage) system budget is always 100% synchronized and real-time,
+  // bypassing any websocket or connection limits seamlessly.
+  useEffect(() => {
+    if (!token || !isTabActive) return;
+
+    const pollBudget = async () => {
+      try {
+        const response = await fetch('/api/budget', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.budget !== undefined) {
+            const num = Number(data.budget);
+            setSystemBudget(prev => {
+              if (prev !== num) {
+                console.log("[POLL BUDGET] Real-time budget updated in background:", num);
+                localStorage.setItem('ndv_budget', num.toString());
+                return num;
+              }
+              return prev;
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("[POLL BUDGET] Quietly failed to poll live budget:", err);
+      }
+    };
+
+    // Run immediately on mount
+    pollBudget();
+
+    const interval = setInterval(pollBudget, 4000); // 4 seconds is highly responsive and incredibly fast
+
+    return () => clearInterval(interval);
+  }, [token, isTabActive]);
+
   useEffect(() => {
     let isMounted = true;
     

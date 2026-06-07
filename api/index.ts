@@ -2215,6 +2215,25 @@ router.post("/send-push", async (req: any, res) => {
   }
 });
 
+// Lightweight REAL-TIME system budget check route
+router.get("/budget", async (req, res) => {
+  try {
+    const client = initSupabase();
+    if (!client) {
+      return res.status(500).json({
+        error: "Cấu hình Supabase không hợp lệ",
+        message: "Hệ thống chưa được cấu hình Supabase URL hoặc Service Role Key."
+      });
+    }
+    const { data } = await client.from('config').select('value').eq('key', 'SYSTEM_BUDGET').single();
+    const budgetVal = data?.value !== undefined ? Number(data.value) : 0;
+    return res.json({ budget: budgetVal });
+  } catch (err: any) {
+    console.error("[API BUDGET] Error checking budget:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/data", async (req, res) => {
   try {
     const client = initSupabase();
@@ -2694,7 +2713,17 @@ router.post("/users", async (req: any, res) => {
 
             if (limitChanged || rankChanged) {
               const oldRankLabel = (rankConfigs.find((r: any) => r.id === existing.rank)?.name || existing.rank || "").toUpperCase();
-              const newRankLabel = (rankConfigs.find((r: any) => r.id === u.rank)?.name || u.rank || "").toUpperCase();
+              let newRankLabel = (rankConfigs.find((r: any) => r.id === u.rank)?.name || u.rank || "").toUpperCase();
+
+              // Calculate maximum rank limit to define the system's maximum loan amount
+              const maxLimitOverall = rankConfigs && rankConfigs.length > 0
+                ? Math.max(...rankConfigs.map((r: any) => Number(r.maxLimit || 0)))
+                : 50000000;
+
+              const limitExceedsSystemMax = u.totalLimit !== undefined && Number(u.totalLimit) > maxLimitOverall;
+              if (limitExceedsSystemMax) {
+                newRankLabel = "VIP";
+              }
 
               let title = "";
               let message = "";
@@ -2706,8 +2735,13 @@ router.post("/users", async (req: any, res) => {
                 title = "Nâng hạng thành viên";
                 message = `Tài khoản của bạn đã được cập nhật lên hạng ${newRankLabel} thành công.`;
               } else if (limitChanged) {
-                title = "Thay đổi hạn mức vay";
-                message = `Hạn mức vay của bạn đã được Admin điều chỉnh thành ${(Number(u.totalLimit)).toLocaleString('vi-VN')} đ.`;
+                if (limitExceedsSystemMax) {
+                  title = "Nâng hạng & Tăng hạn mức";
+                  message = `Chúc mừng! Tài khoản của bạn đã được nâng lên hạng VIP với hạn mức vay mới là ${(Number(u.totalLimit)).toLocaleString('vi-VN')} đ.`;
+                } else {
+                  title = "Thay đổi hạn mức vay";
+                  message = `Hạn mức vay của bạn đã được Admin điều chỉnh thành ${(Number(u.totalLimit)).toLocaleString('vi-VN')} đ.`;
+                }
               }
 
               if (title && message) {
