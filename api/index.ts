@@ -3656,6 +3656,47 @@ router.post("/budget-log/delete", async (req: any, res) => {
     if (Object.keys(updates).length > 0) {
       const saved = await saveSystemSettings(client, updates);
       if (!saved) throw new Error("Không thể cập nhật cấu hình hệ thống");
+
+      // Emit config update via Socket.io so it refreshes user-side in real-time
+      const io = req.app.get("io");
+      if (io) {
+        const ioUpdates = [];
+        const dict: any = {};
+        
+        if (updates.SYSTEM_BUDGET !== undefined) {
+          const val = Number(updates.SYSTEM_BUDGET);
+          ioUpdates.push({ key: 'SYSTEM_BUDGET', value: val });
+          ioUpdates.push({ key: 'budget', value: val });
+          dict['SYSTEM_BUDGET'] = val;
+          dict['budget'] = val;
+        }
+        if (updates.TOTAL_RANK_PROFIT !== undefined) {
+          const val = Number(updates.TOTAL_RANK_PROFIT);
+          ioUpdates.push({ key: 'TOTAL_RANK_PROFIT', value: val });
+          ioUpdates.push({ key: 'rankProfit', value: val });
+          dict['TOTAL_RANK_PROFIT'] = val;
+          dict['rankProfit'] = val;
+        }
+        if (updates.TOTAL_LOAN_PROFIT !== undefined) {
+          const val = Number(updates.TOTAL_LOAN_PROFIT);
+          ioUpdates.push({ key: 'TOTAL_LOAN_PROFIT', value: val });
+          ioUpdates.push({ key: 'loanProfit', value: val });
+          dict['TOTAL_LOAN_PROFIT'] = val;
+          dict['loanProfit'] = val;
+        }
+        if (updates.TOTAL_FINE_PROFIT !== undefined) {
+          const val = Number(updates.TOTAL_FINE_PROFIT);
+          ioUpdates.push({ key: 'TOTAL_FINE_PROFIT', value: val });
+          ioUpdates.push({ key: 'fineProfit', value: val });
+          dict['TOTAL_FINE_PROFIT'] = val;
+          dict['fineProfit'] = val;
+        }
+
+        if (ioUpdates.length > 0) {
+          io.emit("config_updated", ioUpdates);
+          io.emit("config_updated", dict);
+        }
+      }
     }
 
     // 5. Delete the log
@@ -3845,7 +3886,17 @@ router.delete("/users/:id", async (req: any, res) => {
       if (totalBudgetDelta !== 0) {
         const settings = await getMergedSettings(client);
         const currentBudget = Number(settings.SYSTEM_BUDGET || 0);
-        await saveSystemSettings(client, { SYSTEM_BUDGET: currentBudget + totalBudgetDelta });
+        const newBudgetNum = currentBudget + totalBudgetDelta;
+        await saveSystemSettings(client, { SYSTEM_BUDGET: newBudgetNum });
+
+        const io = req.app.get("io");
+        if (io) {
+          io.emit("config_updated", [
+            { key: 'SYSTEM_BUDGET', value: newBudgetNum },
+            { key: 'budget', value: newBudgetNum }
+          ]);
+          io.emit("config_updated", { SYSTEM_BUDGET: newBudgetNum, budget: newBudgetNum });
+        }
       }
     }
     
@@ -4749,6 +4800,17 @@ router.post("/sync", async (req: any, res) => {
       // If config changed, notify everyone
       if (configUpdates.length > 0) {
         io.emit("config_updated", configUpdates);
+        
+        // Also emit as a dictionary to ensure all clients capture the changes immediately
+        const dict: any = {};
+        configUpdates.forEach(item => {
+          dict[item.key] = item.value;
+          if (item.key === 'SYSTEM_BUDGET') dict['budget'] = item.value;
+          if (item.key === 'TOTAL_RANK_PROFIT') dict['rankProfit'] = item.value;
+          if (item.key === 'TOTAL_LOAN_PROFIT') dict['loanProfit'] = item.value;
+          if (item.key === 'TOTAL_FINE_PROFIT') dict['fineProfit'] = item.value;
+        });
+        io.emit("config_updated", dict);
       }
     }
     

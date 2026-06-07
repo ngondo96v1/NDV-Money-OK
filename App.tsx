@@ -3359,17 +3359,32 @@ const App: React.FC = () => {
         settings.RANK_CONFIG.forEach((r: any) => { rankNames[r.id] = r.name; });
       }
 
-      // Determine what was updated for a more detailed notification
+      const rankConfigList = settings.RANK_CONFIG;
+      const maxLimitOverall = Array.isArray(rankConfigList) && rankConfigList.length > 0
+        ? Math.max(...rankConfigList.map((r: any) => Number(r.maxLimit || 0)))
+        : 50000000;
+      
+      const isManualVipUpgrade = updatedData.totalLimit !== undefined && Number(updatedData.totalLimit) > maxLimitOverall;
+
+      let notifTitle = 'Cập nhật hệ thống';
       let detail = 'Hồ sơ của bạn đã được quản trị viên điều chỉnh.';
-      if (updatedData.totalLimit !== undefined && updatedData.rank !== undefined) {
-        detail = `Hồ sơ của bạn đã được cập nhật: Hạng ${rankNames[updatedData.rank] || updatedData.rank}, Hạn mức ${updatedData.totalLimit.toLocaleString()} đ.`;
+      
+      if (isManualVipUpgrade) {
+        notifTitle = 'Nâng hạng & Tăng hạn mức';
+        detail = `Chúc mừng! Tài khoản của bạn đã được nâng lên hạng VIP với hạn mức vay mới là ${Number(updatedData.totalLimit).toLocaleString('vi-VN')} đ.`;
+      } else if (updatedData.totalLimit !== undefined && updatedData.rank !== undefined) {
+        detail = `Hồ sơ của bạn đã được cập nhật: Hạng ${rankNames[updatedData.rank] || updatedData.rank}, Hạn mức ${updatedData.totalLimit.toLocaleString('vi-VN')} đ.`;
       } else if (updatedData.totalLimit !== undefined) {
-        detail = `Hạn mức tài khoản của bạn đã được quản trị viên điều chỉnh thành ${updatedData.totalLimit.toLocaleString()} đ.`;
+        detail = `Hạn mức tài khoản của bạn đã được quản trị viên điều chỉnh thành ${updatedData.totalLimit.toLocaleString('vi-VN')} đ.`;
       } else if (updatedData.rank !== undefined) {
         detail = `Hạng thành viên của bạn đã được cập nhật thành ${rankNames[updatedData.rank] || updatedData.rank}.`;
       }
       
-      addNotification(userId, 'Cập nhật hệ thống', `Hệ thống đã cập nhật thông tin tài khoản của bạn. Chi tiết: ${detail}. Vui lòng đăng nhập lại nếu cần để thông tin được đồng bộ chính xác.`, 'SYSTEM');
+      if (isManualVipUpgrade) {
+        addNotification(userId, notifTitle, detail, 'SYSTEM');
+      } else {
+        addNotification(userId, notifTitle, `Hệ thống đã cập nhật thông tin tài khoản của bạn. Chi tiết: ${detail}. Vui lòng đăng nhập lại nếu cần để thông tin được đồng bộ chính xác.`, 'SYSTEM');
+      }
     } catch (e: any) {
       console.error("Lỗi sửa user Admin:", e);
     } finally {
