@@ -101,7 +101,7 @@ const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, 
       const cleanBaseId = (contract.originalBaseId || '').trim().toUpperCase() || 
                           contract.id.trim().toUpperCase().replace(/^(GH\s+|TTMP\s+|GOP\s+|TT\s+)/, '').replace(/\s+(GOP|GỞI|GIA HẠN.*|TTMP.*|GOP-GOP.*)$/, '').trim();
 
-      const previousLoan = loans.find(l => {
+      const matchedLoans = loans.filter(l => {
         if (l.userId !== contract.userId) return false;
         
         const lBaseId = (l.originalBaseId || '').trim().toUpperCase() ||
@@ -113,14 +113,28 @@ const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, 
         return isSameBase && isPrevCount;
       });
 
-      if (previousLoan && previousLoan.settledAt) {
-        try {
-          const dateObj = new Date(previousLoan.settledAt);
-          if (!isNaN(dateObj.getTime())) {
-            return dateObj.toLocaleDateString('vi-VN');
+      // Sort matched loans to prioritize the actual predecessor
+      const sortedMatches = [...matchedLoans].sort((a, b) => {
+        if (a.status === 'ĐÃ CỘNG DỒN' && b.status !== 'ĐÃ CỘNG DỒN') return 1;
+        if (b.status === 'ĐÃ CỘNG DỒN' && a.status !== 'ĐÃ CỘNG DỒN') return -1;
+        if (a.settledAt && !b.settledAt) return -1;
+        if (!a.settledAt && b.settledAt) return 1;
+        return 0;
+      });
+
+      const previousLoan = sortedMatches[0];
+
+      if (previousLoan) {
+        const targetStamp = previousLoan.settledAt || previousLoan.updatedAt;
+        if (targetStamp) {
+          try {
+            const dateObj = new Date(isNaN(Number(targetStamp)) ? targetStamp : Number(targetStamp));
+            if (!isNaN(dateObj.getTime())) {
+              return dateObj.toLocaleDateString('vi-VN');
+            }
+          } catch (e) {
+            console.error("Error parsing previous date for modification date:", e);
           }
-        } catch (e) {
-          console.error("Error parsing previous settledAt for modification date:", e);
         }
       }
     }

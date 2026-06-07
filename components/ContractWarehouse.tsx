@@ -11,6 +11,8 @@ interface ContractWarehouseProps {
 const ContractWarehouse: React.FC<ContractWarehouseProps> = ({ user }) => {
   const [selectedContract, setSelectedContract] = useState<LoanRecord | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [contracts, setContracts] = useState<LoanRecord[]>([]);
+  const [allLoans, setAllLoans] = useState<LoanRecord[]>([]);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -20,15 +22,17 @@ const ContractWarehouse: React.FC<ContractWarehouseProps> = ({ user }) => {
         if (data.settings) {
           setSettings(data.settings);
         }
+        if (data.loans && user) {
+          const userContracts = data.loans.filter((l: LoanRecord) => l.userId === user.id);
+          setContracts(userContracts);
+          setAllLoans(data.loans);
+        }
       } catch (error) {
         console.error('Error fetching settings:', error);
       }
     };
     fetchSettings();
-  }, []);
-
-  // System clean: Started with no contracts
-  const contracts: LoanRecord[] = [];
+  }, [user]);
 
   return (
     <div className="w-full bg-black px-5 pb-10 space-y-5 animate-in fade-in duration-500">
@@ -85,6 +89,7 @@ const ContractWarehouse: React.FC<ContractWarehouseProps> = ({ user }) => {
           user={user} 
           onClose={() => setSelectedContract(null)} 
           settings={settings}
+          loans={allLoans}
         />
       )}
     </div>

@@ -10,6 +10,13 @@ import { PayOS } from "@payos/node";
 import rateLimit from "express-rate-limit";
 import admin from "firebase-admin";
 
+// Load environment variables as early as possible
+dotenv.config();
+const envPath = path.resolve(process.cwd(), ".env");
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+}
+
 // Initialize Firebase Admin for Push Notifications
 let firebaseApp: admin.app.App | null = null;
 try {
@@ -115,13 +122,6 @@ const triggerPushForUser = async (userId: string, title: string, body: string, c
     console.error(`[PUSH] Unexpected error for user ${userId}:`, err);
   }
 };
-
-// Load environment variables as early as possible
-dotenv.config();
-const envPath = path.resolve(process.cwd(), ".env");
-if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath });
-}
 
 const CONFIG_PATH = path.resolve(process.cwd(), "config.json");
 
@@ -1685,8 +1685,8 @@ router.post("/register", async (req, res) => {
   }
 });
 
-let lastPingTime = 0;
-const PING_INTERVAL = 1 * 60 * 60 * 1000; // 1 hour
+let lastPingTime = Date.now();
+const PING_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours (preventing database pausing once a day is more than enough)
 
 // Passive Keep-Alive Middleware
 router.use(async (req, res, next) => {

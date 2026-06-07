@@ -186,6 +186,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
   };
 
   const [chartYear, setChartYear] = useState<number>(new Date().getFullYear());
+  const [activeTooltipIndex, setActiveTooltipIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      setActiveTooltipIndex(null);
+    };
+    window.addEventListener('click', handleGlobalClick);
+    return () => {
+      window.removeEventListener('click', handleGlobalClick);
+    };
+  }, []);
 
   const getItemRevenueDate = useCallback((item: any, type: 'loan' | 'user' | 'log'): Date | null => {
     if (type === 'loan') {
@@ -741,8 +752,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       </div>
 
       {/* 3. BIỂU ĐỒ DOANH THU 12 THÁNG */}
-      <div className="bg-[#111111] border border-white/5 rounded-[2.5rem] p-6 relative overflow-hidden shadow-2xl">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-[#ffc300]/5 blur-3xl rounded-full -mr-16 -mt-16"></div>
+      <div className="bg-[#111111] border border-white/5 rounded-[2.5rem] p-6 relative shadow-2xl">
+        {/* Background rounded mask wrapper for decorative graphics */}
+        <div className="absolute inset-0 rounded-[2.5rem] overflow-hidden pointer-events-none">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-[#ffc300]/5 blur-3xl rounded-full -mr-16 -mt-16"></div>
+        </div>
         <div className="relative z-10 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -781,29 +795,52 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
                 const finalHeight = data.total > 0 ? Math.max(heightPct, 3) : 0;
 
                 return (
-                  <div key={data.month} className="flex-1 flex flex-col items-center group relative h-full justify-end cursor-pointer">
-                    {/* Tooltip Content on Hover */}
-                    <div className="absolute bottom-full mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-all duration-200 z-50 text-left bg-[#1a1a1e] border border-white/10 p-2.5 rounded-xl shadow-xl w-36 -translate-y-1">
-                      <p className="text-[8px] font-black text-white mb-1.5 uppercase border-b border-white/10 pb-1">{data.month} / {chartYear}</p>
-                      <div className="space-y-1">
-                        <div className="flex justify-between items-center text-[7px] font-black">
-                          <span className="text-gray-400">PHÍ DỊCH VỤ:</span>
-                          <span className="text-amber-500">{data.loanRevenue.toLocaleString()}đ</span>
+                  <div 
+                    key={data.month} 
+                    className="flex-1 flex flex-col items-center group relative h-full justify-end cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveTooltipIndex(activeTooltipIndex === index ? null : index);
+                    }}
+                  >
+                    {/* Tooltip Content on Hover / Tap */}
+                    {(() => {
+                      // Determine best horizontal alignment classes to avoid screen overflow clipping
+                      let alignClass = "left-1/2 -translate-x-1/2 origin-bottom";
+                      if (index < 2) {
+                        alignClass = "left-0 translate-x-0 origin-bottom-left";
+                      } else if (index > 9) {
+                        alignClass = "right-0 translate-x-0 origin-bottom-right";
+                      }
+
+                      const isVisible = activeTooltipIndex === index;
+
+                      return (
+                        <div 
+                          className={`absolute bottom-full mb-2 pointer-events-none transition-all duration-200 z-50 text-left bg-[#1a1a1e] border border-white/10 p-2.5 rounded-xl shadow-2xl w-36 -translate-y-1 ${alignClass} ${isVisible ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible group-hover:opacity-100 group-hover:scale-100 group-hover:visible'}`}
+                        >
+                          <p className="text-[8px] font-black text-white mb-1.5 uppercase border-b border-white/10 pb-1">{data.month} / {chartYear}</p>
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center text-[7px] font-black">
+                              <span className="text-gray-400">PHÍ DỊCH VỤ:</span>
+                              <span className="text-amber-500">{data.loanRevenue.toLocaleString()}đ</span>
+                            </div>
+                            <div className="flex justify-between items-center text-[7px] font-black">
+                              <span className="text-gray-400">TIỀN PHẠT:</span>
+                              <span className="text-red-500">{data.penaltyRevenue.toLocaleString()}đ</span>
+                            </div>
+                            <div className="flex justify-between items-center text-[7px] font-black">
+                              <span className="text-gray-400">NÂNG HẠNG:</span>
+                              <span className="text-violet-400">{data.rankRevenue.toLocaleString()}đ</span>
+                            </div>
+                            <div className="flex justify-between items-center text-[8px] font-black pt-1 border-t border-white/[0.05] mt-1 text-[#00ffcc]">
+                              <span>TỔNG THU:</span>
+                              <span>{data.total.toLocaleString()}đ</span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex justify-between items-center text-[7px] font-black">
-                          <span className="text-gray-400">TIỀN PHẠT:</span>
-                          <span className="text-red-500">{data.penaltyRevenue.toLocaleString()}đ</span>
-                        </div>
-                        <div className="flex justify-between items-center text-[7px] font-black">
-                          <span className="text-gray-400">NÂNG HẠNG:</span>
-                          <span className="text-violet-400">{data.rankRevenue.toLocaleString()}đ</span>
-                        </div>
-                        <div className="flex justify-between items-center text-[8px] font-black pt-1 border-t border-white/[0.05] mt-1 text-[#00ffcc]">
-                          <span>TỔNG THU:</span>
-                          <span>{data.total.toLocaleString()}đ</span>
-                        </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
 
                     {/* Revenue Text Overlay Above the Bar */}
                     <div className="h-4 flex items-center justify-center select-none mb-1">

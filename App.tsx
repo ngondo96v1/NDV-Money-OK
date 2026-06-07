@@ -1169,14 +1169,14 @@ const App: React.FC = () => {
     }
   }, [user?.id, user?.isAdmin, token, authenticatedFetch, isGlobalProcessing]);
 
-  // AUTO-POLLING for Admin: Fetch fresh data every 45 seconds if tab is active
+  // AUTO-POLLING for Admin: Fetch fresh data every 180 seconds (3 minutes) if tab is active to conserve Supabase bandwidth
   useEffect(() => {
     if (!user || !user.isAdmin || !isTabActive) return;
 
     const pollInterval = setInterval(() => {
       console.log("[POLL] Admin fetching fresh data...");
       fetchData(false, false, true); // Use force=true for background polling
-    }, 45000); // 45 seconds
+    }, 180000); // 3 minutes (real-time is handled via Socket.io, so this is just a backup fallback)
 
     return () => clearInterval(pollInterval);
   }, [user?.isAdmin, isTabActive, fetchData]);
