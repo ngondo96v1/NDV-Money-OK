@@ -717,6 +717,26 @@ const App: React.FC = () => {
           localStorage.setItem('ndv_loans', JSON.stringify(data.loans));
         }
         
+        if (data.budget !== undefined) {
+          setSystemBudget(Number(data.budget));
+          localStorage.setItem('ndv_budget', data.budget.toString());
+        }
+
+        if (data.rankProfit !== undefined) {
+          setRankProfit(Number(data.rankProfit));
+          localStorage.setItem('ndv_rank_profit', data.rankProfit.toString());
+        }
+
+        if (data.loanProfit !== undefined) {
+          setLoanProfit(Number(data.loanProfit));
+          localStorage.setItem('ndv_loan_profit', data.loanProfit.toString());
+        }
+
+        if (data.fineProfit !== undefined) {
+          setFineProfit(Number(data.fineProfit));
+          localStorage.setItem('ndv_fine_profit', data.fineProfit.toString());
+        }
+        
         if (data.notifications) {
           const allNotifs = deduplicateNotifications(data.notifications);
           const userNotifs = allNotifs.filter(n => n.userId === user.id).slice(0, 10);
@@ -1446,20 +1466,24 @@ const App: React.FC = () => {
       if (Array.isArray(data)) {
         data.forEach(c => {
           if (c.key === 'budget' || c.key === 'SYSTEM_BUDGET') {
-            setSystemBudget(c.value);
-            localStorage.setItem('ndv_budget', c.value.toString());
+            const num = Number(c.value);
+            setSystemBudget(num);
+            localStorage.setItem('ndv_budget', num.toString());
           }
           if (c.key === 'rankProfit' || c.key === 'TOTAL_RANK_PROFIT') {
-            setRankProfit(c.value);
-            localStorage.setItem('ndv_rank_profit', c.value.toString());
+            const num = Number(c.value);
+            setRankProfit(num);
+            localStorage.setItem('ndv_rank_profit', num.toString());
           }
           if (c.key === 'loanProfit' || c.key === 'TOTAL_LOAN_PROFIT') {
-            setLoanProfit(c.value);
-            localStorage.setItem('ndv_loan_profit', c.value.toString());
+            const num = Number(c.value);
+            setLoanProfit(num);
+            localStorage.setItem('ndv_loan_profit', num.toString());
           }
           if (c.key === 'fineProfit' || c.key === 'TOTAL_FINE_PROFIT') {
-            setFineProfit(c.value);
-            localStorage.setItem('ndv_fine_profit', c.value.toString());
+            const num = Number(c.value);
+            setFineProfit(num);
+            localStorage.setItem('ndv_fine_profit', num.toString());
           }
           if (c.key === 'monthlyStats' || c.key === 'MONTHLY_STATS') {
             const sliced = c.value.slice(0, 6);
@@ -1481,10 +1505,10 @@ const App: React.FC = () => {
         setSettings(prev => ({ ...prev, ...data }));
         
         // Update individual stats if present
-        if (data.SYSTEM_BUDGET !== undefined) setSystemBudget(data.SYSTEM_BUDGET);
-        if (data.TOTAL_RANK_PROFIT !== undefined) setRankProfit(data.TOTAL_RANK_PROFIT);
-        if (data.TOTAL_LOAN_PROFIT !== undefined) setLoanProfit(data.TOTAL_LOAN_PROFIT);
-        if (data.TOTAL_FINE_PROFIT !== undefined) setFineProfit(data.TOTAL_FINE_PROFIT);
+        if (data.SYSTEM_BUDGET !== undefined) setSystemBudget(Number(data.SYSTEM_BUDGET));
+        if (data.TOTAL_RANK_PROFIT !== undefined) setRankProfit(Number(data.TOTAL_RANK_PROFIT));
+        if (data.TOTAL_LOAN_PROFIT !== undefined) setLoanProfit(Number(data.TOTAL_LOAN_PROFIT));
+        if (data.TOTAL_FINE_PROFIT !== undefined) setFineProfit(Number(data.TOTAL_FINE_PROFIT));
         if (data.MONTHLY_STATS) setMonthlyStats(data.MONTHLY_STATS.slice(0, 6));
       }
     });

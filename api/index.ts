@@ -3347,7 +3347,12 @@ router.post("/budget", async (req: any, res) => {
     settingsCache = null;
     const io = req.app.get("io");
     if (io) {
-      io.emit("config_updated", [{ key: 'SYSTEM_BUDGET', value: finalBudget }]);
+      const budgetNum = Number(finalBudget);
+      io.emit("config_updated", [
+        { key: 'SYSTEM_BUDGET', value: budgetNum },
+        { key: 'budget', value: budgetNum }
+      ]);
+      io.emit("config_updated", { SYSTEM_BUDGET: budgetNum, budget: budgetNum });
     }
 
     if (log) {
@@ -3680,7 +3685,12 @@ router.post("/admin/reset-budget-rewrite", async (req: any, res) => {
     settingsCache = null;
     const io = req.app.get("io");
     if (io) {
-      io.emit("config_updated", [{ key: 'SYSTEM_BUDGET', value: budget }]);
+      const budgetNum = Number(budget);
+      io.emit("config_updated", [
+        { key: 'SYSTEM_BUDGET', value: budgetNum },
+        { key: 'budget', value: budgetNum }
+      ]);
+      io.emit("config_updated", { SYSTEM_BUDGET: budgetNum, budget: budgetNum });
     }
     
     sendSafeJson(res, { success: true });
