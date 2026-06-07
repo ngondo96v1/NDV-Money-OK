@@ -205,7 +205,6 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
             <button 
               onClick={() => {
                 setShowNotifications(true);
-                onMarkAllNotificationsRead?.();
               }}
               className="w-8 h-8 bg-[#111111] border border-white/5 rounded-full flex items-center justify-center text-gray-400 relative active:scale-90 transition-all"
             >
@@ -497,6 +496,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
           notifications={notifications} 
           onClose={() => setShowNotifications(false)} 
           onMarkRead={(id) => onMarkNotificationRead?.(id)}
+          onMarkAllRead={onMarkAllNotificationsRead}
         />
       )}
     </div>

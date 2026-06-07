@@ -41,6 +41,16 @@ export const initializePushNotifications = async (userId: string | undefined) =>
   // Show us the notification payload if the app is open on our device
   PushNotifications.addListener('pushNotificationReceived', (notification) => {
     console.log('Push received: ' + JSON.stringify(notification));
+    
+    // Dispatch a custom event so the main React app can display a beautiful Sonner toast
+    const event = new CustomEvent('app_push_received', {
+      detail: {
+        title: notification.title,
+        body: notification.body,
+        data: notification.data
+      }
+    });
+    window.dispatchEvent(event);
   });
 
   // Method called when tapping on a notification
@@ -59,8 +69,20 @@ const saveTokenToSupabase = async (userId: string, token: string) => {
       headers['Authorization'] = `Bearer ${jwtToken}`;
     }
 
-    // Chúng ta sẽ gọi API này sau khi đã cập nhật DB
-    await fetch('/api/update-fcm-token', {
+    const envApiUrl = (import.meta.env && import.meta.env.VITE_API_URL) || (import.meta.env && import.meta.env.VITE_APP_URL);
+    const isSpecialOrigin = 
+      window.location.protocol === 'capacitor:' || 
+      window.location.protocol === 'file:' || 
+      (window.location.hostname === 'localhost' && window.location.port !== '3000');
+    
+    const apiHost = isSpecialOrigin
+      ? (envApiUrl || "https://ndv-money-ok.vercel.app")
+      : window.location.origin;
+
+    const url = `${apiHost.replace(/\/$/, '')}/api/update-fcm-token`;
+
+    console.log(`[PUSH] Sending FCM token to API: ${url}`);
+    await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({ userId, token }),

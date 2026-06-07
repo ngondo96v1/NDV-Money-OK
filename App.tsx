@@ -688,61 +688,61 @@ const App: React.FC = () => {
   }, []);
 
   // Fetch latest user profile on mount and when tab becomes active
-  useEffect(() => {
-    const fetchUserProfile = async () => {
-      if (!token || !user?.id) return;
-      
-      try {
-        const response = await authenticatedFetch(`/api/data?userId=${user.id}&full=true`);
-        if (response.ok) {
-          const data = await response.json();
-          
-          if (data.users && data.users.length > 0) {
-            const latestUser = data.users[0];
-            // Ensure isAdmin is boolean
-            latestUser.isAdmin = !!latestUser.isAdmin;
-            // Preserve isAdmin flag for admins if not in DB to prevent accidental logout/redirect
-            if (user.isAdmin && !latestUser.isAdmin) {
-              latestUser.isAdmin = true;
-            }
-            setUser(latestUser);
-            if (rememberMe) {
-              localStorage.setItem('vnv_user', JSON.stringify(latestUser));
-            } else {
-              sessionStorage.setItem('vnv_user', JSON.stringify(latestUser));
-            }
+  const fetchUserProfile = useCallback(async () => {
+    if (!token || !user?.id) return;
+    
+    try {
+      const response = await authenticatedFetch(`/api/data?userId=${user.id}&full=true`);
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.users && data.users.length > 0) {
+          const latestUser = data.users[0];
+          // Ensure isAdmin is boolean
+          latestUser.isAdmin = !!latestUser.isAdmin;
+          // Preserve isAdmin flag for admins if not in DB to prevent accidental logout/redirect
+          if (user.isAdmin && !latestUser.isAdmin) {
+            latestUser.isAdmin = true;
           }
-          
-          if (data.loans) {
-            setLoans(data.loans);
-            localStorage.setItem('ndv_loans', JSON.stringify(data.loans));
+          setUser(latestUser);
+          if (rememberMe) {
+            localStorage.setItem('vnv_user', JSON.stringify(latestUser));
+          } else {
+            sessionStorage.setItem('vnv_user', JSON.stringify(latestUser));
           }
-          
-          if (data.notifications) {
-            const allNotifs = deduplicateNotifications(data.notifications);
-            const userNotifs = allNotifs.filter(n => n.userId === user.id).slice(0, 10);
-            const adminNotifs = allNotifs.filter(n => n.userId === 'ADMIN').slice(0, 50);
-            
-            setNotifications(userNotifs);
-            localStorage.setItem('ndv_notifications', JSON.stringify(userNotifs));
-            
-            if (user.isAdmin) {
-              setAdminNotifications(adminNotifs);
-              localStorage.setItem('ndv_admin_notifications', JSON.stringify(adminNotifs));
-            }
-          }
-          
-          console.log("[AUTH] User profile and data synced with server");
         }
-      } catch (e) {
-        console.error("[AUTH] Error syncing user profile:", e);
+        
+        if (data.loans) {
+          setLoans(data.loans);
+          localStorage.setItem('ndv_loans', JSON.stringify(data.loans));
+        }
+        
+        if (data.notifications) {
+          const allNotifs = deduplicateNotifications(data.notifications);
+          const userNotifs = allNotifs.filter(n => n.userId === user.id).slice(0, 10);
+          const adminNotifs = allNotifs.filter(n => n.userId === 'ADMIN').slice(0, 50);
+          
+          setNotifications(userNotifs);
+          localStorage.setItem('ndv_notifications', JSON.stringify(userNotifs));
+          
+          if (user.isAdmin) {
+            setAdminNotifications(adminNotifs);
+            localStorage.setItem('ndv_admin_notifications', JSON.stringify(adminNotifs));
+          }
+        }
+        
+        console.log("[AUTH] User profile and data synced with server");
       }
-    };
+    } catch (e) {
+      console.error("[AUTH] Error syncing user profile:", e);
+    }
+  }, [token, user?.id, user?.isAdmin, rememberMe, authenticatedFetch]);
 
+  useEffect(() => {
     if (isInitialized && isTabActive) {
       fetchUserProfile();
     }
-  }, [isInitialized, isTabActive, token, user?.id]);
+  }, [isInitialized, isTabActive, fetchUserProfile]);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -768,6 +768,34 @@ const App: React.FC = () => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
+
+  // Listen for in-app native push notifications (foreground)
+  useEffect(() => {
+    const handleInAppPush = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        const { title, body } = customEvent.detail;
+        toast(title || "Thông báo hệ thống", {
+          description: body || "",
+          duration: 6000,
+          action: {
+            label: "Xem",
+            onClick: () => {
+              if (user && !user.isAdmin) {
+                setShowSystemNotification(true);
+              }
+            }
+          }
+        });
+        
+        // Refresh profile if foreground push is received to make sure everything is in-sync!
+        fetchUserProfile();
+      }
+    };
+    
+    window.addEventListener('app_push_received', handleInAppPush);
+    return () => window.removeEventListener('app_push_received', handleInAppPush);
+  }, [user, fetchUserProfile]);
 
   useEffect(() => {
     // Only automatically show if conditions are met
@@ -868,11 +896,62 @@ const App: React.FC = () => {
 
   const deduplicateNotifications = (notifs: Notification[]) => {
     const seen = new Set();
-    return notifs.filter(n => {
+    const filtered = notifs.filter(n => {
       if (!n.id || seen.has(n.id)) return false;
       seen.add(n.id);
       return true;
     });
+
+    const getNotifTimestamp = (n: Notification) => {
+      if (!n) return 0;
+      // 1. Try to extract timestamp from ID
+      if (n.id && typeof n.id === 'string') {
+        const matches = n.id.match(/\d{9,14}/);
+        if (matches) {
+          const ts = parseInt(matches[0]);
+          return ts < 10000000000 ? ts * 1000 : ts;
+        }
+      }
+      // 2. Parse human readable string "HH:MM DD/MM/YYYY" or similar with seconds/AM/PM
+      if (n.time && typeof n.time === 'string') {
+        try {
+          const cleanTimeStr = n.time.replace(/\s+/g, ' ').trim();
+          const parts = cleanTimeStr.split(' ');
+          if (parts.length >= 2) {
+            // Find date part (contains /) and time part (contains :)
+            const datePart = parts.find(p => p.includes('/'));
+            const timePart = parts.find(p => p.includes(':'));
+            
+            if (datePart && timePart) {
+              const dateParts = datePart.split('/');
+              const timeParts = timePart.split(':');
+              
+              if (dateParts.length === 3 && timeParts.length >= 2) {
+                const year = parseInt(dateParts[2]);
+                const month = parseInt(dateParts[1]) - 1;
+                const day = parseInt(dateParts[0]);
+                
+                let hour = parseInt(timeParts[0]);
+                const minute = parseInt(timeParts[1]);
+                
+                // Handler for AM/PM variations
+                const lowerNotifTime = n.time.toLowerCase();
+                if (lowerNotifTime.includes('pm') && hour < 12) {
+                  hour += 12;
+                } else if (lowerNotifTime.includes('am') && hour === 12) {
+                  hour = 0;
+                }
+                
+                return new Date(year, month, day, hour, minute).getTime();
+              }
+            }
+          }
+        } catch (e) {}
+      }
+      return 0;
+    };
+
+    return filtered.sort((a, b) => getNotifTimestamp(b) - getNotifTimestamp(a));
   };
 
   const addNotification = async (userId: string, title: string, message: string, type: 'LOAN' | 'RANK' | 'SYSTEM') => {
@@ -1109,9 +1188,17 @@ const App: React.FC = () => {
         });
       }
       if (data.notifications) {
-        const deduplicated = deduplicateNotifications(data.notifications).slice(0, 10);
-        setNotifications(deduplicated);
-        localStorage.setItem('ndv_notifications', JSON.stringify(deduplicated));
+        const allNotifs = deduplicateNotifications(data.notifications);
+        const userNotifs = allNotifs.filter(n => n.userId === user?.id).slice(0, 10);
+        const adminNotifs = allNotifs.filter(n => n.userId === 'ADMIN').slice(0, 50);
+        
+        setNotifications(userNotifs);
+        localStorage.setItem('ndv_notifications', JSON.stringify(userNotifs));
+        
+        if (user?.isAdmin) {
+          setAdminNotifications(adminNotifs);
+          localStorage.setItem('ndv_admin_notifications', JSON.stringify(adminNotifs));
+        }
       }
       if (data.budget !== undefined) {
         setSystemBudget(data.budget);
@@ -1180,6 +1267,18 @@ const App: React.FC = () => {
 
     return () => clearInterval(pollInterval);
   }, [user?.isAdmin, isTabActive, fetchData]);
+
+  // AUTO-POLLING for Regular Users: Fetch fresh database updates every 30 seconds if tab is active as a fallback for socket disconnects
+  useEffect(() => {
+    if (!user || user.isAdmin || !isTabActive) return;
+
+    const pollInterval = setInterval(() => {
+      console.log("[POLL] Regular user fetching fresh data fallback...");
+      fetchUserProfile();
+    }, 30000); // 30 seconds is standard and keeps database usage optimal while providing excellent responsiveness
+
+    return () => clearInterval(pollInterval);
+  }, [user?.id, user?.isAdmin, isTabActive, fetchUserProfile]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1316,13 +1415,28 @@ const App: React.FC = () => {
     });
 
     socket.on('notification_updated', (notif: Notification) => {
-      console.log('[REALTIME] Notification received');
+      console.log('[REALTIME] Notification received', notif);
       setNotifications(prev => {
         if (prev.some(n => n.id === notif.id)) return prev;
         const next = [notif, ...prev].slice(0, 10);
         localStorage.setItem('ndv_notifications', JSON.stringify(next));
         return next;
       });
+
+      // Show instant toast notification on UI for current user
+      if (user && notif.userId === user.id) {
+        toast.info(notif.title || "Thông báo hệ thống", {
+          description: notif.message || "",
+          duration: 8000,
+          action: {
+            label: "Xem",
+            onClick: () => {
+              const bellBtn = document.querySelector('button .lucide-bell')?.parentElement as HTMLButtonElement;
+              if (bellBtn) bellBtn.click();
+            }
+          }
+        });
+      }
     });
 
     socket.on('config_updated', (data: any) => {

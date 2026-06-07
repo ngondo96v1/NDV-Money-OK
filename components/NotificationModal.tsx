@@ -7,9 +7,10 @@ interface NotificationModalProps {
   notifications: Notification[];
   onClose: () => void;
   onMarkRead: (id: string) => void;
+  onMarkAllRead?: () => void;
 }
 
-const NotificationModal: React.FC<NotificationModalProps> = ({ notifications, onClose, onMarkRead }) => {
+const NotificationModal: React.FC<NotificationModalProps> = ({ notifications, onClose, onMarkRead, onMarkAllRead }) => {
   const getIcon = (n: Notification) => {
     const isReject = n.title.toLowerCase().includes('từ chối');
     if (isReject) return <XCircle size={18} className="text-red-500" />;
@@ -31,12 +32,24 @@ const NotificationModal: React.FC<NotificationModalProps> = ({ notifications, on
             </div>
             <h3 className="text-xl font-black text-white uppercase tracking-tighter">Thông báo</h3>
           </div>
-          <button 
-            onClick={onClose}
-            className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center text-gray-500 hover:text-white transition-all"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {onMarkAllRead && notifications.some(n => !n.read) && (
+              <button 
+                onClick={() => {
+                  onMarkAllRead();
+                }}
+                className="px-3 py-2 bg-[#ff8c00]/10 border border-[#ff8c00]/10 rounded-[1rem] text-[#ff8c00] font-black text-[8px] uppercase tracking-widest active:scale-95 transition-all text-center shrink-0"
+              >
+                Đọc tất cả
+              </button>
+            )}
+            <button 
+              onClick={onClose}
+              className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center text-gray-500 hover:text-white transition-all shrink-0"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">

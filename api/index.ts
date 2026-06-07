@@ -20,7 +20,15 @@ if (fs.existsSync(envPath)) {
 // Initialize Firebase Admin for Push Notifications
 let firebaseApp: admin.app.App | null = null;
 try {
-  const saJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  let saJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (!saJson) {
+    const localSaPath = path.resolve(process.cwd(), "firebase-service-account.json");
+    if (fs.existsSync(localSaPath)) {
+      saJson = fs.readFileSync(localSaPath, 'utf8');
+      console.log("[FIREBASE] Loaded Firebase service account config from local firebase-service-account.json file");
+    }
+  }
+  
   if (saJson) {
     let serviceAccount;
     try {
@@ -2132,7 +2140,7 @@ router.get("/data", async (req, res) => {
         const since = parseInt(req.query.since as string) || 0;
 
         const columns = req.query.full === 'true' ? NOTIFICATION_COLUMNS.join(',') : NOTIFICATION_SUMMARY_COLUMNS.join(',');
-        let query = client.from('notifications').select(columns, { count: 'exact' }).order('id', { ascending: false });
+        let query = client.from('notifications').select(columns, { count: 'exact' });
         
         if (!isAdmin && userIdFromQuery) {
           query = query.eq('userId', userIdFromQuery);
@@ -2141,12 +2149,68 @@ router.get("/data", async (req, res) => {
           query = query.or(`userId.eq.${userIdFromQuery},userId.eq.ADMIN`);
         }
 
-        // Delta update for notifications is less critical but good to have
-        // However, since we use range, we can just let it be or add updatedAt if table has it
-        
-        const { data, count, error } = await query.range(from, to);
+        // Fetch a larger set (up to 500 rows) so we can sort chronologically across prefixes in memory
+        const { data, count, error } = await query.limit(500);
         if (error) throw error;
-        return { data: data || [], count: count || 0 };
+        
+        let sortedData = data || [];
+        
+        // Helper to extract chronological timestamp from notification objects
+        const parseNotifTimestamp = (notif: any) => {
+          if (!notif) return 0;
+          // 1. Try to extract timestamp from ID (matches 9 to 14 digit numeric sequences like Date.now())
+          if (notif.id && typeof notif.id === 'string') {
+            const matches = notif.id.match(/\d{9,14}/);
+            if (matches) {
+              const ts = parseInt(matches[0]);
+              return ts < 10000000000 ? ts * 1000 : ts;
+            }
+          }
+          // 2. Parse human readable string "HH:MM DD/MM/YYYY" or similar with seconds/AM/PM
+          if (notif.time && typeof notif.time === 'string') {
+            try {
+              const cleanTimeStr = notif.time.replace(/\s+/g, ' ').trim();
+              const parts = cleanTimeStr.split(' ');
+              if (parts.length >= 2) {
+                // Find date part (contains /) and time part (contains :)
+                const datePart = parts.find(p => p.includes('/'));
+                const timePart = parts.find(p => p.includes(':'));
+                
+                if (datePart && timePart) {
+                  const dateParts = datePart.split('/');
+                  const timeParts = timePart.split(':');
+                  
+                  if (dateParts.length === 3 && timeParts.length >= 2) {
+                    const year = parseInt(dateParts[2]);
+                    const month = parseInt(dateParts[1]) - 1;
+                    const day = parseInt(dateParts[0]);
+                    
+                    let hour = parseInt(timeParts[0]);
+                    const minute = parseInt(timeParts[1]);
+                    
+                    // Handler for AM/PM variations
+                    const lowerNotifTime = notif.time.toLowerCase();
+                    if (lowerNotifTime.includes('pm') && hour < 12) {
+                      hour += 12;
+                    } else if (lowerNotifTime.includes('am') && hour === 12) {
+                      hour = 0;
+                    }
+                    
+                    return new Date(year, month, day, hour, minute).getTime();
+                  }
+                }
+              }
+            } catch (e) {}
+          }
+          return 0;
+        };
+
+        // Sort chronologically in memory (newest first)
+        sortedData.sort((a: any, b: any) => parseNotifTimestamp(b) - parseNotifTimestamp(a));
+        
+        // Paginate in memory
+        const paginatedData = sortedData.slice(from, to + 1);
+        return { data: paginatedData, count: count || sortedData.length };
       } catch (e: any) {
         console.error("Lỗi fetch notifications:", e.message || e);
         return { data: [], count: 0 };
@@ -2320,6 +2384,19 @@ router.post("/users", async (req: any, res) => {
       return res.status(400).json({ error: "Không có dữ liệu hợp lệ để lưu" });
     }
 
+    // Fetch existing users before upsert to detect limit/rank changes
+    const userIds = sanitizedUsers.map(u => u.id);
+    let existingUsers: any[] = [];
+    try {
+      const { data } = await client
+        .from('users')
+        .select('id, fullName, totalLimit, rank, fcmToken')
+        .in('id', userIds);
+      if (data) existingUsers = data;
+    } catch (e) {
+      console.error("Lỗi fetch existing users in API /users:", e);
+    }
+
     console.log(`[API] Syncing ${sanitizedUsers.length} users to Supabase...`);
     
     // Bulk upsert with fallback for missing columns
@@ -2369,6 +2446,76 @@ router.post("/users", async (req: any, res) => {
     }
 
     console.log(`[API] Users synced successfully.`);
+
+    // Process automatic real-time notifications for limit/rank changes
+    if (existingUsers && existingUsers.length > 0) {
+      try {
+        const { data: configRows } = await client.from('config').select('*');
+        const systemConfig: Record<string, any> = {};
+        configRows?.forEach((row: any) => {
+          systemConfig[row.key] = row.value;
+        });
+
+        const rankConfigs = typeof systemConfig.RANK_CONFIG === 'string' 
+          ? JSON.parse(systemConfig.RANK_CONFIG) 
+          : (systemConfig.RANK_CONFIG || []);
+
+        for (const u of sanitizedUsers) {
+          const existing = existingUsers.find(e => e.id === u.id);
+          if (existing) {
+            const limitChanged = u.totalLimit !== undefined && Number(u.totalLimit) !== Number(existing.totalLimit);
+            const rankChanged = u.rank && u.rank !== existing.rank;
+
+            if (limitChanged || rankChanged) {
+              const oldRankLabel = (rankConfigs.find((r: any) => r.id === existing.rank)?.name || existing.rank || "").toUpperCase();
+              const newRankLabel = (rankConfigs.find((r: any) => r.id === u.rank)?.name || u.rank || "").toUpperCase();
+
+              let title = "";
+              let message = "";
+
+              if (rankChanged && limitChanged) {
+                title = "Nâng hạng & Tăng hạn mức";
+                message = `Chúc mừng! Tài khoản của bạn đã được nâng lên hạng ${newRankLabel} với hạn mức vay mới là ${(Number(u.totalLimit)).toLocaleString('vi-VN')} đ.`;
+              } else if (rankChanged) {
+                title = "Nâng hạng thành viên";
+                message = `Tài khoản của bạn đã được cập nhật lên hạng ${newRankLabel} thành công.`;
+              } else if (limitChanged) {
+                title = "Thay đổi hạn mức vay";
+                message = `Hạn mức vay của bạn đã được Admin điều chỉnh thành ${(Number(u.totalLimit)).toLocaleString('vi-VN')} đ.`;
+              }
+
+              if (title && message) {
+                const notifId = `SYS-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                const timeStr = `${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ${new Date().toLocaleDateString('vi-VN')}`;
+                const newNotif = {
+                  id: notifId,
+                  userId: u.id,
+                  title,
+                  message,
+                  time: timeStr,
+                  read: false,
+                  type: 'SYSTEM'
+                };
+
+                // Add to notifications table
+                await client.from('notifications').insert([newNotif]);
+
+                // Emit to user room so it syncs immediately in real-time
+                const ioObj = req.app.get("io");
+                if (ioObj) {
+                  ioObj.to(`user_${u.id}`).emit("notification_updated", newNotif);
+                }
+
+                // Push notification to .apk
+                await triggerPushForUser(u.id, title, message, client);
+              }
+            }
+          }
+        }
+      } catch (notifyErr) {
+        console.error("Lỗi tối ưu hóa thông báo tự động cho người dùng:", notifyErr);
+      }
+    }
     
     // Emit real-time update
     const io = req.app.get("io");
@@ -2543,6 +2690,19 @@ router.post("/loans", async (req: any, res) => {
       return res.status(400).json({ error: "Không có dữ liệu hợp lệ để lưu" });
     }
 
+    // Fetch existing loans before upsert to detect status change
+    const loanIds = sanitizedLoans.map((l: any) => l.id);
+    let existingLoans: any[] = [];
+    try {
+      const { data } = await client
+        .from('loans')
+        .select('id, userId, status, amount')
+        .in('id', loanIds);
+      if (data) existingLoans = data;
+    } catch (e) {
+      console.error("Lỗi fetch existing loans in API:", e);
+    }
+
     // Budget & Min Amount check for new loans (if not admin)
     if (!req.user?.isAdmin) {
       const newLoan = sanitizedLoans.find(l => l.status === 'CHỜ DUYỆT');
@@ -2627,36 +2787,36 @@ router.post("/loans", async (req: any, res) => {
 
             // Change current loan status to 'CONSOLIDATED'
             // This hides it from main debt view but keeps the record
-            loan.status = 'ĐÃ CỘNG DỒN'; 
+            loan.status = 'CONSOLIDATED'; 
             loan.consolidatedInto = primaryLoan.id;
 
             // Notify User about Consolidation
-            const io = req.app.get("io");
-            if (io) {
+            const ioObj = req.app.get("io");
+            if (ioObj) {
               const notifId = `NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-              const message = `Yêu cầu vay ${Number(loan.amount).toLocaleString()} đ của bạn đã được duyệt và CỘNG DỒN vào khoản vay hiện tại (${primaryLoan.id}). Tổng dư nợ mới là ${newTotalAmount.toLocaleString()} đ.`;
+              const messageStr = `Yêu cầu vay ${Number(loan.amount).toLocaleString()} đ của bạn đã được duyệt và CỘNG DỒN vào khoản vay hiện tại (${primaryLoan.id}). Tổng dư nợ mới là ${newTotalAmount.toLocaleString()} đ.`;
               
               await client.from('notifications').insert([{
                 id: notifId,
                 userId: loan.userId,
                 title: 'Khoản vay đã cộng dồn',
-                message: message,
+                message: messageStr,
                 time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN'),
                 read: false,
                 type: 'LOAN'
               }]);
-              triggerPushForUser(loan.userId, 'Khoản vay đã cộng dồn', message, client);
+              triggerPushForUser(loan.userId, 'Khoản vay đã cộng dồn', messageStr, client);
               
-              io.to(`user_${loan.userId}`).emit("notification_updated", {
+              ioObj.to(`user_${loan.userId}`).emit("notification_updated", {
                 id: notifId,
                 userId: loan.userId,
                 title: 'Khoản vay đã cộng dồn',
-                message: message,
+                message: messageStr,
                 type: 'LOAN'
               });
 
               // Also sync the primary loan update to the user
-              io.to(`user_${loan.userId}`).emit("loan_updated", {
+              ioObj.to(`user_${loan.userId}`).emit("loan_updated", {
                 ...primaryLoan,
                 amount: newTotalAmount,
                 updatedAt: Date.now()
@@ -2703,12 +2863,80 @@ router.post("/loans", async (req: any, res) => {
         });
       }
     }
-    
+
     // Emit real-time update
     const io = req.app.get("io");
     if (io) {
       sanitizedLoans.forEach(l => {
         io.to(`user_${l.userId}`).emit("loan_updated", l);
+        
+        // Evaluate loan status change notifications and trigger push/sockets
+        if (existingLoans && existingLoans.length > 0) {
+          const oldLoan = existingLoans.find(e => e.id === l.id);
+          if (oldLoan) {
+            const oldNorm = String(oldLoan.status).toUpperCase().normalize('NFC');
+            const newNorm = String(l.status).toUpperCase().normalize('NFC');
+            
+            if (oldNorm !== newNorm) {
+              let title = "";
+              let message = "";
+              const amountStr = Number(l.amount).toLocaleString('vi-VN');
+              
+              if (oldNorm === 'CHỜ DUYỆT' && newNorm === 'ĐANG NỢ') {
+                title = "Khoản vay được phê duyệt";
+                message = `Chúc mừng! Hồ sơ vay mã ${l.id} trị giá ${amountStr} đ của bạn đã được phê duyệt thành công. Số dư khả dụng đã được cộng vào tài khoản của bạn.`;
+              } else if (oldNorm === 'CHỜ DUYỆT' && newNorm === 'TỪ CHỐI') {
+                title = "Khoản vay bị từ chối";
+                message = `Rất tiếc! Hồ sơ đăng ký vay mã ${l.id} trị giá ${amountStr} đ của bạn đã bị từ chối do không đủ điều kiện phê duyệt từ hệ thống.`;
+              } else if (oldNorm === 'CHỜ TẤT TOÁN' && (newNorm === 'ĐÃ TẤT TOÁN' || newNorm === 'ĐÃ TẤT TOÁN')) {
+                title = "Tất toán thành công";
+                message = `Yêu cầu thanh toán cho khoản vay mã ${l.id} trị giá ${amountStr} đ của bạn đã được Admin chấp nhận và hoàn tất tất toán thành công.`;
+              } else if (newNorm === 'QUÁ HẠN') {
+                title = "Khoản nợ QUÁ HẠN";
+                message = `Cảnh báo! Khoản vay mã ${l.id} trị giá ${amountStr} đ đã chuyển sang trạng thái QUÁ HẠN. Vui lòng thanh toán ngay để tránh phát sinh phí phạt bổ sung.`;
+              } else if (newNorm === 'GIA HẠN') {
+                title = "Đã gia hạn thành công";
+                message = `Yêu cầu xin gia hạn lùi ngày thanh toán cho khoản nợ mã ${l.id} của bạn đã được Admin duyệt và chấp nhận.`;
+              } else if (newNorm === 'TTMP') {
+                title = "Xác nhận Thanh toán một phần";
+                message = `Giao dịch thanh toán một phần (TTMP) cho khoản vay mã ${l.id} đã được phê duyệt và ghi nhận thành công.`;
+              } else {
+                title = "Cập nhật trạng thái vay";
+                if (newNorm === 'ĐÃ TẤT TOÁN' || newNorm === 'ĐÃ TẤT TOÁN') {
+                  title = "Khoản vay đã tất toán";
+                  message = `Khoản vay mã ${l.id} trị giá ${amountStr} đ của bạn đã được tất toán thành công.`;
+                } else {
+                  message = `Khoản vay mã ${l.id} của bạn đã được thay đổi trạng thái thành "${l.status}".`;
+                }
+              }
+              
+              if (title && message) {
+                const notifId = `LOAN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                const timeStr = `${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ${new Date().toLocaleDateString('vi-VN')}`;
+                const notifyPayload = {
+                  id: notifId,
+                  userId: l.userId,
+                  title,
+                  message,
+                  time: timeStr,
+                  read: false,
+                  type: 'LOAN'
+                };
+                
+                // Save database notification record
+                client.from('notifications').insert([notifyPayload]).then(({ error: notifErr }) => {
+                  if (notifErr) console.error("Lỗi insert notification tự động cho loan:", notifErr);
+                });
+                
+                // Sync via socket
+                io.to(`user_${l.userId}`).emit("notification_updated", notifyPayload);
+                
+                // Trigger push notification to APK (.apk)
+                triggerPushForUser(l.userId, title, message, client);
+              }
+            }
+          }
+        }
         
         // Notify admin of new loan requests or settlement requests
         if (l.status === 'CHỜ DUYỆT') {
@@ -2716,7 +2944,7 @@ router.post("/loans", async (req: any, res) => {
             type: "NEW_LOAN",
             message: `Có yêu cầu vay mới (${l.amount.toLocaleString()} đ) từ người dùng ${l.userName || l.userId}.`
           });
-
+          
           // Persistent admin notification
           client.from('notifications').insert([{
             id: `ADMIN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -2733,7 +2961,7 @@ router.post("/loans", async (req: any, res) => {
             type: "PAYMENT",
             message: `Người dùng ${l.userName || l.userId} vừa gửi yêu cầu ${typeLabel} khoản vay (${l.amount.toLocaleString()} đ).`
           });
-
+          
           // Persistent admin notification
           client.from('notifications').insert([{
             id: `ADMIN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -2819,6 +3047,35 @@ router.post("/notifications", async (req: any, res) => {
     sendSafeJson(res, { success: true });
   } catch (e: any) {
     console.error("Lỗi trong /api/notifications:", e);
+    res.status(500).json({ error: "Lỗi máy chủ nội bộ", message: e.message });
+  }
+});
+
+router.post("/notifications/:id/read", async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const client = initSupabase();
+    if (!client) return res.status(503).json({ error: "Supabase chưa được cấu hình" });
+
+    const { error } = await client
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', id);
+
+    if (error) {
+      console.error(`[API] Lỗi đánh dấu đã đọc thông báo ${id}:`, error);
+      return res.status(500).json({ error: "Lỗi cơ sở dữ liệu", message: error.message });
+    }
+
+    // Emit real-time update that notification is read
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`user_${req.user?.id}`).emit("notification_read_ack", { id });
+    }
+
+    sendSafeJson(res, { success: true });
+  } catch (e: any) {
+    console.error(`Lỗi trong /api/notifications/${req.params.id}/read:`, e);
     res.status(500).json({ error: "Lỗi máy chủ nội bộ", message: e.message });
   }
 });
@@ -3370,16 +3627,49 @@ router.post("/admin/user/lock", authenticateToken, async (req: any, res) => {
     const client = initSupabase();
     if (!client) throw new Error("Supabase error");
 
+    const lockedReasonText = reason || "Vi phạm điều khoản";
+
     const { error } = await client
       .from('users')
       .update({ 
         isLocked: true, 
         lockedAt: new Date().toISOString(), 
-        lockedReason: reason || "Vi phạm điều khoản" 
+        lockedReason: lockedReasonText 
       })
       .eq('id', userId);
 
     if (error) throw error;
+
+    // Fetch full updated user row and emit
+    const { data: updatedUser } = await client
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (updatedUser) {
+      const io = req.app.get("io");
+      if (io) {
+        io.to(`user_${userId}`).emit("user_updated", updatedUser);
+        
+        // Add notification
+        const notifId = `SYS-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const timeStr = `${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ${new Date().toLocaleDateString('vi-VN')}`;
+        const lockNotif = {
+          id: notifId,
+          userId,
+          title: "Tài khoản tạm khóa",
+          message: `Tài khoản của bạn đã bị khóa tạm thời. Lý do: ${lockedReasonText}.`,
+          time: timeStr,
+          read: false,
+          type: 'SYSTEM'
+        };
+        await client.from('notifications').insert([lockNotif]);
+        io.to(`user_${userId}`).emit("notification_updated", lockNotif);
+        await triggerPushForUser(userId, "Tài khoản tạm khóa", `Tài khoản của bạn đã bị khóa tạm thời. Lý do: ${lockedReasonText}`, client);
+      }
+    }
+
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -3405,6 +3695,37 @@ router.post("/admin/user/unlock", authenticateToken, async (req: any, res) => {
       .eq('id', userId);
 
     if (error) throw error;
+
+    // Fetch full updated user row and emit
+    const { data: updatedUser } = await client
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (updatedUser) {
+      const io = req.app.get("io");
+      if (io) {
+        io.to(`user_${userId}`).emit("user_updated", updatedUser);
+
+        // Add notification
+        const notifId = `SYS-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const timeStr = `${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ${new Date().toLocaleDateString('vi-VN')}`;
+        const unlockNotif = {
+          id: notifId,
+          userId,
+          title: "Mở khóa tài khoản",
+          message: "Tài khoản của bạn đã được hoạt động bình thường trở lại.",
+          time: timeStr,
+          read: false,
+          type: 'SYSTEM'
+        };
+        await client.from('notifications').insert([unlockNotif]);
+        io.to(`user_${userId}`).emit("notification_updated", unlockNotif);
+        await triggerPushForUser(userId, "Mở khóa tài khoản", "Tài khoản của bạn đã được hoạt động bình thường trở lại.", client);
+      }
+    }
+
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -3801,6 +4122,7 @@ router.post("/sync", async (req: any, res) => {
     const { users, loans, deletedLoanIds, notifications, budget, budgetDelta, budgetLog, rankProfit, loanProfit, fineProfit, monthlyStats } = req.body;
     
     const isAdmin = req.user?.isAdmin === true;
+    let allNotificationsToProcess = notifications && Array.isArray(notifications) ? [...notifications] : [];
 
     // Security check for non-admin sync
     if (!isAdmin) {
@@ -3935,7 +4257,84 @@ router.post("/sync", async (req: any, res) => {
     
     // 4. Update Loans
     if (loans && Array.isArray(loans) && loans.length > 0) {
+      // SERVER-SIDE STATUS CHANGE DETECTION: Detect status transformations to generate system notifications & push automatically
+      try {
+        const incomingLoanIds = (loans as any[]).map((l: any) => l.id);
+        const { data: dbLoans } = await client
+          .from('loans')
+          .select('id, status, amount, userId')
+          .in('id', incomingLoanIds);
+
+        const existingLoansMap = new Map<any, any>((dbLoans || []).map((l: any) => [l.id, l]));
+        const newlyGeneratedNotifications: any[] = [];
+
+        for (const l of (loans as any[])) {
+          const oldLoan = existingLoansMap.get(l.id);
+          if (oldLoan) {
+            const oldNorm = String(oldLoan.status).toUpperCase().normalize('NFC');
+            const newNorm = String(l.status).toUpperCase().normalize('NFC');
+            
+            if (oldNorm !== newNorm) {
+              let title = "";
+              let message = "";
+              const amountStr = Number(l.amount || oldLoan.amount || 0).toLocaleString('vi-VN');
+              
+              if (newNorm === 'ĐÃ DUYỆT') {
+                title = "Khoản vay được phê duyệt";
+                message = `Chúc mừng! Hồ sơ vay mã ${l.id} trị giá ${amountStr} đ của bạn đã được phê duyệt thành công. Sắp có tiền giải ngân chuyển về tài khoản của bạn.`;
+              } else if (newNorm === 'ĐANG NỢ') {
+                title = "Giải ngân thành công";
+                message = `Hồ sơ vay mã ${l.id} trị giá ${amountStr} đ của bạn đã được giải ngân thành công. Số dư khả dụng của bạn đã tăng thêm.`;
+              } else if (newNorm === 'BỊ TỪ CHỐI' || newNorm === 'TỪ CHỐI') {
+                title = "Khoản vay bị từ chối";
+                message = `Rất tiếc! Hồ sơ đăng ký vay mã ${l.id} trị giá ${amountStr} đ của bạn đã bị từ chối do không đủ điều kiện phê duyệt từ hệ thống.`;
+              } else if (newNorm === 'ĐÃ TẤT TOÁN' || newNorm === 'ĐÃ TẤT TOÁN') {
+                title = "Tất toán thành công";
+                message = `Yêu cầu thanh toán cho khoản vay mã ${l.id} trị giá ${amountStr} đ của bạn đã được duyệt và tất toán thành công.`;
+              } else if (newNorm === 'QUÁ HẠN') {
+                title = "Khoản nợ QUÁ HẠN";
+                message = `Cảnh báo! Khoản vay mã ${l.id} trị giá ${amountStr} đ đã chuyển sang trạng thái QUÁ HẠN. Vui lòng thanh toán ngay để tránh phát sinh phí phạt bổ sung.`;
+              } else if (newNorm === 'GIA HẠN') {
+                title = "Đã gia hạn thành công";
+                message = `Yêu cầu xin gia hạn lùi ngày thanh toán cho khoản nợ mã ${l.id} của bạn đã được Admin duyệt và chấp nhận.`;
+              } else if (newNorm === 'TTMP') {
+                title = "Xác nhận Thanh toán một phần";
+                message = `Giao dịch thanh toán một phần (TTMP) cho khoản vay mã ${l.id} đã được phê duyệt và ghi nhận thành công.`;
+              } else {
+                title = "Cập nhật trạng thái vay";
+                message = `Khoản vay mã ${l.id} của bạn đã được thay đổi trạng thái thành "${l.status}".`;
+              }
+
+              if (title && message) {
+                const notifId = `LOAN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                const timeStr = `${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ${new Date().toLocaleDateString('vi-VN')}`;
+                
+                const notifyPayload = {
+                  id: notifId,
+                  userId: l.userId || oldLoan.userId,
+                  title,
+                  message,
+                  time: timeStr,
+                  read: false,
+                  type: 'LOAN'
+                };
+
+                newlyGeneratedNotifications.push(notifyPayload);
+              }
+            }
+          }
+        }
+
+        if (newlyGeneratedNotifications.length > 0) {
+          console.log(`[SYNC-NOTIF] Automatically created ${newlyGeneratedNotifications.length} notification(s) for status transitions`);
+          allNotificationsToProcess = [...allNotificationsToProcess, ...newlyGeneratedNotifications];
+        }
+      } catch (errDet) {
+        console.error("[SYNC] Error detecting loan status changes for notification trigger:", errDet);
+      }
+
       // SERVER-SIDE CONSOLIDATION SAFETY: If a loan is being marked as consolidated,
+      // we ensure the primary loan's balance is correctly updated in DB.
       // we ensure the primary loan's balance is correctly updated in DB.
       for (const loan of loans) {
         if (loan.status === 'ĐÃ CỘNG DỒN' && loan.consolidatedInto) {
@@ -3987,8 +4386,8 @@ router.post("/sync", async (req: any, res) => {
     
     // 5. Update Notifications
     const existingNotificationIds = new Set<string>();
-    if (notifications && Array.isArray(notifications) && notifications.length > 0) {
-      const sanitizedNotifications = sanitizeData(notifications, NOTIFICATION_COLUMNS);
+    if (allNotificationsToProcess && Array.isArray(allNotificationsToProcess) && allNotificationsToProcess.length > 0) {
+      const sanitizedNotifications = sanitizeData(allNotificationsToProcess, NOTIFICATION_COLUMNS);
       if (sanitizedNotifications.length > 0) {
         // Query existing notification IDs first to check for duplicates
         const incomingIds = sanitizedNotifications.map(n => n.id);
@@ -4020,19 +4419,19 @@ router.post("/sync", async (req: any, res) => {
         loans.forEach((l: any) => io.to(`user_${l.userId}`).emit("loan_updated", l));
         io.to("admin").emit("loans_updated", loans);
       }
-      if (notifications) {
-        notifications.forEach((n: any) => {
+      if (allNotificationsToProcess && allNotificationsToProcess.length > 0) {
+        allNotificationsToProcess.forEach((n: any) => {
           io.to(`user_${n.userId}`).emit("notification_updated", n);
           // Only trigger push for BRAND NEW unread notifications, not updates or existing ones
           if (!existingNotificationIds.has(n.id) && n.userId !== 'ADMIN' && !n.read) {
             triggerPushForUser(n.userId, n.title, n.message, client);
           }
         });
-        io.to("admin").emit("notifications_updated", notifications);
+        io.to("admin").emit("notifications_updated", allNotificationsToProcess);
       }
       
       // Always notify admin of sync
-      io.to("admin").emit("sync_completed", { users, loans, notifications, configUpdates });
+      io.to("admin").emit("sync_completed", { users, loans, notifications: allNotificationsToProcess, configUpdates });
       
       // If config changed, notify everyone
       if (configUpdates.length > 0) {
