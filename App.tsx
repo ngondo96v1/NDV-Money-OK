@@ -458,6 +458,8 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('ndv_monthly_stats');
     return saved ? JSON.parse(saved) : [];
   });
+  const [monthlyVisitors, setMonthlyVisitors] = useState<number>(0);
+  const [onlineUsers, setOnlineUsers] = useState<number>(1);
   const [lastKeepAlive, setLastKeepAlive] = useState<string | null>(() => {
     return localStorage.getItem('ndv_last_keep_alive');
   });
@@ -1251,6 +1253,8 @@ const App: React.FC = () => {
       }
       if (data.storageFull !== undefined) setStorageFull(data.storageFull);
       if (data.storageUsage !== undefined) setStorageUsage(data.storageUsage);
+      if (data.monthlyVisitors !== undefined) setMonthlyVisitors(data.monthlyVisitors);
+      if (data.onlineUsers !== undefined) setOnlineUsers(data.onlineUsers);
 
       if (user && data.users) {
         const freshUser = data.users.find((u: User) => u.id === user.id);
@@ -1643,6 +1647,16 @@ const App: React.FC = () => {
       if (user?.isAdmin) {
         fetchFullData(true);
       }
+    });
+
+    socket.on('online_users_updated', (data: { count: number }) => {
+      console.log('[SOCKET] Online users updated:', data.count);
+      setOnlineUsers(data.count);
+    });
+
+    socket.on('visitor_stats_updated', (data: { key: string, value: number }) => {
+      console.log('[SOCKET] Visitor stats updated:', data.value);
+      setMonthlyVisitors(data.value);
     });
 
     return () => {
@@ -4214,6 +4228,8 @@ const App: React.FC = () => {
           onMarkNotificationRead={(id) => handleMarkNotificationRead(id)}
           onUpdateSettings={handleSaveSettings}
           onSyncStats={handleSyncStats}
+          monthlyVisitors={monthlyVisitors}
+          onlineUsers={onlineUsers}
         />
       );
       case AppView.ADMIN_USERS: return <AdminUserManagement users={registeredUsers} loans={loans} isGlobalProcessing={isGlobalProcessing} onAction={handleAdminUserAction} onLoanAction={handleAdminLoanAction} onEditUser={handleAdminEditUser} onResetPassword={handleAdminResetPassword} onLockUser={handleLockUser} onUnlockUser={handleUnlockUser} onEditLoan={handleAdminEditLoan} onDeleteUser={handleDeleteUser} onDeleteLoan={handleDeleteLoan} onAutoCleanup={handleAutoCleanupUsers} onFetchFullData={fetchFullData} onFetchUserDetail={handleFetchUserDetail} onRefresh={() => fetchFullData(true)} onBack={() => setCurrentView(AppView.ADMIN_DASHBOARD)} totalUsers={totalUsers} totalLoans={totalLoans} onSearchUsers={(term: string) => setUserSearchTerm(term)} onSearchLoans={(term: string) => setLoanSearchTerm(term)} userRange={userRange} loanRange={loanRange} onSetUserRange={setUserRange} onSetLoanRange={setLoanRange} settings={settings} />;

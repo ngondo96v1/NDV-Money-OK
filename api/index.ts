@@ -622,6 +622,38 @@ const initSupabase = (force = false) => {
 // Initialize once at module level
 initSupabase();
 
+// Migration helper to fix legacy isFreeUpgrade flags for non-standard rank users (since all upgrades to date are free)
+const runFreeUpgradeMigration = async (client: any) => {
+  try {
+    if (!client) return;
+    console.log("[MIGRATION] Checking for upgraded users with legacy rank settings to mark as free...");
+    const { data: config } = await client.from('config').select('*');
+    const settings: any = {};
+    config?.forEach((item: any) => { settings[item.key] = item.value; });
+    const sortedRanks = settings.RANK_CONFIG ? (typeof settings.RANK_CONFIG === 'string' ? JSON.parse(settings.RANK_CONFIG) : settings.RANK_CONFIG).sort((a: any, b: any) => a.maxLimit - b.maxLimit) : [];
+    const lowestRankId = sortedRanks.length > 0 ? sortedRanks[0].id : 'ĐỒNG';
+    
+    // Select all users that have a rank other than lowestRankId
+    const { data: users, error } = await client.from('users').select('id, rank, isFreeUpgrade, updatedAt');
+    if (error) throw error;
+    
+    if (users && users.length > 0) {
+      const toUpdate = users.filter((u: any) => u.rank && u.rank !== lowestRankId && u.isFreeUpgrade !== true);
+      if (toUpdate.length > 0) {
+        console.log(`[MIGRATION] Setting isFreeUpgrade to true for ${toUpdate.length} upgraded users to correct historical revenue...`);
+        for (const u of toUpdate) {
+          await client.from('users').update({ isFreeUpgrade: true, updatedAt: u.updatedAt || Date.now() }).eq('id', u.id);
+        }
+        console.log("[MIGRATION] Legacy upgrade flags successfully fixed in database.");
+      } else {
+        console.log("[MIGRATION] All active upgraded users are already marked as free.");
+      }
+    }
+  } catch (err) {
+    console.error("[MIGRATION ERROR] Failed to fix legacy upgraded users isFreeUpgrade flags:", err);
+  }
+};
+
 const STORAGE_LIMIT_MB = 45; // Virtual limit for demo purposes
 
 // Debug middleware to log incoming requests
@@ -759,6 +791,9 @@ export const runBatchPenalties = async (io: any) => {
 export const runDailySystemTasks = async (io: any) => {
   const client = initSupabase();
   if (!client) return;
+  
+  // Run legacy isFreeUpgrade migration at every daily system task / startup run to keep it clean and robust
+  await runFreeUpgradeMigration(client);
   
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
@@ -2234,6 +2269,9 @@ router.get("/budget", async (req, res) => {
   }
 });
 
+// Memory cache to prevent duplicate visitor increments within the same calendar day
+const visitorSessions = new Set<string>();
+
 router.get("/data", async (req, res) => {
   try {
     const client = initSupabase();
@@ -2249,6 +2287,44 @@ router.get("/data", async (req, res) => {
     const userIdFromQuery = req.query.userId as string;
     const userSearch = req.query.userSearch as string;
     const loanSearch = req.query.loanSearch as string;
+
+    // Fast, non-blocking real-time monthly visitor tracking
+    if (!isAdmin && userIdFromQuery) {
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate()}`;
+      const trackingKey = `${userIdFromQuery}_${dateStr}`;
+      
+      if (!visitorSessions.has(trackingKey)) {
+        visitorSessions.add(trackingKey);
+        
+        // Prevent heap memory blowup by automatically clearing cache
+        if (visitorSessions.size > 5000) {
+          visitorSessions.clear();
+        }
+        
+        const curMonthStr = (now.getMonth() + 1).toString().padStart(2, '0');
+        const curYearStr = now.getFullYear().toString();
+        const monthKey = `VISITORS_${curMonthStr}_${curYearStr}`;
+        
+        // Non-blocking asynchronous database update
+        (async () => {
+          try {
+            const { data } = await client.from('config').select('value').eq('key', monthKey).maybeSingle();
+            const currentVal = Number(data?.value || 0);
+            const nextVal = currentVal + 1;
+            await client.from('config').upsert({ key: monthKey, value: nextVal.toString() }, { onConflict: 'key' });
+            
+            // Broadcast the new visitor stats instantly to all active admins
+            const io = req.app.get("io");
+            if (io) {
+              io.to("admin").emit("visitor_stats_updated", { key: monthKey, value: nextVal });
+            }
+          } catch (err) {
+            console.warn("[VISITOR TRACK] Failed to update monthly visitor count safely:", err);
+          }
+        })();
+      }
+    }
 
     // SECURITY: Strictly block any non-admin from requesting a full backup
     if (isBackup && !isAdmin) {
@@ -2511,6 +2587,16 @@ router.get("/data", async (req, res) => {
     const monthlyStats = config?.find(c => c.key === 'MONTHLY_STATS')?.value || config?.find(c => c.key === 'monthlyStats')?.value || [];
     const lastKeepAlive = config?.find(c => c.key === 'lastKeepAlive')?.value || null;
 
+    // Fetch dynamic visitor stats & currently online users real-time
+    const now = new Date();
+    const curMonthStr = (now.getMonth() + 1).toString().padStart(2, '0');
+    const curYearStr = now.getFullYear().toString();
+    const monthKey = `VISITORS_${curMonthStr}_${curYearStr}`;
+    const monthlyVisitors = Number(config?.find(c => c.key === monthKey)?.value || 0);
+
+    const getActiveUsersCount = req.app.get("getActiveUsersCount");
+    const onlineUsers = getActiveUsersCount ? getActiveUsersCount() : 1;
+
     const payload = {
       users: userRes.data,
       loans: loanRes.data,
@@ -2525,6 +2611,8 @@ router.get("/data", async (req, res) => {
       lastKeepAlive,
       budgetLogs: logRes.data,
       totalBudgetLogs: logRes.count,
+      monthlyVisitors,
+      onlineUsers,
       configs: isBackup ? Object.fromEntries(config.map(c => [c.key, c.value])) : undefined // Proper way to export all configs
     };
 
@@ -4890,6 +4978,9 @@ router.post("/re-establish", async (req: any, res) => {
     const client = initSupabase();
     if (!client) return res.status(503).json({ error: "Supabase not configured" });
 
+    // Run legacy upgrades correction to mark them all as free (to correct statistics)
+    await runFreeUpgradeMigration(client);
+
     const io = req.app.get("io");
 
     const { startDate, startingCapital, deleteOldLogs } = req.body;
@@ -5839,6 +5930,7 @@ router.post("/payment/webhook", async (req, res) => {
             .single();
             
           if (user && !userError) {
+            const io = req.app.get("io");
             // Calculate profit and budget updates
             let feeAmount = 0;
             let fineAmount = Math.round((loan.fine || 0) / 1000) * 1000;
@@ -5909,6 +6001,28 @@ router.post("/payment/webhook", async (req, res) => {
               { key: 'TOTAL_FINE_PROFIT', value: newFineProfit.toString() },
               { key: 'MONTHLY_STATS', value: JSON.stringify(newMonthlyStats) }
             ], { onConflict: 'key' });
+
+            if (io) {
+              const ioUpdates = [
+                { key: 'SYSTEM_BUDGET', value: newBudget },
+                { key: 'budget', value: newBudget },
+                { key: 'TOTAL_LOAN_PROFIT', value: newLoanProfit },
+                { key: 'loanProfit', value: newLoanProfit },
+                { key: 'TOTAL_FINE_PROFIT', value: newFineProfit },
+                { key: 'fineProfit', value: newFineProfit },
+                { key: 'MONTHLY_STATS', value: newMonthlyStats }
+              ];
+              io.emit("config_updated", ioUpdates);
+              io.emit("config_updated", {
+                SYSTEM_BUDGET: newBudget,
+                budget: newBudget,
+                TOTAL_LOAN_PROFIT: newLoanProfit,
+                loanProfit: newLoanProfit,
+                TOTAL_FINE_PROFIT: newFineProfit,
+                fineProfit: newFineProfit,
+                MONTHLY_STATS: newMonthlyStats
+              });
+            }
 
             const profitAmount = feeAmount + fineAmount;
 
@@ -6055,7 +6169,6 @@ router.post("/payment/webhook", async (req, res) => {
                 .eq('id', loan.userId);
             }
             
-            const io = req.app.get("io");
             if (io) {
               io.to(`user_${loan.userId}`).emit("payment_success", { 
                 loanId, 
@@ -6216,12 +6329,21 @@ router.post("/payment/webhook", async (req, res) => {
                 message: `Người dùng ${user.id} đã nâng hạng lên ${rankLabel} qua PayOS.`
               });
               
-              // Notify admin of config changes
-              io.to("admin").emit("config_updated", {
+              // Notify all clients of config changes
+              io.emit("config_updated", {
                 SYSTEM_BUDGET: newBudget,
+                budget: newBudget,
                 TOTAL_RANK_PROFIT: newRankProfit,
+                rankProfit: newRankProfit,
                 MONTHLY_STATS: newMonthlyStats
               });
+              io.emit("config_updated", [
+                { key: 'SYSTEM_BUDGET', value: newBudget },
+                { key: 'budget', value: newBudget },
+                { key: 'TOTAL_RANK_PROFIT', value: newRankProfit },
+                { key: 'rankProfit', value: newRankProfit },
+                { key: 'MONTHLY_STATS', value: newMonthlyStats }
+              ]);
             }
 
             // Add persistent notification

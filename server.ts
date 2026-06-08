@@ -34,11 +34,37 @@ async function startServer() {
   // Make io accessible to routes
   app.set("io", io);
 
+  // Keep track of connected sockets and their associated user information
+  const activeSockets = new Map<string, { userId?: string; isAdmin?: boolean }>();
+
+  // A helper to compute custom online users count precisely
+  const getActiveUsersCount = () => {
+    const uniqueUserIds = new Set<string>();
+    let anonymousCount = 0;
+    
+    for (const info of activeSockets.values()) {
+      if (info.userId && info.userId !== 'anonymous') {
+        uniqueUserIds.add(info.userId);
+      } else {
+        anonymousCount++;
+      }
+    }
+    const currentOnline = uniqueUserIds.size + anonymousCount;
+    // Maintain a safe, human-realistic minimum of at least 1 (the currently browsing admin)
+    return Math.max(1, currentOnline);
+  };
+
+  app.set("getActiveUsersCount", getActiveUsersCount);
+
   console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode`);
 
-  // Socket.io connection handling
+  // Socket.io connection handling with real-time online status broadcast
   io.on("connection", (socket) => {
-    console.log(`[SOCKET] New connection: ${socket.id}`);
+    // Register temporary anonymous socket session
+    activeSockets.set(socket.id, { userId: 'anonymous', isAdmin: false });
+    
+    // Auto broadcast updated online stats to the admin room immediately
+    io.to("admin").emit("online_users_updated", { count: getActiveUsersCount() });
 
     socket.on("join", (data) => {
       const { userId, isAdmin } = data;
@@ -50,10 +76,20 @@ async function startServer() {
         socket.join(`user_${userId}`);
         console.log(`[SOCKET] ${socket.id} joined room user_${userId}`);
       }
+      
+      // Update entry with real credentials
+      activeSockets.set(socket.id, { userId: userId || 'anonymous', isAdmin: !!isAdmin });
+      
+      // Sync stats
+      io.to("admin").emit("online_users_updated", { count: getActiveUsersCount() });
     });
 
     socket.on("disconnect", () => {
       console.log(`[SOCKET] Disconnected: ${socket.id}`);
+      activeSockets.delete(socket.id);
+      
+      // Sync stats
+      io.to("admin").emit("online_users_updated", { count: getActiveUsersCount() });
     });
   });
 
