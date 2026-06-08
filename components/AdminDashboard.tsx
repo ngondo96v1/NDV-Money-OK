@@ -880,29 +880,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
           </div>
 
           {/* Dynamic Highlights / Stat Banner below Chart */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-1 pt-1">
-            <div className="bg-black/20 border border-white/5 rounded-xl p-3 flex flex-col justify-between">
-              <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">TỔNG DOANH THU NĂM {chartYear}</p>
-              <h4 className="text-xs sm:text-sm font-black text-[#00ffcc] mt-1 select-all">
+          <div className="flex justify-center mt-3 pt-1">
+            <div className="bg-black/25 border border-white/5 rounded-xl px-8 py-3 text-center min-w-[240px] shadow-lg">
+              <p className="text-[8px] font-black text-gray-400/60 uppercase tracking-widest">TỔNG DOANH THU NĂM {chartYear}</p>
+              <h4 className="text-sm sm:text-base font-black text-[#00ffcc] mt-1 select-all tracking-wide">
                 {chartData.reduce((sum, m) => sum + m.total, 0).toLocaleString()}đ
-              </h4>
-            </div>
-
-            <div className="bg-black/20 border border-white/5 rounded-xl p-3 flex flex-col justify-between relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-1.5 opacity-15">
-                <Activity size={14} className="text-[#00ffcc]" />
-              </div>
-              <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">TRUY CẬP THÁNG {new Date().getMonth() + 1}</p>
-              <h4 className="text-xs sm:text-sm font-black text-white mt-1 select-all border-none">
-                {monthlyVisitors.toLocaleString()} <span className="text-[7px] font-bold text-gray-500 uppercase">Lượt</span>
-              </h4>
-            </div>
-
-            <div className="bg-black/20 border border-white/5 rounded-xl p-3 flex flex-col justify-between relative overflow-hidden">
-              <div className="absolute top-1 right-2 w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-              <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest">ĐANG TRỰC TUYẾN</p>
-              <h4 className="text-xs sm:text-sm font-black text-emerald-400 mt-1 select-all border-none">
-                {onlineUsers.toLocaleString()} <span className="text-[7px] font-bold text-emerald-500/70 uppercase">Online</span>
               </h4>
             </div>
           </div>
