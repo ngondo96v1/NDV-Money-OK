@@ -1451,6 +1451,25 @@ const App: React.FC = () => {
         if (idx !== -1) next = prev.map(l => l.id === updatedLoan.id ? updatedLoan : l);
         else next = [updatedLoan, ...prev];
         localStorage.setItem('ndv_loans', JSON.stringify(next));
+        
+        // Recalculate user balance real-time if the updated loan belongs to the logged-in user
+        if (user && updatedLoan.userId === user.id) {
+          const nextUserLoans = next.filter(l => l.userId === user.id);
+          const newBalance = calculateUserBalance(user, nextUserLoans);
+          if (user.balance !== newBalance) {
+            setUser(prevUser => {
+              if (!prevUser) return prevUser;
+              const nextUser = { ...prevUser, balance: newBalance };
+              if (rememberMe) {
+                localStorage.setItem('vnv_user', JSON.stringify(nextUser));
+              } else {
+                sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
+              }
+              return nextUser;
+            });
+          }
+        }
+        
         return next;
       });
     });
@@ -1460,6 +1479,25 @@ const App: React.FC = () => {
       setLoans(prev => {
         const next = prev.filter(l => l.id !== data.id);
         localStorage.setItem('ndv_loans', JSON.stringify(next));
+        
+        // Recalculate user balance real-time
+        if (user) {
+          const nextUserLoans = next.filter(l => l.userId === user.id);
+          const newBalance = calculateUserBalance(user, nextUserLoans);
+          if (user.balance !== newBalance) {
+            setUser(prevUser => {
+              if (!prevUser) return prevUser;
+              const nextUser = { ...prevUser, balance: newBalance };
+              if (rememberMe) {
+                localStorage.setItem('vnv_user', JSON.stringify(nextUser));
+              } else {
+                sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
+              }
+              return nextUser;
+            });
+          }
+        }
+        
         return next;
       });
     });
@@ -1474,6 +1512,28 @@ const App: React.FC = () => {
           else newLoans.push(l);
         });
         localStorage.setItem('ndv_loans', JSON.stringify(newLoans));
+        
+        // Recalculate user balance real-time
+        if (user) {
+          const userRelated = updatedLoans.filter(l => l.userId === user.id);
+          if (userRelated.length > 0) {
+            const nextUserLoans = newLoans.filter(l => l.userId === user.id);
+            const newBalance = calculateUserBalance(user, nextUserLoans);
+            if (user.balance !== newBalance) {
+              setUser(prevUser => {
+                if (!prevUser) return prevUser;
+                const nextUser = { ...prevUser, balance: newBalance };
+                if (rememberMe) {
+                  localStorage.setItem('vnv_user', JSON.stringify(nextUser));
+                } else {
+                  sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
+                }
+                return nextUser;
+              });
+            }
+          }
+        }
+        
         return newLoans;
       });
     });
@@ -3797,9 +3857,6 @@ const App: React.FC = () => {
         });
       }
 
-      // 3. Keep Working Capital (Vốn lưu động) based on database systemBudget as the single source of truth
-      const finalBudget = systemBudget;
-
       await authenticatedFetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3807,7 +3864,6 @@ const App: React.FC = () => {
           TOTAL_RANK_PROFIT: finalRankProfit,
           TOTAL_LOAN_PROFIT: finalFeeProfit,
           TOTAL_FINE_PROFIT: finalFineProfit,
-          SYSTEM_BUDGET: finalBudget,
           MONTHLY_STATS: nextMonthlyStats.slice(0, 6)
         })
       });
@@ -3815,13 +3871,11 @@ const App: React.FC = () => {
       setRankProfit(finalRankProfit);
       setLoanProfit(finalFeeProfit);
       setFineProfit(finalFineProfit);
-      setSystemBudget(finalBudget);
       setMonthlyStats(nextMonthlyStats.slice(0, 6));
       
       localStorage.setItem('ndv_rank_profit', finalRankProfit.toString());
       localStorage.setItem('ndv_loan_profit', finalFeeProfit.toString());
       localStorage.setItem('ndv_fine_profit', finalFineProfit.toString());
-      localStorage.setItem('ndv_budget', finalBudget.toString());
       localStorage.setItem('ndv_monthly_stats', JSON.stringify(nextMonthlyStats.slice(0, 6)));
       
       setSettings(prev => ({
@@ -3829,7 +3883,7 @@ const App: React.FC = () => {
         TOTAL_RANK_PROFIT: finalRankProfit,
         TOTAL_LOAN_PROFIT: finalFeeProfit,
         TOTAL_FINE_PROFIT: finalFineProfit,
-        SYSTEM_BUDGET: finalBudget,
+        SYSTEM_BUDGET: systemBudget,
         MONTHLY_STATS: nextMonthlyStats.slice(0, 6)
       }));
     } catch (e) {
