@@ -1392,17 +1392,18 @@ const App: React.FC = () => {
       });
 
       if (user && user.id === updatedUser.id) {
-        // Ensure isAdmin is boolean and protected for admins
-        const nextUser = { ...updatedUser, isAdmin: !!updatedUser.isAdmin };
-        if (user.isAdmin && !nextUser.isAdmin) {
-          nextUser.isAdmin = true;
-        }
-        setUser(nextUser);
-        if (rememberMe) {
-          localStorage.setItem('vnv_user', JSON.stringify(nextUser));
-        } else {
-          sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
-        }
+        setUser(prevUser => {
+          if (!prevUser || prevUser.id !== updatedUser.id) return prevUser;
+          const nextUser = { ...prevUser, ...updatedUser };
+          // Ensure isAdmin is boolean and protected for admins
+          nextUser.isAdmin = !!updatedUser.isAdmin || !!prevUser.isAdmin;
+          if (rememberMe) {
+            localStorage.setItem('vnv_user', JSON.stringify(nextUser));
+          } else {
+            sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
+          }
+          return nextUser;
+        });
       }
     });
 
