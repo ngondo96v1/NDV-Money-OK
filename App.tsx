@@ -340,10 +340,12 @@ const App: React.FC = () => {
     setShowBankInfoModal(false);
     setShowEditProfileModal(false);
     
-    setCurrentView(AppView.LOGIN);
     if (reason && typeof reason === 'string') {
-      setLoginError(reason);
+      localStorage.setItem('vnv_logout_reason', reason);
     }
+    
+    // Flush all potential socket connections, cached resources and other residual states
+    window.location.href = window.location.origin;
   };
 
   // 3. Inactivity Timeout - Logout after 5 minutes of no interaction
@@ -463,7 +465,14 @@ const App: React.FC = () => {
   const [lastKeepAlive, setLastKeepAlive] = useState<string | null>(() => {
     return localStorage.getItem('ndv_last_keep_alive');
   });
-  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(() => {
+    const savedReason = localStorage.getItem('vnv_logout_reason');
+    if (savedReason) {
+      localStorage.removeItem('vnv_logout_reason');
+      return savedReason;
+    }
+    return null;
+  });
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(() => {
     const saved = localStorage.getItem('vnv_remember');
@@ -800,6 +809,10 @@ const App: React.FC = () => {
   // Listen for in-app native push notifications (foreground)
   useEffect(() => {
     const handleInAppPush = (e: Event) => {
+      if (user?.isAdmin) {
+        // Do not display standard user push notifications on Admin views
+        return;
+      }
       const customEvent = e as CustomEvent;
       if (customEvent.detail) {
         const { title, body } = customEvent.detail;
@@ -1422,6 +1435,12 @@ const App: React.FC = () => {
           }
           return nextUser;
         });
+        
+        // Force immediate background pull from DB
+        fetchUserProfile();
+        fetchData(false, false, true);
+      } else if (user?.isAdmin) {
+        fetchData(false, true, true);
       }
     });
 
@@ -1453,13 +1472,12 @@ const App: React.FC = () => {
           } else {
             sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
           }
+          fetchUserProfile();
+          fetchData(false, false, true);
+        } else if (user.isAdmin) {
+          fetchData(false, true, true);
         }
       }
-    });
-
-    socket.on('users_bulk_updated', () => {
-      console.log('[REALTIME] Bulk users updated, refreshing data...');
-      fetchFullData(true);
     });
 
     socket.on('loan_updated', (updatedLoan: LoanRecord) => {
@@ -1491,6 +1509,12 @@ const App: React.FC = () => {
         
         return next;
       });
+
+      if (user && updatedLoan.userId === user.id) {
+        fetchData(false, false, true);
+      } else if (user?.isAdmin) {
+        fetchData(false, true, true);
+      }
     });
 
     socket.on('loan_deleted', (data: { id: string }) => {
@@ -1519,6 +1543,8 @@ const App: React.FC = () => {
         
         return next;
       });
+
+      fetchData(false, !!user?.isAdmin, true);
     });
 
     socket.on('loans_updated', (updatedLoans: LoanRecord[]) => {
@@ -1555,6 +1581,15 @@ const App: React.FC = () => {
         
         return newLoans;
       });
+
+      if (user) {
+        const hasMyLoan = updatedLoans.some(l => l.userId === user.id);
+        if (hasMyLoan) {
+          fetchData(false, false, true);
+        } else if (user.isAdmin) {
+          fetchData(false, true, true);
+        }
+      }
     });
 
     socket.on('notification_updated', (notif: Notification) => {
@@ -1579,6 +1614,9 @@ const App: React.FC = () => {
             }
           }
         });
+        fetchData(false, false, true);
+      } else if (user?.isAdmin) {
+        fetchData(false, true, true);
       }
     });
 
@@ -1634,6 +1672,9 @@ const App: React.FC = () => {
         if (data.TOTAL_FINE_PROFIT !== undefined) setFineProfit(Number(data.TOTAL_FINE_PROFIT));
         if (data.MONTHLY_STATS) setMonthlyStats(data.MONTHLY_STATS.slice(0, 6));
       }
+
+      // Automatically sync latest state on config changed
+      fetchData(false, !!user?.isAdmin, true);
     });
 
     socket.on('sync_completed', (data: any) => {
@@ -1691,8 +1732,8 @@ const App: React.FC = () => {
         };
         setAdminNotifications(prev => [newNotif, ...prev].slice(0, 50));
         
-        // Refresh full data
-        fetchData(false, false, true);
+        // Refresh full data forcing admin load
+        fetchData(false, true, true);
       }
     });
 
@@ -1704,7 +1745,7 @@ const App: React.FC = () => {
 
     socket.on('payment_success', (data: { message: string, type?: string }) => {
       console.log('[SOCKET] Payment success:', data);
-      fetchData(true);
+      fetchData(false, !!user?.isAdmin, true);
       // Only redirect to Dashboard if NOT an admin
       if (user && !user.isAdmin) {
         setCurrentView(AppView.DASHBOARD);
@@ -1713,7 +1754,7 @@ const App: React.FC = () => {
 
     socket.on('rank_upgrade_success', (data: { message: string }) => {
       console.log('[SOCKET] Rank upgrade success:', data);
-      fetchData(true);
+      fetchData(false, !!user?.isAdmin, true);
       // Only redirect to Dashboard if NOT an admin
       if (user && !user.isAdmin) {
         setCurrentView(AppView.DASHBOARD);
@@ -1722,7 +1763,7 @@ const App: React.FC = () => {
 
     socket.on('users_bulk_updated', () => {
       console.log('[SOCKET] Users bulk updated (Rank Sync)');
-      fetchData(true);
+      fetchData(false, !!user?.isAdmin, true);
       if (user?.isAdmin) {
         fetchFullData(true);
       }
@@ -3293,6 +3334,7 @@ const App: React.FC = () => {
             rankUpgradeBill: undefined,
             isFreeUpgrade: false,
             hasCustomLimit: false,
+            rankUpgradeDate: new Date().toISOString(),
             updatedAt: Date.now()
           };
           

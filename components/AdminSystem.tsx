@@ -264,6 +264,7 @@ CREATE TABLE IF NOT EXISTS users (
   "updatedAt" BIGINT,
   "hasCustomLimit" BOOLEAN DEFAULT false,
   "isFreeUpgrade" BOOLEAN DEFAULT false,
+  "rankUpgradeDate" TEXT,
   "fcmToken" TEXT
 );
 
@@ -786,6 +787,7 @@ END $$;`;
           ALTER TABLE users ADD COLUMN IF NOT EXISTS "penaltyStreak" INTEGER DEFAULT 0;
           ALTER TABLE users ADD COLUMN IF NOT EXISTS "hasCustomLimit" BOOLEAN DEFAULT false;
           ALTER TABLE users ADD COLUMN IF NOT EXISTS "isFreeUpgrade" BOOLEAN DEFAULT false;
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS "rankUpgradeDate" TEXT;
           ALTER TABLE users ADD COLUMN IF NOT EXISTS "fcmToken" TEXT;
         `;
 
