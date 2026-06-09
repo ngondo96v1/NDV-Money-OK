@@ -255,7 +255,8 @@ const loadSystemSettings = async (client: any) => {
         'RANK_CONFIG', 'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG', 
         'CONTRACT_FORMATS_CONFIG', 'TRANSFER_CONTENTS_CONFIG', 'SYSTEM_CONTRACT_FORMATS_CONFIG', 'MASTER_CONFIGS', 'lastKeepAlive',
         'ENABLE_SIMULATION', 'SIMULATION_INTERVAL', 'SYSTEM_START_DATE',
-        'REMINDER_DAYS_BEFORE_DUE', 'AUTO_LOCK_OVERDUE_DAYS'
+        'REMINDER_DAYS_BEFORE_DUE', 'AUTO_LOCK_OVERDUE_DAYS',
+        'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'ENABLE_TELEGRAM_NOTIF'
       ];
       if (systemKeys.includes(item.key)) {
         if (['MONTHLY_STATS', 'PAYMENT_ACCOUNT', 'LUCKY_SPIN_VOUCHERS', 'RANK_CONFIG', 'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG', 'CONTRACT_FORMATS_CONFIG', 'TRANSFER_CONTENTS_CONFIG', 'SYSTEM_CONTRACT_FORMATS_CONFIG', 'MASTER_CONFIGS', 'CONTRACT_CLAUSES'].includes(item.key)) {
@@ -266,7 +267,7 @@ const loadSystemSettings = async (client: any) => {
           }
         } else if (['SYSTEM_BUDGET', 'TOTAL_LOAN_PROFIT', 'TOTAL_FINE_PROFIT', 'TOTAL_RANK_PROFIT', 'UPGRADE_PERCENT', 'PRE_DISBURSEMENT_FEE', 'MAX_EXTENSIONS', 'FINE_RATE', 'MAX_FINE_PERCENT', 'MAX_LOAN_PER_CYCLE', 'MIN_SYSTEM_BUDGET', 'MAX_SINGLE_LOAN_AMOUNT', 'INITIAL_LIMIT', 'MIN_LOAN_AMOUNT', 'LUCKY_SPIN_WIN_RATE', 'LUCKY_SPIN_PAYMENTS_REQUIRED', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE', 'SIMULATION_INTERVAL', 'REMINDER_DAYS_BEFORE_DUE', 'AUTO_LOCK_OVERDUE_DAYS'].includes(item.key)) {
           settings[item.key] = Number(item.value);
-        } else if (['ENABLE_PAYOS', 'ENABLE_VIETQR', 'SHOW_SYSTEM_NOTIFICATION', 'MAINTENANCE_MODE', 'ENABLE_SIMULATION'].includes(item.key)) {
+        } else if (['ENABLE_PAYOS', 'ENABLE_VIETQR', 'SHOW_SYSTEM_NOTIFICATION', 'MAINTENANCE_MODE', 'ENABLE_SIMULATION', 'ENABLE_TELEGRAM_NOTIF'].includes(item.key)) {
           settings[item.key] = item.value === true || item.value === 'true';
         } else {
           settings[item.key] = item.value;
@@ -414,8 +415,60 @@ const getMergedSettings = async (client: any) => {
     MASTER_CONFIGS: dbSettings.MASTER_CONFIGS || config.MASTER_CONFIGS || [],
     SYSTEM_START_DATE: dbSettings.SYSTEM_START_DATE !== undefined ? dbSettings.SYSTEM_START_DATE : (config.SYSTEM_START_DATE !== undefined ? config.SYSTEM_START_DATE : ""),
     REMINDER_DAYS_BEFORE_DUE: Number(dbSettings.REMINDER_DAYS_BEFORE_DUE !== undefined ? dbSettings.REMINDER_DAYS_BEFORE_DUE : 1),
-    AUTO_LOCK_OVERDUE_DAYS: Number(dbSettings.AUTO_LOCK_OVERDUE_DAYS !== undefined ? dbSettings.AUTO_LOCK_OVERDUE_DAYS : 15)
+    AUTO_LOCK_OVERDUE_DAYS: Number(dbSettings.AUTO_LOCK_OVERDUE_DAYS !== undefined ? dbSettings.AUTO_LOCK_OVERDUE_DAYS : 15),
+    TELEGRAM_BOT_TOKEN: dbSettings.TELEGRAM_BOT_TOKEN || config.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || "",
+    TELEGRAM_CHAT_ID: dbSettings.TELEGRAM_CHAT_ID || config.TELEGRAM_CHAT_ID || process.env.TELEGRAM_CHAT_ID || "",
+    ENABLE_TELEGRAM_NOTIF: dbSettings.ENABLE_TELEGRAM_NOTIF !== undefined ? dbSettings.ENABLE_TELEGRAM_NOTIF : (config.ENABLE_TELEGRAM_NOTIF !== undefined ? (config.ENABLE_TELEGRAM_NOTIF === true || config.ENABLE_TELEGRAM_NOTIF === 'true') : (process.env.ENABLE_TELEGRAM_NOTIF !== undefined ? (process.env.ENABLE_TELEGRAM_NOTIF === 'true' || process.env.ENABLE_TELEGRAM_NOTIF === '1') : true))
   };
+};
+
+// Helper for Telegram Bot Notifications
+const sendTelegramNotification = async (message: string, settings?: any) => {
+  try {
+    let botToken = process.env.TELEGRAM_BOT_TOKEN || "";
+    let chatId = process.env.TELEGRAM_CHAT_ID || "";
+    let enabled = true;
+
+    if (settings) {
+      if (settings.TELEGRAM_BOT_TOKEN) botToken = settings.TELEGRAM_BOT_TOKEN;
+      if (settings.TELEGRAM_CHAT_ID) chatId = settings.TELEGRAM_CHAT_ID;
+      if (settings.ENABLE_TELEGRAM_NOTIF !== undefined) {
+        enabled = settings.ENABLE_TELEGRAM_NOTIF === true || settings.ENABLE_TELEGRAM_NOTIF === 'true';
+      }
+    }
+
+    if (!enabled || !botToken || !chatId) {
+      console.log("[Telegram] Disabled or missing config (Token/ChatId). Telegram message not sent.");
+      return false;
+    }
+
+    const payload = {
+      chat_id: chatId.trim(),
+      text: message,
+      parse_mode: 'HTML',
+      disable_web_page_preview: true
+    };
+
+    console.log(`[Telegram] Sending notification to chat ${chatId}...`);
+    const res = await fetch(`https://api.telegram.org/bot${botToken.trim()}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error("[Telegram Error] API returned status:", res.status, errBody);
+      return false;
+    }
+
+    const result = await res.json();
+    console.log("[Telegram] Notification sent successfully! Message ID:", result?.result?.message_id);
+    return true;
+  } catch (error) {
+    console.error("[Telegram Error] Failed to send notification:", error);
+    return false;
+  }
 };
 
 
@@ -970,6 +1023,50 @@ router.get("/keep-alive", async (req, res) => {
 });
 
 // API Routes
+router.post("/telegram/test", async (req: any, res) => {
+  try {
+    const client = initSupabase();
+    if (!client) return res.status(503).json({ error: "Supabase chưa được cấu hình" });
+    const settings = await getMergedSettings(client);
+    const botToken = req.body.botToken || settings.TELEGRAM_BOT_TOKEN;
+    const chatId = req.body.chatId || settings.TELEGRAM_CHAT_ID;
+    
+    if (!botToken || !chatId) {
+      return res.status(400).json({ error: "Vui lòng nhập đầy đủ Bot Token và Chat ID để thực hiện kiểm thử!" });
+    }
+    
+    const payload = {
+      chat_id: chatId.trim(),
+      text: `<b>🔔 TIN NHẮN KIỂM THỬ HỆ THỐNG NDV-MONEY</b>\n` +
+            `• <b>Trạng thái:</b> Kết nối thành công! 🎉\n` +
+            `• <b>Phân loại:</b> Kênh thông báo đẩy Admin đã được liên kết hoạt động tốt!\n` +
+            `• <b>Thông số Bot Token:</b> <code>${botToken.trim().slice(0, 6)}...${botToken.trim().slice(-6)}</code>\n` +
+            `• <b>Thông số Chat ID:</b> <code>${chatId.trim()}</code>\n` +
+            `• <b>Thời gian gửi:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`,
+      parse_mode: 'HTML'
+    };
+
+    console.log(`[Telegram Test] Attempting to send test msg to ${chatId.trim()} using token ${botToken.trim().slice(0, 8)}...`);
+    const tgRes = await fetch(`https://api.telegram.org/bot${botToken.trim()}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!tgRes.ok) {
+      const errText = await tgRes.text();
+      console.error("[Telegram Test Error]:", errText);
+      return res.status(400).json({ error: "Telegram API trả về lỗi khi gửi tin nhắn", details: errText });
+    }
+
+    const resJson = await tgRes.json();
+    res.json({ success: true, message: "Gửi tin nhắn thử nghiệm thành công! Vui lòng kiểm tra ứng dụng Telegram của bạn.", result: resJson });
+  } catch (err: any) {
+    console.error("[Telegram Test Catch Error]:", err);
+    res.status(500).json({ error: "Lỗi hệ thống khi gửi tin nhắn thử nghiệm", details: err.message });
+  }
+});
+
 router.get("/public-settings", async (req, res) => {
   const client = initSupabase();
   const merged = await getMergedSettings(client);
@@ -1069,7 +1166,8 @@ router.post("/settings", async (req: any, res) => {
     'LUCKY_SPIN_PAYMENTS_REQUIRED', 'MAX_ON_TIME_PAYMENTS_FOR_UPGRADE', 'CONTRACT_CLAUSES',
     'RANK_CONFIG', 'TOTAL_RANK_PROFIT', 'TOTAL_LOAN_PROFIT', 'TOTAL_FINE_PROFIT', 'SYSTEM_BUDGET', 'SYSTEM_FORMATS_CONFIG', 'BUSINESS_OPERATIONS_CONFIG',
     'CONTRACT_FORMATS_CONFIG', 'TRANSFER_CONTENTS_CONFIG', 'SYSTEM_CONTRACT_FORMATS_CONFIG', 'MASTER_CONFIGS', 'SYSTEM_START_DATE',
-    'ENABLE_SIMULATION', 'SIMULATION_INTERVAL', 'REMINDER_DAYS_BEFORE_DUE', 'AUTO_LOCK_OVERDUE_DAYS'
+    'ENABLE_SIMULATION', 'SIMULATION_INTERVAL', 'REMINDER_DAYS_BEFORE_DUE', 'AUTO_LOCK_OVERDUE_DAYS',
+    'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'ENABLE_TELEGRAM_NOTIF'
   ];
   
   systemKeys.forEach(key => {
@@ -1769,6 +1867,24 @@ router.post("/register", async (req, res) => {
     }
 
     console.log(`[API] User ${sanitizedUser.id} registered successfully in Supabase.`);
+
+    // Telegram Notification to Admin
+    try {
+      const telegramMsg = `<b>👤 ĐĂNG KÝ TÀI KHOẢN MỚI</b>\n` +
+        `• <b>Họ tên:</b> ${sanitizedUser.fullName || 'Chưa cung cấp'}\n` +
+        `• <b>Số điện thoại:</b> <code>${sanitizedUser.phone}</code>\n` +
+        `• <b>ID Hệ thống:</b> <code>${sanitizedUser.id}</code>\n` +
+        `• <b>Hạng:</b> ${sanitizedUser.rank.toUpperCase()}\n` +
+        `• <b>Hạn mức khởi điểm:</b> ${sanitizedUser.totalLimit.toLocaleString()} đ\n` +
+        `• <b>Zalo liên hệ:</b> ${sanitizedUser.refZalo || 'Không cung cấp'}\n` +
+        `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+      
+      sendTelegramNotification(telegramMsg, settings).catch(telegramErr => {
+        console.error("[Telegram Error Callback]:", telegramErr);
+      });
+    } catch (telegramCatch) {
+      console.error("[Telegram Code Catch]:", telegramCatch);
+    }
 
     const token = jwt.sign({ id: sanitizedUser.id, isAdmin: false }, settings.JWT_SECRET, { expiresIn: '24h' });
     
@@ -2873,9 +2989,10 @@ router.post("/users", async (req: any, res) => {
         
         // Notify admin of important updates
         if (u.pendingUpgradeRank && u.rankUpgradeBill) {
+          const notifyMsg = `Người dùng ${u.fullName || u.id} vừa gửi yêu cầu nâng hạng lên ${u.pendingUpgradeRank.toUpperCase()}.`;
           io.to("admin").emit("admin_notification", {
             type: "RANK_UPGRADE",
-            message: `Người dùng ${u.fullName || u.id} vừa gửi yêu cầu nâng hạng lên ${u.pendingUpgradeRank.toUpperCase()}.`
+            message: notifyMsg
           });
 
           // Persistent admin notification
@@ -2883,11 +3000,23 @@ router.post("/users", async (req: any, res) => {
             id: `ADMIN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: 'ADMIN',
             title: 'Yêu cầu nâng hạng mới',
-            message: `Người dùng ${u.fullName || u.id} vừa gửi yêu cầu nâng hạng lên ${u.pendingUpgradeRank.toUpperCase()}.`,
+            message: notifyMsg,
             time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN'),
             read: false,
             type: 'RANK'
           }]).then(({ error }) => { if (error) console.error("Lỗi lưu thông báo admin:", error); });
+
+          // Telegram Notification
+          getMergedSettings(client).then(settings => {
+            const telegramMsg = `<b>⭐ YÊU CẦU NÂNG HẠNG MỚI</b>\n` +
+              `• <b>Họ tên:</b> ${u.fullName || 'Chưa cung cấp'}\n` +
+              `• <b>Số điện thoại:</b> <code>${u.phone || u.id}</code>\n` +
+              `• <b>ID Hệ thống:</b> <code>${u.id}</code>\n` +
+              `• <b>Hạng yêu cầu:</b> <code>${u.pendingUpgradeRank.toUpperCase()}</code>\n` +
+              `• <b>Yêu cầu:</b> Chờ duyệt nâng hạng và hạn mức mới\n` +
+              `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+            sendTelegramNotification(telegramMsg, settings);
+          }).catch(err => console.error("Lỗi lấy settings cho Telegram Rank:", err));
         }
       });
       io.to("admin").emit("users_updated", sanitizedUsers);
@@ -3288,9 +3417,10 @@ router.post("/loans", async (req: any, res) => {
         
         // Notify admin of new loan requests or settlement requests
         if (l.status === 'CHỜ DUYỆT') {
+          const notifyMsg = `Có yêu cầu vay mới (${l.amount.toLocaleString()} đ) từ người dùng ${l.userName || l.userId}.`;
           io.to("admin").emit("admin_notification", {
             type: "NEW_LOAN",
-            message: `Có yêu cầu vay mới (${l.amount.toLocaleString()} đ) từ người dùng ${l.userName || l.userId}.`
+            message: notifyMsg
           });
           
           // Persistent admin notification
@@ -3298,16 +3428,30 @@ router.post("/loans", async (req: any, res) => {
             id: `ADMIN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: 'ADMIN',
             title: 'Yêu cầu vay mới',
-            message: `Có yêu cầu vay mới (${l.amount.toLocaleString()} đ) từ người dùng ${l.userName || l.userId}.`,
+            message: notifyMsg,
             time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN'),
             read: false,
             type: 'LOAN'
           }]).then(({ error }) => { if (error) console.error("Lỗi lưu thông báo admin:", error); });
+
+          // Telegram Notification
+          getMergedSettings(client).then(settings => {
+            const telegramMsg = `<b>💸 CÓ YÊU CẦU VAY MỚI</b>\n` +
+              `• <b>Người vay:</b> ${l.userName || 'Chưa cập nhật'}\n` +
+              `• <b>ID User:</b> <code>${l.userId}</code>\n` +
+              `• <b>Số tiền vay:</b> <code>${l.amount.toLocaleString()} đ</code>\n` +
+              `• <b>Thời hạn:</b> ${l.term || 0} ngày\n` +
+              `• <b>Trạng thái:</b> Chờ duyệt giải ngân\n` +
+              `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+            sendTelegramNotification(telegramMsg, settings);
+          }).catch(err => console.error("Lỗi lấy settings cho Telegram Loan:", err));
+
         } else if (l.status === 'CHỜ TẤT TOÁN') {
           const typeLabel = l.settlementType === 'PRINCIPAL' ? 'gia hạn' : (l.settlementType === 'PARTIAL' ? 'TTMP' : 'tất toán');
+          const notifyMsg = `Người dùng ${l.userName || l.userId} vừa gửi yêu cầu ${typeLabel} khoản vay (${l.amount.toLocaleString()} đ).`;
           io.to("admin").emit("admin_notification", {
             type: "PAYMENT",
-            message: `Người dùng ${l.userName || l.userId} vừa gửi yêu cầu ${typeLabel} khoản vay (${l.amount.toLocaleString()} đ).`
+            message: notifyMsg
           });
           
           // Persistent admin notification
@@ -3315,11 +3459,25 @@ router.post("/loans", async (req: any, res) => {
             id: `ADMIN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: 'ADMIN',
             title: 'Yêu cầu thanh toán mới',
-            message: `Người dùng ${l.userName || l.userId} vừa gửi yêu cầu ${typeLabel} khoản vay (${l.amount.toLocaleString()} đ).`,
+            message: notifyMsg,
             time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN'),
             read: false,
             type: 'LOAN'
           }]).then(({ error }) => { if (error) console.error("Lỗi lưu thông báo admin:", error); });
+
+          // Telegram Notification
+          getMergedSettings(client).then(settings => {
+            const labelUpper = typeLabel.toUpperCase();
+            const telegramMsg = `<b>🔔 YÊU CẦU THANH TOÁN (${labelUpper})</b>\n` +
+              `• <b>Khách hàng:</b> ${l.userName || 'Chưa cập nhật'}\n` +
+              `• <b>ID User:</b> <code>${l.userId}</code>\n` +
+              `• <b>Mã khoản vay:</b> <code>${l.id}</code>\n` +
+              `• <b>Số tiền khoản vay:</b> ${l.amount.toLocaleString()} đ\n` +
+              `• <b>Phân loại:</b> Yêu cầu ${typeLabel.toLowerCase()} (Đã up bill đối soát)\n` +
+              `• <b>Trạng thái:</b> Chờ Admin xác nhận thanh toán\n` +
+              `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+            sendTelegramNotification(telegramMsg, settings);
+          }).catch(err => console.error("Lỗi lấy settings cho Telegram Settle:", err));
         }
       });
       io.to("admin").emit("loans_updated", sanitizedLoans);
@@ -6228,6 +6386,20 @@ router.post("/payment/webhook", async (req, res) => {
               read: false,
               type: 'SYSTEM'
             }]);
+
+            // Telegram Notification
+            getMergedSettings(client).then(settings => {
+              const labelUpper = settleLabel.toUpperCase();
+              const telegramMsg = `<b>💸 THANH TOÁN TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
+                `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
+                `• <b>Số điện thoại:</b> <code>${user.phone}</code>\n` +
+                `• <b>Mã khoản vay:</b> <code>${loanId}</code>\n` +
+                `• <b>Hệ thống PayOS:</b> GD thanh toán tự động thành công\n` +
+                `• <b>Phân loại:</b> ${labelUpper}\n` +
+                `• <b>Số tiền nạp:</b> ${amount.toLocaleString()} đ\n` +
+                `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+              sendTelegramNotification(telegramMsg, settings);
+            }).catch(err => console.error("Lỗi lấy settings cho Telegram PayOS:", err));
           }
         }
       } 
@@ -6328,6 +6500,18 @@ router.post("/payment/webhook", async (req, res) => {
                 type: "RANK_UPGRADE",
                 message: `Người dùng ${user.id} đã nâng hạng lên ${rankLabel} qua PayOS.`
               });
+              
+              // Telegram Notification
+              getMergedSettings(client).then(settings => {
+                const telegramMsg = `<b>⭐ NÂNG HẠNG TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
+                  `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
+                  `• <b>Số điện thoại:</b> <code>${user.phone || user.id}</code>\n` +
+                  `• <b>Hạng mới nâng cấp:</b> <b>${rankLabel.toUpperCase()}</b>\n` +
+                  `• <b>Hệ thống PayOS:</b> GD thanh toán nâng cấp thành công\n` +
+                  `• <b>Phí nâng cấp:</b> ${upgradeFee.toLocaleString()} đ\n` +
+                  `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+                sendTelegramNotification(telegramMsg, settings);
+              }).catch(err => console.error("Lỗi lấy settings cho Telegram Rank upgrade:", err));
               
               // Notify all clients of config changes
               io.emit("config_updated", {

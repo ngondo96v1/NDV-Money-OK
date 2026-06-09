@@ -139,6 +139,37 @@ const AdminSystemSettingsPanel: React.FC<AdminSystemSettingsPanelProps> = ({
 }) => {
   const [settingsTab, setSettingsTab] = useState<'security_tech' | 'payment_gate' | 'finance_ranks' | 'contracts_formats' | 'gift_rewards' | 'system_utils' | null>(null);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const [isTestingTelegram, setIsTestingTelegram] = useState(false);
+  const [telegramTestResult, setTelegramTestResult] = useState<{ success?: boolean; error?: string; message?: string } | null>(null);
+
+  const handleTestTelegram = async () => {
+    setIsTestingTelegram(true);
+    setTelegramTestResult(null);
+    try {
+      const token = localStorage.getItem('vnv_token') || sessionStorage.getItem('vnv_token');
+      const response = await fetch('/api/telegram/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({
+          botToken: localSettings.TELEGRAM_BOT_TOKEN,
+          chatId: localSettings.TELEGRAM_CHAT_ID
+        })
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setTelegramTestResult({ success: true, message: data.message });
+      } else {
+        setTelegramTestResult({ success: false, error: data.error || 'Gửi test thất bại! Bạn cần lưu cấu hình trước khi test hoặc kiểm tra API Token.' });
+      }
+    } catch (err: any) {
+      setTelegramTestResult({ success: false, error: err.message || 'Lỗi không xác định khi kết nối với máy chủ.' });
+    } finally {
+      setIsTestingTelegram(false);
+    }
+  };
 
   const toggleSection = (sectionKey: string) => {
     setOpenSections(prev => ({
@@ -2130,6 +2161,107 @@ const AdminSystemSettingsPanel: React.FC<AdminSystemSettingsPanelProps> = ({
               )}
             </div>
 
+            {/* TRẠM THÔNG BÁO PUSH TELEGRAM BOT */}
+            <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-5 space-y-4">
+              <div 
+                onClick={() => toggleSection('util_telegram')}
+                className="flex items-center justify-between cursor-pointer select-none group/hd"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-3.5 bg-blue-500 rounded-full"></div>
+                  <h6 className="text-[9px] font-black text-white uppercase tracking-widest group-hover/hd:text-blue-400 transition-colors">TRẠM THÔNG BÁO PUSH TELEGRAM BOT (ĐỘC QUYỀN ADMIN)</h6>
+                </div>
+                <div className="flex items-center gap-2.5" onClick={(e) => e.stopPropagation()}>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setLocalSettings({...localSettings, ENABLE_TELEGRAM_NOTIF: !localSettings.ENABLE_TELEGRAM_NOTIF});
+                      setHasChanges(true);
+                    }}
+                    className={`w-9 h-5 rounded-full relative transition-all ${localSettings.ENABLE_TELEGRAM_NOTIF ? 'bg-blue-500' : 'bg-white/10'}`}
+                  >
+                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${localSettings.ENABLE_TELEGRAM_NOTIF ? 'left-4.5' : 'left-0.5'}`}></div>
+                  </button>
+                  <div className="text-gray-500 group-hover/hd:text-white transition-colors pl-1">
+                    {openSections['util_telegram'] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </div>
+                </div>
+              </div>
+              {openSections['util_telegram'] && (
+                <div className="space-y-4 animate-in fade-in duration-200 mt-2">
+                  <p className="text-[7.5px] font-bold text-gray-400 uppercase leading-relaxed tracking-wider">
+                    * Nhận thông báo đẩy trực tiếp, bảo mật mọi biến động hệ thống (Đăng ký mới, Yêu cầu vay, Nâng hạng, Thanh toán tự động qua PayOS...) về tài khoản Telegram cá nhân của Admin mà không cần tạo nhóm hay cài đặt phức tạp!
+                  </p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[7.5px] font-black text-gray-500 uppercase tracking-widest px-1">TOKEN API CỦA TELEGRAM BOT (@BotFather)</label>
+                      <input 
+                        type="password" 
+                        value={localSettings.TELEGRAM_BOT_TOKEN || ''}
+                        placeholder="Ví dụ: 1234567890:ABCdefGhI_JkLmNoPQrStU..."
+                        onChange={(e) => {
+                          setLocalSettings({...localSettings, TELEGRAM_BOT_TOKEN: e.target.value});
+                          setHasChanges(true);
+                        }}
+                        className="w-full bg-black/60 border border-white/10 rounded-xl px-3.5 py-3 text-[10px] font-bold text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <label className="text-[7.5px] font-black text-gray-500 uppercase tracking-widest px-1">CHAT ID NHẬN TIN (Admin hoặc Group ID)</label>
+                      <input 
+                        type="text" 
+                        value={localSettings.TELEGRAM_CHAT_ID || ''}
+                        placeholder="Ví dụ: 87654321 hoặc -100123456789"
+                        onChange={(e) => {
+                          setLocalSettings({...localSettings, TELEGRAM_CHAT_ID: e.target.value});
+                          setHasChanges(true);
+                        }}
+                        className="w-full bg-black/60 border border-white/10 rounded-xl px-3.5 py-3 text-[10px] font-bold text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Actions Block for Testing Connection */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      disabled={isTestingTelegram || !localSettings.TELEGRAM_BOT_TOKEN || !localSettings.TELEGRAM_CHAT_ID}
+                      onClick={handleTestTelegram}
+                      className="px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/25 disabled:opacity-40 disabled:hover:bg-blue-500/10 text-blue-400 text-[8px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center gap-1.5 font-sans"
+                    >
+                      {isTestingTelegram ? (
+                        <>
+                          <Loader2 className="animate-spin text-blue-400" size={12} />
+                          ĐANG GỬI TIN NHẮN THỬ...
+                        </>
+                      ) : (
+                        <>
+                          <Bell size={12} />
+                          GỬI TIN NHẮN KIỂM THỬ (@TEST BOT)
+                        </>
+                      )}
+                    </button>
+
+                    {telegramTestResult && (
+                      <div className={`mt-3 p-3 rounded-xl border text-[8.5px] font-bold leading-normal uppercase tracking-wide animate-in fade-in duration-200 ${
+                        telegramTestResult.success 
+                          ? 'bg-green-500/10 border-green-500/20 text-green-400' 
+                          : 'bg-red-500/10 border-red-500/20 text-red-400'
+                      }`}>
+                        {telegramTestResult.success ? (
+                          <p>🎉 Kết nối hoạt động tốt! {telegramTestResult.message}</p>
+                        ) : (
+                          <p>❌ Lỗi kết nối: {telegramTestResult.error}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Custom moving notice system text marquee */}
             <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-5 space-y-4">
               <div 
@@ -2286,7 +2418,7 @@ const AdminSystemSettingsPanel: React.FC<AdminSystemSettingsPanelProps> = ({
             </div>
 
             <button 
-              onClick={() => handleSaveSettings(['ZALO_GROUP_LINK', 'SYSTEM_NOTIFICATION', 'SHOW_SYSTEM_NOTIFICATION', 'ENABLE_SIMULATION', 'SIMULATION_INTERVAL'])}
+              onClick={() => handleSaveSettings(['ZALO_GROUP_LINK', 'SYSTEM_NOTIFICATION', 'SHOW_SYSTEM_NOTIFICATION', 'ENABLE_SIMULATION', 'SIMULATION_INTERVAL', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'ENABLE_TELEGRAM_NOTIF'])}
               disabled={isSavingSettings}
               className="w-full bg-[#ff8c00]/10 border border-[#ff8c00]/25 hover:bg-[#ff8c00]/20 text-[#ff8c00] font-black py-4 rounded-xl text-[9px] uppercase tracking-widest active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >
