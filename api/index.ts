@@ -418,7 +418,9 @@ const getMergedSettings = async (client: any) => {
     AUTO_LOCK_OVERDUE_DAYS: Number(dbSettings.AUTO_LOCK_OVERDUE_DAYS !== undefined ? dbSettings.AUTO_LOCK_OVERDUE_DAYS : 15),
     TELEGRAM_BOT_TOKEN: dbSettings.TELEGRAM_BOT_TOKEN || config.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || "",
     TELEGRAM_CHAT_ID: dbSettings.TELEGRAM_CHAT_ID || config.TELEGRAM_CHAT_ID || process.env.TELEGRAM_CHAT_ID || "",
-    ENABLE_TELEGRAM_NOTIF: dbSettings.ENABLE_TELEGRAM_NOTIF !== undefined ? dbSettings.ENABLE_TELEGRAM_NOTIF : (config.ENABLE_TELEGRAM_NOTIF !== undefined ? (config.ENABLE_TELEGRAM_NOTIF === true || config.ENABLE_TELEGRAM_NOTIF === 'true') : (process.env.ENABLE_TELEGRAM_NOTIF !== undefined ? (process.env.ENABLE_TELEGRAM_NOTIF === 'true' || process.env.ENABLE_TELEGRAM_NOTIF === '1') : true))
+    ENABLE_TELEGRAM_NOTIF: (process.env.ENABLE_TELEGRAM_NOTIF !== undefined)
+      ? (String(process.env.ENABLE_TELEGRAM_NOTIF).toLowerCase() === 'true' || String(process.env.ENABLE_TELEGRAM_NOTIF) === '1')
+      : (dbSettings.ENABLE_TELEGRAM_NOTIF !== undefined ? dbSettings.ENABLE_TELEGRAM_NOTIF : (config.ENABLE_TELEGRAM_NOTIF !== undefined ? (config.ENABLE_TELEGRAM_NOTIF === true || config.ENABLE_TELEGRAM_NOTIF === 'true') : true))
   };
 };
 
