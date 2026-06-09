@@ -322,13 +322,27 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   };
 
   const toggleSubSection = (userId: string, section: string) => {
-    setExpandedSubSections(prev => ({
-      ...prev,
-      [userId]: {
-        ...(prev[userId] || {}),
-        [section]: !(prev[userId]?.[section])
+    setExpandedSubSections(prev => {
+      const userSections = prev[userId] || {};
+      const nextVal = !userSections[section];
+      
+      const updatedUserSections = {
+        ...userSections,
+        [section]: nextVal
+      };
+      
+      if (section === 'PROFILE' && nextVal) {
+        updatedUserSections['LOANS'] = false;
       }
-    }));
+      if (section === 'LOANS' && nextVal) {
+        updatedUserSections['PROFILE'] = false;
+      }
+      
+      return {
+        ...prev,
+        [userId]: updatedUserSections
+      };
+    });
   };
 
   const isSubSectionExpanded = (userId: string, section: string) => {
