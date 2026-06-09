@@ -2981,21 +2981,13 @@ router.post("/users", async (req: any, res) => {
       }
     }
     
-    // Emit real-time update
-    const io = req.app.get("io");
-    if (io) {
-      for (const u of sanitizedUsers) {
-        io.to(`user_${u.id}`).emit("user_updated", u);
+    // Process Admin Notifications and Telegram triggers independent of Socket.io (crucial for Serverless Vercel)
+    for (const u of sanitizedUsers) {
+      if (u.pendingUpgradeRank && u.rankUpgradeBill) {
+        const notifyMsg = `Người dùng ${u.fullName || u.id} vừa gửi yêu cầu nâng hạng lên ${u.pendingUpgradeRank.toUpperCase()}.`;
         
-        // Notify admin of important updates
-        if (u.pendingUpgradeRank && u.rankUpgradeBill) {
-          const notifyMsg = `Người dùng ${u.fullName || u.id} vừa gửi yêu cầu nâng hạng lên ${u.pendingUpgradeRank.toUpperCase()}.`;
-          io.to("admin").emit("admin_notification", {
-            type: "RANK_UPGRADE",
-            message: notifyMsg
-          });
-
-          // Persistent admin notification
+        // Persistent database notification for Admin
+        try {
           await client.from('notifications').insert([{
             id: `ADMIN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: 'ADMIN',
@@ -3005,21 +2997,40 @@ router.post("/users", async (req: any, res) => {
             read: false,
             type: 'RANK'
           }]);
+        } catch (dbNotifErr) {
+          console.error("Lỗi lưu thông báo admin về nâng hạng:", dbNotifErr);
+        }
 
-          // Telegram Notification
-          try {
-            const settings = await getMergedSettings(client);
-            const telegramMsg = `<b>⭐ YÊU CẦU NÂNG HẠNG MỚI</b>\n` +
-              `• <b>Họ tên:</b> ${u.fullName || 'Chưa cung cấp'}\n` +
-              `• <b>Số điện thoại:</b> <code>${u.phone || u.id}</code>\n` +
-              `• <b>ID Hệ thống:</b> <code>${u.id}</code>\n` +
-              `• <b>Hạng yêu cầu:</b> <code>${u.pendingUpgradeRank.toUpperCase()}</code>\n` +
-              `• <b>Yêu cầu:</b> Chờ duyệt nâng hạng và hạn mức mới\n` +
-              `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
-            await sendTelegramNotification(telegramMsg, settings);
-          } catch (err) {
-            console.error("Lỗi lấy settings/gửi Telegram Rank:", err);
-          }
+        // Telegram Notification
+        try {
+          const settings = await getMergedSettings(client);
+          const telegramMsg = `<b>⭐ YÊU CẦU NÂNG HẠNG MỚI</b>\n` +
+            `• <b>Họ tên:</b> ${u.fullName || 'Chưa cung cấp'}\n` +
+            `• <b>Số điện thoại:</b> <code>${u.phone || u.id}</code>\n` +
+            `• <b>ID Hệ thống:</b> <code>${u.id}</code>\n` +
+            `• <b>Hạng yêu cầu:</b> <code>${u.pendingUpgradeRank.toUpperCase()}</code>\n` +
+            `• <b>Yêu cầu:</b> Chờ duyệt nâng hạng và hạn mức mới\n` +
+            `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+          await sendTelegramNotification(telegramMsg, settings);
+        } catch (err) {
+          console.error("Lỗi lấy settings/gửi Telegram Rank:", err);
+        }
+      }
+    }
+
+    // Emit real-time update
+    const io = req.app.get("io");
+    if (io) {
+      for (const u of sanitizedUsers) {
+        io.to(`user_${u.id}`).emit("user_updated", u);
+        
+        // Notify admin of important updates in real-time
+        if (u.pendingUpgradeRank && u.rankUpgradeBill) {
+          const notifyMsg = `Người dùng ${u.fullName || u.id} vừa gửi yêu cầu nâng hạng lên ${u.pendingUpgradeRank.toUpperCase()}.`;
+          io.to("admin").emit("admin_notification", {
+            type: "RANK_UPGRADE",
+            message: notifyMsg
+          });
         }
       }
       io.to("admin").emit("users_updated", sanitizedUsers);
@@ -3344,87 +3355,91 @@ router.post("/loans", async (req: any, res) => {
       }
     }
 
-    // Emit real-time update
-    const io = req.app.get("io");
-    if (io) {
-      for (const l of sanitizedLoans) {
-        io.to(`user_${l.userId}`).emit("loan_updated", l);
-        
-        // Evaluate loan status change notifications and trigger push/sockets
-        if (existingLoans && existingLoans.length > 0) {
-          const oldLoan = existingLoans.find(e => e.id === l.id);
-          if (oldLoan) {
-            const oldNorm = String(oldLoan.status).toUpperCase().normalize('NFC');
-            const newNorm = String(l.status).toUpperCase().normalize('NFC');
+    // Process Admin Notifications and Telegram triggers independent of Socket.io (crucial for Serverless Vercel)
+    for (const l of sanitizedLoans) {
+      // Evaluate loan status change notifications and trigger push/sockets
+      if (existingLoans && existingLoans.length > 0) {
+        const oldLoan = existingLoans.find(e => e.id === l.id);
+        if (oldLoan) {
+          const oldNorm = String(oldLoan.status).toUpperCase().normalize('NFC');
+          const newNorm = String(l.status).toUpperCase().normalize('NFC');
+          
+          if (oldNorm !== newNorm) {
+            let title = "";
+            let message = "";
+            const amountStr = Number(l.amount).toLocaleString('vi-VN');
             
-            if (oldNorm !== newNorm) {
-              let title = "";
-              let message = "";
-              const amountStr = Number(l.amount).toLocaleString('vi-VN');
-              
-              if (oldNorm === 'CHỜ DUYỆT' && newNorm === 'ĐANG NỢ') {
-                title = "Khoản vay được phê duyệt";
-                message = `Chúc mừng! Hồ sơ vay mã ${l.id} trị giá ${amountStr} đ của bạn đã được phê duyệt thành công. Số dư khả dụng đã được cộng vào tài khoản của bạn.`;
-              } else if (oldNorm === 'CHỜ DUYỆT' && newNorm === 'TỪ CHỐI') {
-                title = "Khoản vay bị từ chối";
-                message = `Rất tiếc! Hồ sơ đăng ký vay mã ${l.id} trị giá ${amountStr} đ của bạn đã bị từ chối do không đủ điều kiện phê duyệt từ hệ thống.`;
-              } else if (oldNorm === 'CHỜ TẤT TOÁN' && (newNorm === 'ĐÃ TẤT TOÁN' || newNorm === 'ĐÃ TẤT TOÁN')) {
-                title = "Tất toán thành công";
-                message = `Yêu cầu thanh toán cho khoản vay mã ${l.id} trị giá ${amountStr} đ của bạn đã được Admin chấp nhận và hoàn tất tất toán thành công.`;
-              } else if (newNorm === 'QUÁ HẠN') {
-                title = "Khoản nợ QUÁ HẠN";
-                message = `Cảnh báo! Khoản vay mã ${l.id} trị giá ${amountStr} đ đã chuyển sang trạng thái QUÁ HẠN. Vui lòng thanh toán ngay để tránh phát sinh phí phạt bổ sung.`;
-              } else if (newNorm === 'GIA HẠN') {
-                title = "Đã gia hạn thành công";
-                message = `Yêu cầu xin gia hạn lùi ngày thanh toán cho khoản nợ mã ${l.id} của bạn đã được Admin duyệt và chấp nhận.`;
-              } else if (newNorm === 'TTMP') {
-                title = "Xác nhận Thanh toán một phần";
-                message = `Giao dịch thanh toán một phần (TTMP) cho khoản vay mã ${l.id} đã được phê duyệt và ghi nhận thành công.`;
+            if (oldNorm === 'CHỜ DUYỆT' && newNorm === 'ĐANG NỢ') {
+              title = "Khoản vay được phê duyệt";
+              message = `Chúc mừng! Hồ sơ vay mã ${l.id} trị giá ${amountStr} đ của bạn đã được phê duyệt thành công. Số dư khả dụng đã được cộng vào tài khoản của bạn.`;
+            } else if (oldNorm === 'CHỜ DUYỆT' && newNorm === 'TỪ CHỐI') {
+              title = "Khoản vay bị từ chối";
+              message = `Rất tiếc! Hồ sơ đăng ký vay mã ${l.id} trị giá ${amountStr} đ của bạn đã bị từ chối do không đủ điều kiện phê duyệt từ hệ thống.`;
+            } else if (oldNorm === 'CHỜ TẤT TOÁN' && (newNorm === 'ĐÃ TẤT TOÁN' || newNorm === 'ĐÃ TẤT TOÁN')) {
+              title = "Tất toán thành công";
+              message = `Yêu cầu thanh toán cho khoản vay mã ${l.id} trị giá ${amountStr} đ của bạn đã được Admin chấp nhận và hoàn tất tất toán thành công.`;
+            } else if (newNorm === 'QUÁ HẠN') {
+              title = "Khoản nợ QUÁ HẠN";
+              message = `Cảnh báo! Khoản vay mã ${l.id} trị giá ${amountStr} đ đã chuyển sang trạng thái QUÁ HẠN. Vui lòng thanh toán ngay để tránh phát sinh phí phạt bổ sung.`;
+            } else if (newNorm === 'GIA HẠN') {
+              title = "Đã gia hạn thành công";
+              message = `Yêu cầu xin gia hạn lùi ngày thanh toán cho khoản nợ mã ${l.id} của bạn đã được Admin duyệt và chấp nhận.`;
+            } else if (newNorm === 'TTMP') {
+              title = "Xác nhận Thanh toán một phần";
+              message = `Giao dịch thanh toán một phần (TTMP) cho khoản vay mã ${l.id} đã được phê duyệt và ghi nhận thành công.`;
+            } else {
+              title = "Cập nhật trạng thái vay";
+              if (newNorm === 'ĐÃ TẤT TOÁN' || newNorm === 'ĐÃ TẤT TOÁN') {
+                title = "Khoản vay đã tất toán";
+                message = `Khoản vay mã ${l.id} trị giá ${amountStr} đ của bạn đã được tất toán thành công.`;
               } else {
-                title = "Cập nhật trạng thái vay";
-                if (newNorm === 'ĐÃ TẤT TOÁN' || newNorm === 'ĐÃ TẤT TOÁN') {
-                  title = "Khoản vay đã tất toán";
-                  message = `Khoản vay mã ${l.id} trị giá ${amountStr} đ của bạn đã được tất toán thành công.`;
-                } else {
-                  message = `Khoản vay mã ${l.id} của bạn đã được thay đổi trạng thái thành "${l.status}".`;
-                }
+                message = `Khoản vay mã ${l.id} của bạn đã được thay đổi trạng thái thành "${l.status}".`;
+              }
+            }
+            
+            if (title && message) {
+              const notifId = `LOAN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+              const timeStr = `${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ${new Date().toLocaleDateString('vi-VN')}`;
+              const notifyPayload = {
+                id: notifId,
+                userId: l.userId,
+                title,
+                message,
+                time: timeStr,
+                read: false,
+                type: 'LOAN'
+              };
+              
+              // Save database notification record
+              try {
+                await client.from('notifications').insert([notifyPayload]);
+              } catch (dbNotifErr) {
+                console.error("Lỗi lưu thông báo khoản vay:", dbNotifErr);
               }
               
-              if (title && message) {
-                const notifId = `LOAN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-                const timeStr = `${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ${new Date().toLocaleDateString('vi-VN')}`;
-                const notifyPayload = {
-                  id: notifId,
-                  userId: l.userId,
-                  title,
-                  message,
-                  time: timeStr,
-                  read: false,
-                  type: 'LOAN'
-                };
-                
-                // Save database notification record
-                await client.from('notifications').insert([notifyPayload]);
-                
-                // Sync via socket
-                io.to(`user_${l.userId}`).emit("notification_updated", notifyPayload);
-                
-                // Trigger push notification to APK (.apk)
+              // Trigger push notification to APK (.apk)
+              try {
                 triggerPushForUser(l.userId, title, message, client);
+              } catch (pushNotifErr) {
+                console.error("Lỗi gửi push notification cho user:", pushNotifErr);
+              }
+
+              // Socket real-time update fallback if io is available
+              const ioObj = req.app.get("io");
+              if (ioObj) {
+                ioObj.to(`user_${l.userId}`).emit("notification_updated", notifyPayload);
               }
             }
           }
         }
+      }
+      
+      // Notify admin of new loan requests or settlement requests
+      if (l.status === 'CHỜ DUYỆT') {
+        const notifyMsg = `Có yêu cầu vay mới (${l.amount.toLocaleString()} đ) từ người dùng ${l.userName || l.userId}.`;
         
-        // Notify admin of new loan requests or settlement requests
-        if (l.status === 'CHỜ DUYỆT') {
-          const notifyMsg = `Có yêu cầu vay mới (${l.amount.toLocaleString()} đ) từ người dùng ${l.userName || l.userId}.`;
-          io.to("admin").emit("admin_notification", {
-            type: "NEW_LOAN",
-            message: notifyMsg
-          });
-          
-          // Persistent admin notification
+        // Persistent admin notification
+        try {
           await client.from('notifications').insert([{
             id: `ADMIN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: 'ADMIN',
@@ -3434,31 +3449,31 @@ router.post("/loans", async (req: any, res) => {
             read: false,
             type: 'LOAN'
           }]);
+        } catch (dbNotifErr) {
+          console.error("Lỗi ghi thông báo yêu cầu vay mới cho admin:", dbNotifErr);
+        }
 
-          // Telegram Notification
-          try {
-            const settings = await getMergedSettings(client);
-            const telegramMsg = `<b>💸 CÓ YÊU CẦU VAY MỚI</b>\n` +
-              `• <b>Người vay:</b> ${l.userName || 'Chưa cập nhật'}\n` +
-              `• <b>ID User:</b> <code>${l.userId}</code>\n` +
-              `• <b>Số tiền vay:</b> <code>${l.amount.toLocaleString()} đ</code>\n` +
-              `• <b>Thời hạn:</b> ${l.term || 0} ngày\n` +
-              `• <b>Trạng thái:</b> Chờ duyệt giải ngân\n` +
-              `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
-            await sendTelegramNotification(telegramMsg, settings);
-          } catch (err) {
-            console.error("Lỗi lấy settings/gửi Telegram Loan:", err);
-          }
+        // Telegram Notification
+        try {
+          const settings = await getMergedSettings(client);
+          const telegramMsg = `<b>💸 CÓ YÊU CẦU VAY MỚI</b>\n` +
+            `• <b>Người vay:</b> ${l.userName || 'Chưa cập nhật'}\n` +
+            `• <b>ID User:</b> <code>${l.userId}</code>\n` +
+            `• <b>Số tiền vay:</b> <code>${l.amount.toLocaleString()} đ</code>\n` +
+            `• <b>Thời hạn:</b> ${l.term || 0} ngày\n` +
+            `• <b>Trạng thái:</b> Chờ duyệt giải ngân\n` +
+            `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+          await sendTelegramNotification(telegramMsg, settings);
+        } catch (err) {
+          console.error("Lỗi lấy settings/gửi Telegram Loan:", err);
+        }
 
-        } else if (l.status === 'CHỜ TẤT TOÁN') {
-          const typeLabel = l.settlementType === 'PRINCIPAL' ? 'gia hạn' : (l.settlementType === 'PARTIAL' ? 'TTMP' : 'tất toán');
-          const notifyMsg = `Người dùng ${l.userName || l.userId} vừa gửi yêu cầu ${typeLabel} khoản vay (${l.amount.toLocaleString()} đ).`;
-          io.to("admin").emit("admin_notification", {
-            type: "PAYMENT",
-            message: notifyMsg
-          });
-          
-          // Persistent admin notification
+      } else if (l.status === 'CHỜ TẤT TOÁN') {
+        const typeLabel = l.settlementType === 'PRINCIPAL' ? 'gia hạn' : (l.settlementType === 'PARTIAL' ? 'TTMP' : 'tất toán');
+        const notifyMsg = `Người dùng ${l.userName || l.userId} vừa gửi yêu cầu ${typeLabel} khoản vay (${l.amount.toLocaleString()} đ).`;
+        
+        // Persistent admin notification
+        try {
           await client.from('notifications').insert([{
             id: `ADMIN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: 'ADMIN',
@@ -3468,23 +3483,49 @@ router.post("/loans", async (req: any, res) => {
             read: false,
             type: 'LOAN'
           }]);
+        } catch (dbNotifErr) {
+          console.error("Lỗi ghi thông báo yêu cầu thanh toán cho admin:", dbNotifErr);
+        }
 
-          // Telegram Notification
-          try {
-            const settings = await getMergedSettings(client);
-            const labelUpper = typeLabel.toUpperCase();
-            const telegramMsg = `<b>🔔 YÊU CẦU THANH TOÁN (${labelUpper})</b>\n` +
-              `• <b>Khách hàng:</b> ${l.userName || 'Chưa cập nhật'}\n` +
-              `• <b>ID User:</b> <code>${l.userId}</code>\n` +
-              `• <b>Mã khoản vay:</b> <code>${l.id}</code>\n` +
-              `• <b>Số tiền khoản vay:</b> ${l.amount.toLocaleString()} đ\n` +
-              `• <b>Phân loại:</b> Yêu cầu ${typeLabel.toLowerCase()} (Đã up bill đối soát)\n` +
-              `• <b>Trạng thái:</b> Chờ Admin xác nhận thanh toán\n` +
-              `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
-            await sendTelegramNotification(telegramMsg, settings);
-          } catch (err) {
-            console.error("Lỗi lấy settings/gửi Telegram Settle:", err);
-          }
+        // Telegram Notification
+        try {
+          const settings = await getMergedSettings(client);
+          const labelUpper = typeLabel.toUpperCase();
+          const telegramMsg = `<b>🔔 YÊU CẦU THANH TOÁN (${labelUpper})</b>\n` +
+            `• <b>Khách hàng:</b> ${l.userName || 'Chưa cập nhật'}\n` +
+            `• <b>ID User:</b> <code>${l.userId}</code>\n` +
+            `• <b>Mã khoản vay:</b> <code>${l.id}</code>\n` +
+            `• <b>Số tiền khoản vay:</b> ${l.amount.toLocaleString()} đ\n` +
+            `• <b>Phân loại:</b> Yêu cầu ${typeLabel.toLowerCase()} (Đã up bill đối soát)\n` +
+            `• <b>Trạng thái:</b> Chờ Admin xác nhận thanh toán\n` +
+            `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+          await sendTelegramNotification(telegramMsg, settings);
+        } catch (err) {
+          console.error("Lỗi lấy settings/gửi Telegram Settle:", err);
+        }
+      }
+    }
+
+    // Emit real-time update
+    const io = req.app.get("io");
+    if (io) {
+      for (const l of sanitizedLoans) {
+        io.to(`user_${l.userId}`).emit("loan_updated", l);
+        
+        // Notify admin of new loan requests or settlement requests in real-time
+        if (l.status === 'CHỜ DUYỆT') {
+          const notifyMsg = `Có yêu cầu vay mới (${l.amount.toLocaleString()} đ) từ người dùng ${l.userName || l.userId}.`;
+          io.to("admin").emit("admin_notification", {
+            type: "NEW_LOAN",
+            message: notifyMsg
+          });
+        } else if (l.status === 'CHỜ TẤT TOÁN') {
+          const typeLabel = l.settlementType === 'PRINCIPAL' ? 'gia hạn' : (l.settlementType === 'PARTIAL' ? 'TTMP' : 'tất toán');
+          const notifyMsg = `Người dùng ${l.userName || l.userId} vừa gửi yêu cầu ${typeLabel} khoản vay (${l.amount.toLocaleString()} đ).`;
+          io.to("admin").emit("admin_notification", {
+            type: "PAYMENT",
+            message: notifyMsg
+          });
         }
       }
       io.to("admin").emit("loans_updated", sanitizedLoans);
@@ -6511,21 +6552,6 @@ router.post("/payment/webhook", async (req, res) => {
                 message: `Người dùng ${user.id} đã nâng hạng lên ${rankLabel} qua PayOS.`
               });
               
-              // Telegram Notification
-              try {
-                const settings = await getMergedSettings(client);
-                const telegramMsg = `<b>⭐ NÂNG HẠNG TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
-                  `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
-                  `• <b>Số điện thoại:</b> <code>${user.phone || user.id}</code>\n` +
-                  `• <b>Hạng mới nâng cấp:</b> <b>${rankLabel.toUpperCase()}</b>\n` +
-                  `• <b>Hệ thống PayOS:</b> GD thanh toán nâng cấp thành công\n` +
-                  `• <b>Phí nâng cấp:</b> ${upgradeFee.toLocaleString()} đ\n` +
-                  `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
-                await sendTelegramNotification(telegramMsg, settings);
-              } catch (err) {
-                console.error("Lỗi lấy settings cho Telegram Rank upgrade:", err);
-              }
-              
               // Notify all clients of config changes
               io.emit("config_updated", {
                 SYSTEM_BUDGET: newBudget,
@@ -6541,6 +6567,21 @@ router.post("/payment/webhook", async (req, res) => {
                 { key: 'rankProfit', value: newRankProfit },
                 { key: 'MONTHLY_STATS', value: newMonthlyStats }
               ]);
+            }
+
+            // Telegram Notification (Crucial for Vercel/serverless environments without running sockets)
+            try {
+              const settings = await getMergedSettings(client);
+              const telegramMsg = `<b>⭐ NÂNG HẠNG TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
+                `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
+                `• <b>Số điện thoại:</b> <code>${user.phone || user.id}</code>\n` +
+                `• <b>Hạng mới nâng cấp:</b> <b>${rankLabel.toUpperCase()}</b>\n` +
+                `• <b>Hệ thống PayOS:</b> GD thanh toán nâng cấp thành công\n` +
+                `• <b>Phí nâng cấp:</b> ${upgradeFee.toLocaleString()} đ\n` +
+                `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+              await sendTelegramNotification(telegramMsg, settings);
+            } catch (err) {
+              console.error("Lỗi lấy settings cho Telegram Rank upgrade:", err);
             }
 
             // Add persistent notification
