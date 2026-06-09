@@ -250,16 +250,19 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   };
 
   const getRankName = (rankId: string) => {
+    if (!rankId) return 'HẠNG ĐỒNG';
     const rankConf = settings.RANK_CONFIG?.find(r => r.id === rankId);
-    if (rankConf) return rankConf.name.toUpperCase();
+    if (rankConf) {
+      return rankConf.name.toUpperCase();
+    }
     
     switch(rankId) {
-      case 'standard': return 'TIÊU CHUẨN';
+      case 'standard': return 'HẠNG ĐỒNG';
       case 'bronze': return 'HẠNG ĐỒNG';
       case 'silver': return 'HẠNG BẠC';
       case 'gold': return 'HẠNG VÀNG';
-      case 'diamond': return 'KIM CƯƠNG';
-      default: return rankId.toUpperCase();
+      case 'diamond': return 'HẠNG KIM CƯƠNG';
+      default: return rankId.toUpperCase() === 'VIP' ? 'VIP' : rankId.toUpperCase();
     }
   };
 

@@ -1431,6 +1431,17 @@ interface ResolutionContextServer {
   abbr?: string;
 }
 
+const removeAccentsServer = (str: string): string => {
+  if (!str) return '';
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .substring(0) // Ensure fresh copy
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toUpperCase();
+};
+
 const resolveMasterConfigServer = (
   format: string, 
   settings: any, 
@@ -5870,14 +5881,22 @@ router.post("/payment/create-link", async (req, res) => {
         const masterUpgrade = masterConfigs.find((c: any) => c.systemMeaning === 'transfer_upgrade' || c.systemMeaning === 'UPGRADE');
         const template = masterUpgrade?.format || "HANG {RANK} {USER}";
         
-        const rankNames: Record<string, string> = {
-          'standard': 'TIEU CHUAN',
-          'bronze': 'DONG',
-          'silver': 'BAC',
-          'gold': 'VANG',
-          'diamond': 'KIM CUONG'
-        };
-        const rankName = rankNames[targetRank || ''] || targetRank || '';
+        const rankConfig = Array.isArray(settings?.RANK_CONFIG) ? settings.RANK_CONFIG : [];
+        const foundRank = rankConfig.find((r: any) => r.id === targetRank || r.name?.toLowerCase() === targetRank?.toLowerCase());
+        
+        let rawRankName = foundRank ? foundRank.name : '';
+        if (!rawRankName) {
+          const rankNames: Record<string, string> = {
+            'standard': 'ĐỒNG',
+            'bronze': 'ĐỒNG',
+            'silver': 'BẠC',
+            'gold': 'VÀNG',
+            'diamond': 'KIM CƯƠNG'
+          };
+          rawRankName = rankNames[targetRank || ''] || targetRank || '';
+        }
+        
+        const rankName = rawRankName.toUpperCase() === 'VIP' ? 'VIP' : removeAccentsServer(rawRankName);
         
         // Fetch user to get phone number
         const { data: userData } = await client.from('users').select('phone').eq('id', id).single();

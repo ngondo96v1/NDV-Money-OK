@@ -108,6 +108,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
 
     // Fallback
     switch (rankId) {
+      case 'standard':
       case 'bronze': return { name: 'ĐỒNG', color: '#cd7f32', textColor: 'text-white' };
       case 'silver': return { name: 'BẠC', color: '#c0c0c0', textColor: 'text-white' };
       case 'gold': return { name: 'VÀNG', color: '#facc15', textColor: 'text-white' };

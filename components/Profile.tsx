@@ -37,14 +37,22 @@ interface ProfileProps {
 }
 
 const Profile: React.FC<ProfileProps> = ({ user, onBack, onLogout, onUpdateBank, onUpdateProfile, onRefresh, onShowSecurity, onShowTerms, onShowBankInfo, onShowEditProfile, settings }) => {
-  const getRankName = (rank?: string) => {
-    switch(rank) {
+  const getRankName = (rankId?: string) => {
+    if (!rankId) return 'Thành viên hạng Đồng';
+    
+    const rankConf = settings?.RANK_CONFIG?.find((r: any) => r.id === rankId);
+    if (rankConf) {
+      if (rankConf.name.toUpperCase() === 'VIP') return 'VIP';
+      return `Thành viên ${rankConf.name}`;
+    }
+    
+    switch(rankId) {
       case 'standard': return 'Thành viên hạng Đồng';
       case 'bronze': return 'Thành viên hạng Đồng';
       case 'silver': return 'Thành viên hạng Bạc';
       case 'gold': return 'Thành viên hạng Vàng';
       case 'diamond': return 'Thành viên hạng Kim cương';
-      default: return 'Thành viên hạng Đồng';
+      default: return rankId.toUpperCase() === 'VIP' ? 'VIP' : rankId;
     }
   };
 
