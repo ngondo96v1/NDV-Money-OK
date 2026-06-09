@@ -698,6 +698,12 @@ const App: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         
+        // Discard any data sync if the user has signed out in the meantime
+        if (!localStorage.getItem('vnv_token') && !sessionStorage.getItem('vnv_token')) {
+          console.log("[AUTH] Ignored profile fetch response since user has logged out.");
+          return;
+        }
+        
         if (data.users && data.users.length > 0) {
           const latestUser = data.users[0];
           // Ensure isAdmin is boolean
@@ -1148,6 +1154,12 @@ const App: React.FC = () => {
 
       const data = await response.json();
       
+      // Discard data sync if the user has signed out in the meantime
+      if (!localStorage.getItem('vnv_token') && !sessionStorage.getItem('vnv_token')) {
+        console.log("[FETCH] Ignored main data fetch response because user logged out.");
+        return;
+      }
+      
       console.log(`[FETCH] Data loaded successfully:`, { 
         users: data.users?.length, 
         loans: data.loans?.length 
@@ -1319,6 +1331,12 @@ const App: React.FC = () => {
         });
         if (response.ok) {
           const data = await response.json();
+          
+          // Discard if user logged out
+          if (!localStorage.getItem('vnv_token') && !sessionStorage.getItem('vnv_token')) {
+            return;
+          }
+          
           if (data && data.budget !== undefined) {
             const num = Number(data.budget);
             setSystemBudget(prev => {

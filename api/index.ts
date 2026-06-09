@@ -17,6 +17,25 @@ if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
 }
 
+// Globally align all Date formatters on the server to Vietnam's timezone (Asia/Ho_Chi_Minh / GMT+7)
+const originalLocaleTimeString = Date.prototype.toLocaleTimeString;
+(Date.prototype as any).toLocaleTimeString = function (locales?: any, options?: any) {
+  const mergedOptions = { ...options, timeZone: 'Asia/Ho_Chi_Minh' };
+  return originalLocaleTimeString.call(this, locales || 'vi-VN', mergedOptions);
+};
+
+const originalLocaleDateString = Date.prototype.toLocaleDateString;
+(Date.prototype as any).toLocaleDateString = function (locales?: any, options?: any) {
+  const mergedOptions = { ...options, timeZone: 'Asia/Ho_Chi_Minh' };
+  return originalLocaleDateString.call(this, locales || 'vi-VN', mergedOptions);
+};
+
+const originalToLocaleString = Date.prototype.toLocaleString;
+(Date.prototype as any).toLocaleString = function (locales?: any, options?: any) {
+  const mergedOptions = { ...options, timeZone: 'Asia/Ho_Chi_Minh' };
+  return originalToLocaleString.call(this, locales || 'vi-VN', mergedOptions);
+};
+
 // Initialize Firebase Admin for Push Notifications
 let firebaseApp: admin.app.App | null = null;
 try {
@@ -1044,7 +1063,7 @@ router.post("/telegram/test", async (req: any, res) => {
             `• <b>Phân loại:</b> Kênh thông báo đẩy Admin đã được liên kết hoạt động tốt!\n` +
             `• <b>Thông số Bot Token:</b> <code>${botToken.trim().slice(0, 6)}...${botToken.trim().slice(-6)}</code>\n` +
             `• <b>Thông số Chat ID:</b> <code>${chatId.trim()}</code>\n` +
-            `• <b>Thời gian gửi:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`,
+            `• <b>Thời gian gửi:</b> ${getVietnamTimeStrServer()}`,
       parse_mode: 'HTML'
     };
 
@@ -1442,6 +1461,19 @@ const removeAccentsServer = (str: string): string => {
     .toUpperCase();
 };
 
+const getVietnamDateServer = (d: Date = new Date()): Date => {
+  const utc = d.getTime() + d.getTimezoneOffset() * 60 * 1000;
+  return new Date(utc + 7 * 3600 * 1000);
+};
+
+const getVietnamTimeStrServer = (d: Date = new Date()): string => {
+  return d.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) + ' ' + d.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+};
+
+const getVietnamTimeShortStrServer = (d: Date = new Date()): string => {
+  return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }) + ' ' + d.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+};
+
 const resolveMasterConfigServer = (
   format: string, 
   settings: any, 
@@ -1504,7 +1536,7 @@ const resolveMasterConfigServer = (
           replacement = resolveMasterConfigServer(cfgFormat, settings, context, depth + 1);
         } else {
           // Otherwise use system logic
-          const now = new Date();
+          const now = getVietnamDateServer();
           const year = now.getFullYear().toString();
           const month = (now.getMonth() + 1).toString().padStart(2, '0');
           const day = now.getDate().toString().padStart(2, '0');
@@ -1890,7 +1922,7 @@ router.post("/register", async (req, res) => {
         `• <b>Hạng:</b> ${sanitizedUser.rank.toUpperCase()}\n` +
         `• <b>Hạn mức khởi điểm:</b> ${sanitizedUser.totalLimit.toLocaleString()} đ\n` +
         `• <b>Zalo liên hệ:</b> ${sanitizedUser.refZalo || 'Không cung cấp'}\n` +
-        `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+        `• <b>Thời gian:</b> ${getVietnamTimeStrServer()}`;
       
       await sendTelegramNotification(telegramMsg, settings);
     } catch (telegramCatch) {
@@ -2082,7 +2114,7 @@ const processRankPenalties = async (user: any, userLoans: any[], settings: any, 
         userId: user.id,
         title: notifData.title,
         message: notifData.message,
-        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN'),
+        time: getVietnamTimeShortStrServer(),
         read: false,
         type: 'SYSTEM'
       };
