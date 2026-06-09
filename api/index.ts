@@ -1879,9 +1879,7 @@ router.post("/register", async (req, res) => {
         `• <b>Zalo liên hệ:</b> ${sanitizedUser.refZalo || 'Không cung cấp'}\n` +
         `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
       
-      sendTelegramNotification(telegramMsg, settings).catch(telegramErr => {
-        console.error("[Telegram Error Callback]:", telegramErr);
-      });
+      await sendTelegramNotification(telegramMsg, settings);
     } catch (telegramCatch) {
       console.error("[Telegram Code Catch]:", telegramCatch);
     }
@@ -2984,7 +2982,7 @@ router.post("/users", async (req: any, res) => {
     // Emit real-time update
     const io = req.app.get("io");
     if (io) {
-      sanitizedUsers.forEach(u => {
+      for (const u of sanitizedUsers) {
         io.to(`user_${u.id}`).emit("user_updated", u);
         
         // Notify admin of important updates
@@ -2996,7 +2994,7 @@ router.post("/users", async (req: any, res) => {
           });
 
           // Persistent admin notification
-          client.from('notifications').insert([{
+          await client.from('notifications').insert([{
             id: `ADMIN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: 'ADMIN',
             title: 'Yêu cầu nâng hạng mới',
@@ -3004,10 +3002,11 @@ router.post("/users", async (req: any, res) => {
             time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN'),
             read: false,
             type: 'RANK'
-          }]).then(({ error }) => { if (error) console.error("Lỗi lưu thông báo admin:", error); });
+          }]);
 
           // Telegram Notification
-          getMergedSettings(client).then(settings => {
+          try {
+            const settings = await getMergedSettings(client);
             const telegramMsg = `<b>⭐ YÊU CẦU NÂNG HẠNG MỚI</b>\n` +
               `• <b>Họ tên:</b> ${u.fullName || 'Chưa cung cấp'}\n` +
               `• <b>Số điện thoại:</b> <code>${u.phone || u.id}</code>\n` +
@@ -3015,10 +3014,12 @@ router.post("/users", async (req: any, res) => {
               `• <b>Hạng yêu cầu:</b> <code>${u.pendingUpgradeRank.toUpperCase()}</code>\n` +
               `• <b>Yêu cầu:</b> Chờ duyệt nâng hạng và hạn mức mới\n` +
               `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
-            sendTelegramNotification(telegramMsg, settings);
-          }).catch(err => console.error("Lỗi lấy settings cho Telegram Rank:", err));
+            await sendTelegramNotification(telegramMsg, settings);
+          } catch (err) {
+            console.error("Lỗi lấy settings/gửi Telegram Rank:", err);
+          }
         }
-      });
+      }
       io.to("admin").emit("users_updated", sanitizedUsers);
     }
     
@@ -3344,7 +3345,7 @@ router.post("/loans", async (req: any, res) => {
     // Emit real-time update
     const io = req.app.get("io");
     if (io) {
-      sanitizedLoans.forEach(l => {
+      for (const l of sanitizedLoans) {
         io.to(`user_${l.userId}`).emit("loan_updated", l);
         
         // Evaluate loan status change notifications and trigger push/sockets
@@ -3401,9 +3402,7 @@ router.post("/loans", async (req: any, res) => {
                 };
                 
                 // Save database notification record
-                client.from('notifications').insert([notifyPayload]).then(({ error: notifErr }) => {
-                  if (notifErr) console.error("Lỗi insert notification tự động cho loan:", notifErr);
-                });
+                await client.from('notifications').insert([notifyPayload]);
                 
                 // Sync via socket
                 io.to(`user_${l.userId}`).emit("notification_updated", notifyPayload);
@@ -3424,7 +3423,7 @@ router.post("/loans", async (req: any, res) => {
           });
           
           // Persistent admin notification
-          client.from('notifications').insert([{
+          await client.from('notifications').insert([{
             id: `ADMIN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: 'ADMIN',
             title: 'Yêu cầu vay mới',
@@ -3432,10 +3431,11 @@ router.post("/loans", async (req: any, res) => {
             time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN'),
             read: false,
             type: 'LOAN'
-          }]).then(({ error }) => { if (error) console.error("Lỗi lưu thông báo admin:", error); });
+          }]);
 
           // Telegram Notification
-          getMergedSettings(client).then(settings => {
+          try {
+            const settings = await getMergedSettings(client);
             const telegramMsg = `<b>💸 CÓ YÊU CẦU VAY MỚI</b>\n` +
               `• <b>Người vay:</b> ${l.userName || 'Chưa cập nhật'}\n` +
               `• <b>ID User:</b> <code>${l.userId}</code>\n` +
@@ -3443,8 +3443,10 @@ router.post("/loans", async (req: any, res) => {
               `• <b>Thời hạn:</b> ${l.term || 0} ngày\n` +
               `• <b>Trạng thái:</b> Chờ duyệt giải ngân\n` +
               `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
-            sendTelegramNotification(telegramMsg, settings);
-          }).catch(err => console.error("Lỗi lấy settings cho Telegram Loan:", err));
+            await sendTelegramNotification(telegramMsg, settings);
+          } catch (err) {
+            console.error("Lỗi lấy settings/gửi Telegram Loan:", err);
+          }
 
         } else if (l.status === 'CHỜ TẤT TOÁN') {
           const typeLabel = l.settlementType === 'PRINCIPAL' ? 'gia hạn' : (l.settlementType === 'PARTIAL' ? 'TTMP' : 'tất toán');
@@ -3455,7 +3457,7 @@ router.post("/loans", async (req: any, res) => {
           });
           
           // Persistent admin notification
-          client.from('notifications').insert([{
+          await client.from('notifications').insert([{
             id: `ADMIN-NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: 'ADMIN',
             title: 'Yêu cầu thanh toán mới',
@@ -3463,10 +3465,11 @@ router.post("/loans", async (req: any, res) => {
             time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN'),
             read: false,
             type: 'LOAN'
-          }]).then(({ error }) => { if (error) console.error("Lỗi lưu thông báo admin:", error); });
+          }]);
 
           // Telegram Notification
-          getMergedSettings(client).then(settings => {
+          try {
+            const settings = await getMergedSettings(client);
             const labelUpper = typeLabel.toUpperCase();
             const telegramMsg = `<b>🔔 YÊU CẦU THANH TOÁN (${labelUpper})</b>\n` +
               `• <b>Khách hàng:</b> ${l.userName || 'Chưa cập nhật'}\n` +
@@ -3476,10 +3479,12 @@ router.post("/loans", async (req: any, res) => {
               `• <b>Phân loại:</b> Yêu cầu ${typeLabel.toLowerCase()} (Đã up bill đối soát)\n` +
               `• <b>Trạng thái:</b> Chờ Admin xác nhận thanh toán\n` +
               `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
-            sendTelegramNotification(telegramMsg, settings);
-          }).catch(err => console.error("Lỗi lấy settings cho Telegram Settle:", err));
+            await sendTelegramNotification(telegramMsg, settings);
+          } catch (err) {
+            console.error("Lỗi lấy settings/gửi Telegram Settle:", err);
+          }
         }
-      });
+      }
       io.to("admin").emit("loans_updated", sanitizedLoans);
     }
     
@@ -6388,7 +6393,8 @@ router.post("/payment/webhook", async (req, res) => {
             }]);
 
             // Telegram Notification
-            getMergedSettings(client).then(settings => {
+            try {
+              const settings = await getMergedSettings(client);
               const labelUpper = settleLabel.toUpperCase();
               const telegramMsg = `<b>💸 THANH TOÁN TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
                 `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
@@ -6398,8 +6404,10 @@ router.post("/payment/webhook", async (req, res) => {
                 `• <b>Phân loại:</b> ${labelUpper}\n` +
                 `• <b>Số tiền nạp:</b> ${amount.toLocaleString()} đ\n` +
                 `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
-              sendTelegramNotification(telegramMsg, settings);
-            }).catch(err => console.error("Lỗi lấy settings cho Telegram PayOS:", err));
+              await sendTelegramNotification(telegramMsg, settings);
+            } catch (err) {
+              console.error("Lỗi lấy settings cho Telegram PayOS:", err);
+            }
           }
         }
       } 
@@ -6502,7 +6510,8 @@ router.post("/payment/webhook", async (req, res) => {
               });
               
               // Telegram Notification
-              getMergedSettings(client).then(settings => {
+              try {
+                const settings = await getMergedSettings(client);
                 const telegramMsg = `<b>⭐ NÂNG HẠNG TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
                   `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
                   `• <b>Số điện thoại:</b> <code>${user.phone || user.id}</code>\n` +
@@ -6510,8 +6519,10 @@ router.post("/payment/webhook", async (req, res) => {
                   `• <b>Hệ thống PayOS:</b> GD thanh toán nâng cấp thành công\n` +
                   `• <b>Phí nâng cấp:</b> ${upgradeFee.toLocaleString()} đ\n` +
                   `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
-                sendTelegramNotification(telegramMsg, settings);
-              }).catch(err => console.error("Lỗi lấy settings cho Telegram Rank upgrade:", err));
+                await sendTelegramNotification(telegramMsg, settings);
+              } catch (err) {
+                console.error("Lỗi lấy settings cho Telegram Rank upgrade:", err);
+              }
               
               // Notify all clients of config changes
               io.emit("config_updated", {
