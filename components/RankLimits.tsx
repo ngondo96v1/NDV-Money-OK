@@ -117,7 +117,7 @@ const RankLimits: React.FC<RankLimitsProps> = ({ user, isGlobalProcessing, onBac
     ];
   }, [settings]);
 
-  const currentRankIndex = ranks.findIndex(r => String(r.id).toLowerCase() === String(user?.rank || 'bronze').toLowerCase());
+  const currentRankIndex = ranks.findIndex(r => r.id === (user?.rank || 'bronze'));
 
   const handleDownloadQR = async (url: string) => {
     try {
@@ -162,7 +162,7 @@ const RankLimits: React.FC<RankLimitsProps> = ({ user, isGlobalProcessing, onBac
     // Tự động chuyển sang màn hình thanh toán/trạng thái nếu có yêu cầu đang chờ duyệt
     // Chỉ thực hiện khi component mount lần đầu
     if (user?.pendingUpgradeRank && view === RankView.LIST) {
-      const pendingRank = ranks.find(r => String(r.id).toLowerCase() === String(user.pendingUpgradeRank).toLowerCase());
+      const pendingRank = ranks.find(r => r.id === user.pendingUpgradeRank);
       if (pendingRank) {
         setSelectedRank(pendingRank);
         setView(RankView.PAYMENT);
@@ -677,8 +677,8 @@ const RankLimits: React.FC<RankLimitsProps> = ({ user, isGlobalProcessing, onBac
 
       <div className="flex-1 flex flex-col gap-2 pb-4 overflow-hidden">
         {ranks.map((rank, idx) => {
-          const isCurrent = String(user?.rank).toLowerCase() === String(rank.id).toLowerCase();
-          const isTargetPending = String(user?.pendingUpgradeRank).toLowerCase() === String(rank.id).toLowerCase();
+          const isCurrent = user?.rank === rank.id;
+          const isTargetPending = user?.pendingUpgradeRank === rank.id;
           const isHigherRank = idx > currentRankIndex;
 
           return (

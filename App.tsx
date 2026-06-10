@@ -140,7 +140,7 @@ const App: React.FC = () => {
   });
   const [settleLoanFromDash, setSettleLoanFromDash] = useState<LoanRecord | null>(null);
   const [viewLoanFromDash, setViewLoanFromDash] = useState<LoanRecord | null>(null);
-  const [user, setUserState] = useState<User | null>(() => {
+  const [user, setUser] = useState<User | null>(() => {
     // Check both localStorage (Stay Logged In) and sessionStorage (Session only)
     const savedLocal = localStorage.getItem('vnv_user');
     const savedSession = sessionStorage.getItem('vnv_user');
@@ -155,37 +155,6 @@ const App: React.FC = () => {
     }
     return null;
   });
-
-  const setUser = useCallback((u: User | null | ((prev: User | null) => User | null)) => {
-    setUserState(prev => {
-      const next = typeof u === 'function' ? u(prev) : u;
-      if (!next) {
-        localStorage.removeItem('vnv_user');
-        sessionStorage.removeItem('vnv_user');
-      } else {
-        // Automatically detect which storage has active token or user representation
-        const hasLocalToken = localStorage.getItem('vnv_token') !== null;
-        const hasSessionToken = sessionStorage.getItem('vnv_token') !== null;
-        
-        if (hasLocalToken) {
-          localStorage.setItem('vnv_user', JSON.stringify(next));
-        }
-        if (hasSessionToken) {
-          sessionStorage.setItem('vnv_user', JSON.stringify(next));
-        }
-        if (!hasLocalToken && !hasSessionToken) {
-          if (localStorage.getItem('vnv_user')) {
-            localStorage.setItem('vnv_user', JSON.stringify(next));
-          } else if (sessionStorage.getItem('vnv_user')) {
-            sessionStorage.setItem('vnv_user', JSON.stringify(next));
-          } else {
-            localStorage.setItem('vnv_user', JSON.stringify(next));
-          }
-        }
-      }
-      return next;
-    });
-  }, []);
 
   // State for server-side search and counts
   const [totalUsers, setTotalUsers] = useState<number>(0);
@@ -371,12 +340,10 @@ const App: React.FC = () => {
     setShowBankInfoModal(false);
     setShowEditProfileModal(false);
     
+    setCurrentView(AppView.LOGIN);
     if (reason && typeof reason === 'string') {
-      localStorage.setItem('vnv_logout_reason', reason);
+      setLoginError(reason);
     }
-    
-    // Flush all potential socket connections, cached resources and other residual states
-    window.location.href = window.location.origin;
   };
 
   // 3. Inactivity Timeout - Logout after 5 minutes of no interaction
@@ -496,14 +463,7 @@ const App: React.FC = () => {
   const [lastKeepAlive, setLastKeepAlive] = useState<string | null>(() => {
     return localStorage.getItem('ndv_last_keep_alive');
   });
-  const [loginError, setLoginError] = useState<string | null>(() => {
-    const savedReason = localStorage.getItem('vnv_logout_reason');
-    if (savedReason) {
-      localStorage.removeItem('vnv_logout_reason');
-      return savedReason;
-    }
-    return null;
-  });
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(() => {
     const saved = localStorage.getItem('vnv_remember');
@@ -576,24 +536,17 @@ const App: React.FC = () => {
 
   const calculateUserBalance = useCallback((u: User, userLoans: LoanRecord[]) => {
     // ONLY ĐÃ TẤT TOÁN, BỊ TỪ CHỐI, ĐÃ CỘNG DỒN and ĐÃ HỦY are not current debt. everything else counts as debt.
-    // Handling minor spelling variations and synonym statuses to be robust
+    // Handling minor spelling variations to be robust
     const activeDebt = userLoans
       .filter(l => {
-        if (!l || !l.status) return false;
-        const s = String(l.status).trim().toUpperCase().normalize('NFC');
+        const s = l.status;
         return s !== 'ĐÃ TẤT TOÁN' && 
                s !== 'ĐA TẤT TOÁN' && 
                s !== 'BỊ TỪ CHỐI' && 
-               s !== 'TỪ CHỐI' &&
-               s !== 'REJECTED' &&
                s !== 'ĐÃ CỘNG DỒN' && 
-               s !== 'ĐÃ CỘNG DỒN' &&
-               s !== 'CONSOLIDATED' && 
                s !== 'ĐÃ HỦY' && 
                s !== 'ĐÃ HUỶ' &&
-               s !== 'BỊ HỦY' &&
-               s !== 'BỊ HUỶ' &&
-               s !== 'CANCELLED';
+               s !== 'BỊ HỦY';
       })
       .reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
     return Math.max(0, (Number(u.totalLimit) || 0) - activeDebt);
@@ -741,7 +694,7 @@ const App: React.FC = () => {
     if (!token || !user?.id) return;
     
     try {
-      const response = await authenticatedFetch(`/api/data?userId=${user.id}&full=true&_t=${Date.now()}`);
+      const response = await authenticatedFetch(`/api/data?userId=${user.id}&full=true`);
       if (response.ok) {
         const data = await response.json();
         
@@ -847,32 +800,6 @@ const App: React.FC = () => {
   // Listen for in-app native push notifications (foreground)
   useEffect(() => {
     const handleInAppPush = (e: Event) => {
-      // Robust check for Admin: 1. user state, 2. currentAppView, 3. localStorage representation
-      const savedUserStr = localStorage.getItem('vnv_user') || sessionStorage.getItem('vnv_user');
-      let isCachedAdmin = false;
-      if (savedUserStr) {
-        try {
-          const parsed = JSON.parse(savedUserStr);
-          if (parsed && parsed.isAdmin) {
-            isCachedAdmin = true;
-          }
-        } catch (_) {}
-      }
-
-      const isAdminView = [
-        AppView.ADMIN_DASHBOARD,
-        AppView.ADMIN_USERS,
-        AppView.ADMIN_LOANS,
-        AppView.ADMIN_BUDGET,
-        AppView.ADMIN_SYSTEM,
-        AppView.SYSTEM_MANUAL
-      ].includes(currentView);
-
-      if (user?.isAdmin || isCachedAdmin || isAdminView) {
-        console.log('[PUSH] Suppressing standard user push notification on Admin view/role:', currentView);
-        return;
-      }
-
       const customEvent = e as CustomEvent;
       if (customEvent.detail) {
         const { title, body } = customEvent.detail;
@@ -896,7 +823,7 @@ const App: React.FC = () => {
     
     window.addEventListener('app_push_received', handleInAppPush);
     return () => window.removeEventListener('app_push_received', handleInAppPush);
-  }, [user, fetchUserProfile, currentView]);
+  }, [user, fetchUserProfile]);
 
   useEffect(() => {
     // Only automatically show if conditions are met
@@ -1377,15 +1304,14 @@ const App: React.FC = () => {
     return () => clearInterval(pollInterval);
   }, [user?.isAdmin, isTabActive, fetchData]);
 
-  // AUTO-POLLING for Regular Users: Fetch fresh database updates every 6 seconds if tab is active as a fallback for socket disconnects
-  // This achieves near-instant real-time updates on serverless deployment environments like Vercel
+  // AUTO-POLLING for Regular Users: Fetch fresh database updates every 30 seconds if tab is active as a fallback for socket disconnects
   useEffect(() => {
     if (!user || user.isAdmin || !isTabActive) return;
 
     const pollInterval = setInterval(() => {
       console.log("[POLL] Regular user fetching fresh data fallback...");
       fetchUserProfile();
-    }, 6000); // Highly responsive 6-second polling for perfect serverless Vercel sync
+    }, 30000); // 30 seconds is standard and keeps database usage optimal while providing excellent responsiveness
 
     return () => clearInterval(pollInterval);
   }, [user?.id, user?.isAdmin, isTabActive, fetchUserProfile]);
@@ -1496,12 +1422,6 @@ const App: React.FC = () => {
           }
           return nextUser;
         });
-        
-        // Force immediate background pull from DB
-        fetchUserProfile();
-        fetchData(false, false, true);
-      } else if (user?.isAdmin) {
-        fetchData(false, true, true);
       }
     });
 
@@ -1533,12 +1453,13 @@ const App: React.FC = () => {
           } else {
             sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
           }
-          fetchUserProfile();
-          fetchData(false, false, true);
-        } else if (user.isAdmin) {
-          fetchData(false, true, true);
         }
       }
+    });
+
+    socket.on('users_bulk_updated', () => {
+      console.log('[REALTIME] Bulk users updated, refreshing data...');
+      fetchFullData(true);
     });
 
     socket.on('loan_updated', (updatedLoan: LoanRecord) => {
@@ -1553,72 +1474,51 @@ const App: React.FC = () => {
         // Recalculate user balance real-time if the updated loan belongs to the logged-in user
         if (user && updatedLoan.userId === user.id) {
           const nextUserLoans = next.filter(l => l.userId === user.id);
-          setUser(prevUser => {
-            if (!prevUser) return prevUser;
-            const newBalance = calculateUserBalance(prevUser, nextUserLoans);
-            if (prevUser.balance === newBalance) return prevUser;
-            const nextUser = { ...prevUser, balance: newBalance };
-            if (rememberMe) {
-              localStorage.setItem('vnv_user', JSON.stringify(nextUser));
-            } else {
-              sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
-            }
-            return nextUser;
-          });
+          const newBalance = calculateUserBalance(user, nextUserLoans);
+          if (user.balance !== newBalance) {
+            setUser(prevUser => {
+              if (!prevUser) return prevUser;
+              const nextUser = { ...prevUser, balance: newBalance };
+              if (rememberMe) {
+                localStorage.setItem('vnv_user', JSON.stringify(nextUser));
+              } else {
+                sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
+              }
+              return nextUser;
+            });
+          }
         }
         
         return next;
       });
-
-      if (user && updatedLoan.userId === user.id) {
-        fetchData(false, false, true);
-      } else if (user?.isAdmin) {
-        fetchData(false, true, true);
-      }
     });
 
     socket.on('loan_deleted', (data: { id: string }) => {
       console.log('[REALTIME] Loan deleted:', data.id);
-      let deletedLoan: LoanRecord | undefined;
       setLoans(prev => {
-        deletedLoan = prev.find(l => l.id === data.id);
         const next = prev.filter(l => l.id !== data.id);
         localStorage.setItem('ndv_loans', JSON.stringify(next));
         
         // Recalculate user balance real-time
         if (user) {
           const nextUserLoans = next.filter(l => l.userId === user.id);
-          setUser(prevUser => {
-            if (!prevUser) return prevUser;
-            const newBalance = calculateUserBalance(prevUser, nextUserLoans);
-            if (prevUser.balance === newBalance) return prevUser;
-            const nextUser = { ...prevUser, balance: newBalance };
-            if (rememberMe) {
-              localStorage.setItem('vnv_user', JSON.stringify(nextUser));
-            } else {
-              sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
-            }
-            return nextUser;
-          });
-        }
-
-        // Recalculate balance for Admin's registeredUsers list
-        if (deletedLoan) {
-          const loanUserId = deletedLoan.userId;
-          setRegisteredUsers(prevUsers => prevUsers.map(u => {
-            if (u.id === loanUserId) {
-              const nextUserLoans = next.filter(l => l.userId === loanUserId);
-              const newBalance = calculateUserBalance(u, nextUserLoans);
-              return { ...u, balance: newBalance };
-            }
-            return u;
-          }));
+          const newBalance = calculateUserBalance(user, nextUserLoans);
+          if (user.balance !== newBalance) {
+            setUser(prevUser => {
+              if (!prevUser) return prevUser;
+              const nextUser = { ...prevUser, balance: newBalance };
+              if (rememberMe) {
+                localStorage.setItem('vnv_user', JSON.stringify(nextUser));
+              } else {
+                sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
+              }
+              return nextUser;
+            });
+          }
         }
         
         return next;
       });
-
-      fetchData(false, !!user?.isAdmin, true);
     });
 
     socket.on('loans_updated', (updatedLoans: LoanRecord[]) => {
@@ -1637,63 +1537,28 @@ const App: React.FC = () => {
           const userRelated = updatedLoans.filter(l => l.userId === user.id);
           if (userRelated.length > 0) {
             const nextUserLoans = newLoans.filter(l => l.userId === user.id);
-            setUser(prevUser => {
-              if (!prevUser) return prevUser;
-              const newBalance = calculateUserBalance(prevUser, nextUserLoans);
-              if (prevUser.balance === newBalance) return prevUser;
-              const nextUser = { ...prevUser, balance: newBalance };
-              if (rememberMe) {
-                localStorage.setItem('vnv_user', JSON.stringify(nextUser));
-              } else {
-                sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
-              }
-              return nextUser;
-            });
+            const newBalance = calculateUserBalance(user, nextUserLoans);
+            if (user.balance !== newBalance) {
+              setUser(prevUser => {
+                if (!prevUser) return prevUser;
+                const nextUser = { ...prevUser, balance: newBalance };
+                if (rememberMe) {
+                  localStorage.setItem('vnv_user', JSON.stringify(nextUser));
+                } else {
+                  sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
+                }
+                return nextUser;
+              });
+            }
           }
         }
         
         return newLoans;
       });
-
-      if (user) {
-        const hasMyLoan = updatedLoans.some(l => l.userId === user.id);
-        if (hasMyLoan) {
-          fetchData(false, false, true);
-        } else if (user.isAdmin) {
-          fetchData(false, true, true);
-        }
-      }
     });
 
     socket.on('notification_updated', (notif: Notification) => {
       console.log('[REALTIME] Notification received', notif);
-      
-      const savedUserStr = localStorage.getItem('vnv_user') || sessionStorage.getItem('vnv_user');
-      let isCachedAdmin = false;
-      if (savedUserStr) {
-        try {
-          const parsed = JSON.parse(savedUserStr);
-          if (parsed && parsed.isAdmin) {
-            isCachedAdmin = true;
-          }
-        } catch (_) {}
-      }
-      
-      const isAdminView = [
-        AppView.ADMIN_DASHBOARD,
-        AppView.ADMIN_USERS,
-        AppView.ADMIN_LOANS,
-        AppView.ADMIN_BUDGET,
-        AppView.ADMIN_SYSTEM,
-        AppView.SYSTEM_MANUAL
-      ].includes(currentView);
-
-      if (user?.isAdmin || isCachedAdmin || isAdminView) {
-        // Refresh admin views without showing standard user toasts or modifying user notifications state
-        fetchData(false, true, true);
-        return;
-      }
-
       setNotifications(prev => {
         if (prev.some(n => n.id === notif.id)) return prev;
         const next = [notif, ...prev].slice(0, 10);
@@ -1714,7 +1579,6 @@ const App: React.FC = () => {
             }
           }
         });
-        fetchData(false, false, true);
       }
     });
 
@@ -1770,9 +1634,6 @@ const App: React.FC = () => {
         if (data.TOTAL_FINE_PROFIT !== undefined) setFineProfit(Number(data.TOTAL_FINE_PROFIT));
         if (data.MONTHLY_STATS) setMonthlyStats(data.MONTHLY_STATS.slice(0, 6));
       }
-
-      // Automatically sync latest state on config changed
-      fetchData(false, !!user?.isAdmin, true);
     });
 
     socket.on('sync_completed', (data: any) => {
@@ -1830,8 +1691,8 @@ const App: React.FC = () => {
         };
         setAdminNotifications(prev => [newNotif, ...prev].slice(0, 50));
         
-        // Refresh full data forcing admin load
-        fetchData(false, true, true);
+        // Refresh full data
+        fetchData(false, false, true);
       }
     });
 
@@ -1843,7 +1704,7 @@ const App: React.FC = () => {
 
     socket.on('payment_success', (data: { message: string, type?: string }) => {
       console.log('[SOCKET] Payment success:', data);
-      fetchData(false, !!user?.isAdmin, true);
+      fetchData(true);
       // Only redirect to Dashboard if NOT an admin
       if (user && !user.isAdmin) {
         setCurrentView(AppView.DASHBOARD);
@@ -1852,7 +1713,7 @@ const App: React.FC = () => {
 
     socket.on('rank_upgrade_success', (data: { message: string }) => {
       console.log('[SOCKET] Rank upgrade success:', data);
-      fetchData(false, !!user?.isAdmin, true);
+      fetchData(true);
       // Only redirect to Dashboard if NOT an admin
       if (user && !user.isAdmin) {
         setCurrentView(AppView.DASHBOARD);
@@ -1861,7 +1722,7 @@ const App: React.FC = () => {
 
     socket.on('users_bulk_updated', () => {
       console.log('[SOCKET] Users bulk updated (Rank Sync)');
-      fetchData(false, !!user?.isAdmin, true);
+      fetchData(true);
       if (user?.isAdmin) {
         fetchFullData(true);
       }
@@ -3432,7 +3293,6 @@ const App: React.FC = () => {
             rankUpgradeBill: undefined,
             isFreeUpgrade: false,
             hasCustomLimit: false,
-            rankUpgradeDate: new Date().toISOString(),
             updatedAt: Date.now()
           };
           
@@ -3551,23 +3411,13 @@ const App: React.FC = () => {
 
       // Merge data and recalculate balance robustly
       const userLoans = loans.filter(l => l.userId === userId);
-      // If totalLimit was modified manually but rank was not explicitly edited, dynamically align user.rank to matching settings config
-      let updatedRankId = updatedData.rank !== undefined ? updatedData.rank : targetUser.rank;
-      if (updatedData.totalLimit !== undefined && updatedData.rank === undefined && settings.RANK_CONFIG && settings.RANK_CONFIG.length > 0) {
-        const sortedRanks = [...settings.RANK_CONFIG].sort((a, b) => b.maxLimit - a.maxLimit);
-        const matched = sortedRanks.find(r => Number(updatedData.totalLimit) >= r.minLimit) || settings.RANK_CONFIG[0];
-        if (matched) {
-          updatedRankId = matched.id;
-        }
-      }
-
-      const intermediateUser = { ...targetUser, ...updatedData, rank: updatedRankId };
+      const intermediateUser = { ...targetUser, ...updatedData };
       const newBalance = calculateUserBalance(intermediateUser as User, userLoans);
 
       const updatedUser = { 
         ...intermediateUser, 
         balance: newBalance,
-        isFreeUpgrade: updatedRankId !== targetUser.rank ? true : intermediateUser.isFreeUpgrade,
+        isFreeUpgrade: updatedData.rank !== undefined && updatedData.rank !== targetUser.rank ? true : intermediateUser.isFreeUpgrade,
         hasCustomLimit: updatedData.totalLimit !== undefined ? true : intermediateUser.hasCustomLimit,
         updatedAt: Date.now() 
       };
@@ -3893,7 +3743,6 @@ const App: React.FC = () => {
       if (resp.ok) {
         setLoans(prev => prev.filter(l => l.id !== loanId));
         toast.success("Đã xóa khoản vay");
-        await fetchFullData(true);
       } else {
         const err = await resp.json();
         toast.error(err.error || "Không thể xóa khoản vay");

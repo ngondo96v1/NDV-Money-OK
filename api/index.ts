@@ -730,13 +730,9 @@ const runFreeUpgradeMigration = async (client: any) => {
 
 const STORAGE_LIMIT_MB = 45; // Virtual limit for demo purposes
 
-// Debug middleware to log incoming requests and disable caching thoroughly
+// Debug middleware to log incoming requests
 router.use((req, res, next) => {
   console.log(`[API DEBUG] ${req.method} ${req.url}`);
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.setHeader('Surrogate-Control', 'no-store');
   next();
 });
 
@@ -1919,16 +1915,14 @@ router.post("/register", async (req, res) => {
 
     // Telegram Notification to Admin
     try {
-      const telegramMsg = `👤 <b>ĐĂNG KÝ THÀNH VIÊN MỚI RE-SYNC</b>\n\n` +
-        `• <b>Họ tên:</b> <code>${(sanitizedUser.fullName || 'CHƯA CUNG CẤP').toUpperCase()}</code>\n` +
+      const telegramMsg = `<b>👤 ĐĂNG KÝ TÀI KHOẢN MỚI</b>\n` +
+        `• <b>Họ tên:</b> ${sanitizedUser.fullName || 'Chưa cung cấp'}\n` +
         `• <b>Số điện thoại:</b> <code>${sanitizedUser.phone}</code>\n` +
-        `• <b>Zalo liên hệ:</b> <code>${sanitizedUser.refZalo || 'Chưa cung cấp'}</code>\n` +
-        `• <b>CCCD/CMND:</b> <code>${sanitizedUser.idNumber || 'Chưa cung cấp'}</code>\n` +
-        `• <b>Địa chỉ:</b> <code>${sanitizedUser.address || 'Chưa cung cấp'}</code>\n\n` +
-        `• <b>ID Tài khoản:</b> <code>${sanitizedUser.id}</code>\n` +
-        `• <b>Mật khẩu:</b> <code>${userData.password}</code>\n` +
-        `• <b>Gói phân hạng:</b> <b>${sanitizedUser.rank.toUpperCase()}</b> (${sanitizedUser.totalLimit.toLocaleString()} đ)\n\n` +
-        `⏰ <i>Thời gian: ${getVietnamTimeStrServer()}</i>`;
+        `• <b>ID Hệ thống:</b> <code>${sanitizedUser.id}</code>\n` +
+        `• <b>Hạng:</b> ${sanitizedUser.rank.toUpperCase()}\n` +
+        `• <b>Hạn mức khởi điểm:</b> ${sanitizedUser.totalLimit.toLocaleString()} đ\n` +
+        `• <b>Zalo liên hệ:</b> ${sanitizedUser.refZalo || 'Không cung cấp'}\n` +
+        `• <b>Thời gian:</b> ${getVietnamTimeStrServer()}`;
       
       await sendTelegramNotification(telegramMsg, settings);
     } catch (telegramCatch) {
@@ -3053,21 +3047,13 @@ router.post("/users", async (req: any, res) => {
         // Telegram Notification
         try {
           const settings = await getMergedSettings(client);
-          const rankConfigs = Array.isArray(settings.RANK_CONFIG) ? settings.RANK_CONFIG : [];
-          const targetRankConfig = rankConfigs.find((r: any) => r.id === u.pendingUpgradeRank?.toLowerCase());
-          const newLimit = targetRankConfig?.maxLimit || 0;
-          const upgradePercent = Number(settings.UPGRADE_PERCENT) || 10;
-          const estFee = Math.round(newLimit * (upgradePercent / 100));
-
-          const telegramMsg = `👑 <b>YÊU CẦU NÂNG HẠNG THÀNH VIÊN</b>\n\n` +
-            `• <b>Khách hàng:</b> <code>${(u.fullName || 'CHƯA CUNG CẤP').toUpperCase()}</code>\n` +
+          const telegramMsg = `<b>⭐ YÊU CẦU NÂNG HẠNG MỚI</b>\n` +
+            `• <b>Họ tên:</b> ${u.fullName || 'Chưa cung cấp'}\n` +
             `• <b>Số điện thoại:</b> <code>${u.phone || u.id}</code>\n` +
-            `• <b>Số tài khoản:</b> <code>${u.bankAccountNumber || 'Chưa liên kết'}</code> (${u.bankName || 'Chưa liên kết'})\n\n` +
-            `• <b>Hạng hiện tại:</b> <b>${(u.rank || 'N/A').toUpperCase()}</b> (${u.totalLimit?.toLocaleString()} đ)\n` +
-            `• <b>Hạng đề xuất:</b> 👑 <b>${(u.pendingUpgradeRank || 'N/A').toUpperCase()}</b> (${newLimit?.toLocaleString()} đ)\n` +
-            `• <b>Phí nâng cấp (${upgradePercent}%):</b> <code>${estFee.toLocaleString()} đ</code>\n\n` +
-            `📸 <b>Hóa đơn đối soát:</b> ${u.rankUpgradeBill ? `<a href="${u.rankUpgradeBill}">[Bấm Xem Biên Lai]</a>` : '<i>Chưa có ảnh</i>'}\n` +
-            `⏰ <i>Thời gian: ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
+            `• <b>ID Hệ thống:</b> <code>${u.id}</code>\n` +
+            `• <b>Hạng yêu cầu:</b> <code>${u.pendingUpgradeRank.toUpperCase()}</code>\n` +
+            `• <b>Yêu cầu:</b> Chờ duyệt nâng hạng và hạn mức mới\n` +
+            `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
           await sendTelegramNotification(telegramMsg, settings);
         } catch (err) {
           console.error("Lỗi lấy settings/gửi Telegram Rank:", err);
@@ -3474,33 +3460,6 @@ router.post("/loans", async (req: any, res) => {
                 console.error("Lỗi lưu thông báo khoản vay:", dbNotifErr);
               }
               
-              // Send Telegram Log of status transition to operational channel
-              try {
-                const settings = await getMergedSettings(client);
-                let emojiStatus = "ℹ️";
-                if (newNorm === 'ĐANG NỢ') emojiStatus = "✅";
-                else if (newNorm === 'TỪ CHỐI') emojiStatus = "❌";
-                else if (newNorm === 'ĐÃ TẤT TOÁN' || newNorm === 'ĐÃ TẤT TOÁN') emojiStatus = "🏁";
-                else if (newNorm === 'QUÁ HẠN') emojiStatus = "⚠️";
-                else if (newNorm === 'GIA HẠN') emojiStatus = "⏰";
-                else if (newNorm === 'TTMP') emojiStatus = "💵";
-
-                const telegramMsg = `${emojiStatus} <b>CẬP NHẬT TRẠNG THÁI KHOẢN VAY</b>\n\n` +
-                  `• <b>Người vay:</b> <code>${(l.userName || 'CHƯA CẬP NHẬT').toUpperCase()}</code>\n` +
-                  `• <b>ID:</b> <code>${l.userId}</code>\n` +
-                  `• <b>Mã hợp đồng:</b> <code>${l.id}</code>\n` +
-                  `• <b>Số tiền vay:</b> 💰 <b>${Number(l.amount).toLocaleString()} đ</b>\n` +
-                  `• <b>Hạng mục cập nhật:</b> <i>${title}</i>\n` +
-                  `• <b>Trạng thái cũ:</b> <code>${oldNorm}</code>\n` +
-                  `• <b>Trạng thái mới:</b> <b>${newNorm}</b>\n` +
-                  `• <b>Hạn thanh toán:</b> 📅 <b>${l.date || 'Chưa xác định'}</b>\n\n` +
-                  `📢 <i>Nội dung gửi khách: ${message}</i>\n` +
-                  `⏰ <i>Thời gian xử lý: ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
-                await sendTelegramNotification(telegramMsg, settings);
-              } catch (telegramErr) {
-                console.error("Lỗi gửi Telegram Status Update:", telegramErr);
-              }
-
               // Trigger push notification to APK (.apk)
               try {
                 triggerPushForUser(l.userId, title, message, client);
@@ -3540,23 +3499,13 @@ router.post("/loans", async (req: any, res) => {
         // Telegram Notification
         try {
           const settings = await getMergedSettings(client);
-          let uDetails = null;
-          try {
-            const { data: userData } = await client.from('users').select('phone, bankName, bankAccountNumber, bankAccountHolder').eq('id', l.userId).maybeSingle();
-            if (userData) uDetails = userData;
-          } catch (uErr) {
-            console.error("Lỗi lấy thông tin user cho Telegram Loan:", uErr);
-          }
-
-          const telegramMsg = `💸 <b>YÊU CẦU ĐĂNG KÝ VAY MỚI</b>\n\n` +
-            `• <b>Người vay:</b> <code>${(l.userName || 'CHƯA CẬP NHẬT').toUpperCase()}</code>\n` +
-            `• <b>ID:</b> <code>${l.userId}</code>\n` +
-            `• <b>Số tiền vay:</b> 💰 <b>${l.amount.toLocaleString()} đ</b>\n` +
-            `• <b>Mục đích vay:</b> <i>${l.loanPurpose || 'Chi tiêu cá nhân'}</i>\n` +
-            `• <b>Ngày đến hạn:</b> 📅 <b>${l.date || 'Chưa xác định'}</b>\n` +
-            `• <b>Trạng thái:</b> ⏳ <b>${l.status || 'CHỜ DUYỆT'}</b>\n` +
-            `• <b>Thời gian tạo:</b> <code>${l.createdAt || (new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'))}</code>`;
-
+          const telegramMsg = `<b>💸 CÓ YÊU CẦU VAY MỚI</b>\n` +
+            `• <b>Người vay:</b> ${l.userName || 'Chưa cập nhật'}\n` +
+            `• <b>ID User:</b> <code>${l.userId}</code>\n` +
+            `• <b>Số tiền vay:</b> <code>${l.amount.toLocaleString()} đ</code>\n` +
+            `• <b>Thời hạn:</b> ${l.term || 0} ngày\n` +
+            `• <b>Trạng thái:</b> Chờ duyệt giải ngân\n` +
+            `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
           await sendTelegramNotification(telegramMsg, settings);
         } catch (err) {
           console.error("Lỗi lấy settings/gửi Telegram Loan:", err);
@@ -3584,24 +3533,15 @@ router.post("/loans", async (req: any, res) => {
         // Telegram Notification
         try {
           const settings = await getMergedSettings(client);
-          let uDetails = null;
-          try {
-            const { data: userData } = await client.from('users').select('phone, bankName, bankAccountNumber, bankAccountHolder').eq('id', l.userId).maybeSingle();
-            if (userData) uDetails = userData;
-          } catch (uErr) {
-            console.error("Lỗi lấy thông tin user cho Telegram Settle:", uErr);
-          }
-
           const labelUpper = typeLabel.toUpperCase();
-          const telegramMsg = `🔔 <b>YÊU CẦU THANH TOÁN KHOẢN VAY</b>\n\n` +
-            `• <b>Người thanh toán:</b> <code>${(l.userName || 'CHƯA CẬP NHẬT').toUpperCase()}</code>\n` +
-            `• <b>ID:</b> <code>${l.userId}</code>\n` +
+          const telegramMsg = `<b>🔔 YÊU CẦU THANH TOÁN (${labelUpper})</b>\n` +
+            `• <b>Khách hàng:</b> ${l.userName || 'Chưa cập nhật'}\n` +
+            `• <b>ID User:</b> <code>${l.userId}</code>\n` +
             `• <b>Mã khoản vay:</b> <code>${l.id}</code>\n` +
-            `• <b>Phân loại:</b> 📊 <b>${labelUpper}</b>\n` +
-            `• <b>Số tiền thanh toán:</b> 💰 <b>${(l.settlementType === 'PARTIAL' && l.partialAmount ? l.partialAmount : l.amount).toLocaleString()} đ</b>\n` +
-            `• <b>Biên lai thanh toán:</b> ${l.billImage ? `<a href="${l.billImage}">[Bấm Xem Biên Lai]</a>` : '<i>Chưa có ảnh</i>'}\n` +
-            `• <b>Trạng thái:</b> ⏳ <b>${l.status || 'CHỜ DUYỆT'}</b>\n` +
-            `• <b>Thời gian yêu cầu:</b> <code>${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</code>`;
+            `• <b>Số tiền khoản vay:</b> ${l.amount.toLocaleString()} đ\n` +
+            `• <b>Phân loại:</b> Yêu cầu ${typeLabel.toLowerCase()} (Đã up bill đối soát)\n` +
+            `• <b>Trạng thái:</b> Chờ Admin xác nhận thanh toán\n` +
+            `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
           await sendTelegramNotification(telegramMsg, settings);
         } catch (err) {
           console.error("Lỗi lấy settings/gửi Telegram Settle:", err);
@@ -3860,48 +3800,30 @@ router.post("/loan/delete", async (req: any, res) => {
     const { error: deleteError } = await client.from('loans').delete().eq('id', loanId);
     if (deleteError) throw deleteError;
 
-     // 3. Restore User Balance (Available Limit)
-     if (loan && loan.userId) {
-       // Fetch remaining loans including ID to calculate and restore balance robustly with manual in-memory filtering covering database race condition
-       const { data: remainingLoans } = await client.from('loans').select('id, status, amount').eq('userId', loan.userId);
-       const { data: user, error: userError } = await client.from('users').select('balance, totalLimit').eq('id', loan.userId).single();
-       
-       if (!userError && user) {
-         const uLimit = Number(user.totalLimit || 0);
-         const activeDebt = (remainingLoans || [])
-           .filter((l: any) => l.id !== loanId) // Force-exclude the deleted loan to handle replication lag and race conditions
-           .filter((l: any) => {
-             const s = String(l.status || '').trim().toUpperCase().normalize('NFC');
-             return s !== 'ĐÃ TẤT TOÁN' && 
-                    s !== 'ĐA TẤT TOÁN' && 
-                    s !== 'BỊ TỪ CHỐI' && 
-                    s !== 'TỪ CHỐI' &&
-                    s !== 'REJECTED' &&
-                    s !== 'ĐÃ CỘNG DỒN' && 
-                    s !== 'ĐÃ CỘNG DỒN' &&
-                    s !== 'CONSOLIDATED' && 
-                    s !== 'ĐÃ HỦY' && 
-                    s !== 'ĐÃ HUỶ' &&
-                    s !== 'BỊ HỦY' &&
-                    s !== 'BỊ HUỶ' &&
-                    s !== 'CANCELLED';
-           }).reduce((sum: number, l: any) => sum + (Number(l.amount) || 0), 0);
- 
-         const newBalance = Math.max(0, uLimit - activeDebt);
-         await client.from('users').update({ balance: newBalance, updatedAt: Date.now() }).eq('id', loan.userId);
-         
-         // Notify user of balance update via socket
-         const io = req.app.get("io");
-         if (io) {
-           io.to(`user_${loan.userId}`).emit("user_updated", { id: loan.userId, balance: newBalance });
-         }
-       }
+    // 3. Restore User Balance (Available Limit)
+    if (loan && loan.userId) {
+      const { data: user, error: userError } = await client.from('users').select('balance, totalLimit').eq('id', loan.userId).single();
+      if (!userError && user) {
+        // Restore balance only for non-settled/non-rejected loans that were actually "active"
+        // Most common case is deleting a pending or active loan to fix client status
+        const isActuallyDeducted = ['CHỜ DUYỆT', 'ĐÃ DUYỆT', 'ĐANG GIẢI NGÂN', 'ĐANG NỢ', 'CHỜ TẤT TOÁN', 'QUÁ HẠN'].includes(loan.status);
+        
+        if (isActuallyDeducted) {
+          const newBalance = Math.min(user.totalLimit, (user.balance || 0) + loan.amount);
+          await client.from('users').update({ balance: newBalance, updatedAt: Date.now() }).eq('id', loan.userId);
+          
+          // Notify user of balance update
+          const io = req.app.get("io");
+          if (io) {
+            io.to(`user_${loan.userId}`).emit("user_updated", { id: loan.userId, balance: newBalance });
+          }
+        }
+      }
       
-      // Also notify user and admins about the deletion
+      // Also notify user about the deletion
       const io = req.app.get("io");
       if (io) {
         io.to(`user_${loan.userId}`).emit("loan_deleted", { id: loanId });
-        io.to("admin").emit("loan_deleted", { id: loanId });
       }
     }
     
@@ -4532,7 +4454,7 @@ const USER_COLUMNS = [
   'bankAccountNumber', 'bankAccountHolder', 'hasJoinedZalo', 
   'payosOrderCode', 'payosCheckoutUrl', 'payosAmount', 'payosExpireAt', 
   'spins', 'vouchers', 'totalProfit', 'fullSettlementCount', 'lastPenaltyDate', 'penaltyStreak', 'updatedAt',
-  'hasCustomLimit', 'isFreeUpgrade', 'rankUpgradeDate', 'isLocked', 'lockedAt', 'lockedReason'
+  'hasCustomLimit', 'isFreeUpgrade', 'isLocked', 'lockedAt', 'lockedReason'
 ];
 
 const USER_WRITE_COLUMNS = [...USER_COLUMNS, 'password'];
@@ -4541,7 +4463,7 @@ const USER_WRITE_COLUMNS = [...USER_COLUMNS, 'password'];
 const USER_SUMMARY_COLUMNS = [
   'id', 'phone', 'fullName', 'idNumber', 'balance', 'totalLimit', 'rank', 
   'rankProgress', 'isLoggedIn', 'isAdmin', 'pendingUpgradeRank', 'updatedAt', 
-  'refZalo', 'joinDate', 'avatar', 'rankUpgradeDate', 'isLocked', 'lockedAt', 'lockedReason'
+  'refZalo', 'joinDate', 'avatar', 'isLocked', 'lockedAt', 'lockedReason'
 ];
 
 const LOAN_COLUMNS = [
@@ -5342,7 +5264,7 @@ router.post("/re-establish", async (req: any, res) => {
         if (u.isAdmin || u.phone === 'admin' || !u.phone || u.phone.length < 10) return;
         if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
 
-        const isUpgradedAfterStart = isDateOnOrAfterServer(u.rankUpgradeDate || u.joinDate, startDate);
+        const isUpgradedAfterStart = isDateOnOrAfterServer(u.updatedAt ? new Date(Number(u.updatedAt)).toISOString() : u.joinDate, startDate);
         if (isUpgradedAfterStart && u.rank && u.rank !== lowestRankId && !u.isFreeUpgrade && u.rankApproved !== false) {
           const rankConf = sortedRanks.find((r: any) => r.id === u.rank);
           if (rankConf) {
@@ -5389,7 +5311,7 @@ router.post("/re-establish", async (req: any, res) => {
         if (u.isAdmin || u.phone === 'admin' || !u.phone || u.phone.length < 10) return;
         if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
 
-        const dateStr = u.rankUpgradeDate || u.joinDate;
+        const dateStr = u.updatedAt ? new Date(Number(u.updatedAt)).toISOString() : u.joinDate;
         const parsedDate = parseDateStringServer(dateStr);
         if (!parsedDate || isNaN(parsedDate.getTime())) return;
 
@@ -5480,7 +5402,7 @@ router.post("/re-establish", async (req: any, res) => {
         if (u.isAdmin || u.phone === 'admin' || !u.phone || u.phone.length < 10) return;
         if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
 
-        const dateStr = u.rankUpgradeDate || u.joinDate;
+        const dateStr = u.updatedAt ? new Date(Number(u.updatedAt)).toISOString() : u.joinDate;
         const parsedDate = parseDateStringServer(dateStr);
         if (!parsedDate) return;
 
@@ -6568,14 +6490,14 @@ router.post("/payment/webhook", async (req, res) => {
             try {
               const settings = await getMergedSettings(client);
               const labelUpper = settleLabel.toUpperCase();
-              const telegramMsg = `✅ <b>THANH TOÁN TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n\n` +
-                `• <b>Khách hàng:</b> <code>${(user.fullName || '').toUpperCase()}</code>\n` +
+              const telegramMsg = `<b>💸 THANH TOÁN TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
+                `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
                 `• <b>Số điện thoại:</b> <code>${user.phone}</code>\n` +
-                `• <b>Mã khoản vay:</b> <code>${loanId}</code>\n\n` +
-                `• <b>Hình thức:</b> 💳 <b>Cổng tự động PayOS</b> (${labelUpper})\n` +
-                `• <b>Số tiền thanh toán:</b> 💰 <b>+${amount.toLocaleString()} đ</b>\n` +
-                `• <b>Kết quả:</b> Đã tự động cập nhật & tất toán trên hệ thống\n\n` +
-                `⏰ <i>Thời gian: ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
+                `• <b>Mã khoản vay:</b> <code>${loanId}</code>\n` +
+                `• <b>Hệ thống PayOS:</b> GD thanh toán tự động thành công\n` +
+                `• <b>Phân loại:</b> ${labelUpper}\n` +
+                `• <b>Số tiền nạp:</b> ${amount.toLocaleString()} đ\n` +
+                `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
               await sendTelegramNotification(telegramMsg, settings);
             } catch (err) {
               console.error("Lỗi lấy settings cho Telegram PayOS:", err);
@@ -6617,7 +6539,6 @@ router.post("/payment/webhook", async (req, res) => {
                 pendingUpgradeRank: null,
                 rankUpgradeBill: 'PAYOS_SUCCESS',
                 isFreeUpgrade: false,
-                rankUpgradeDate: new Date().toISOString(),
                 updatedAt: Date.now()
               })
               .eq('id', user.id);
@@ -6702,14 +6623,13 @@ router.post("/payment/webhook", async (req, res) => {
             // Telegram Notification (Crucial for Vercel/serverless environments without running sockets)
             try {
               const settings = await getMergedSettings(client);
-              const rankBenefit = settings.RANK_CONFIG?.find((r: any) => r.id === targetRank.toLowerCase())?.maxLimit;
-              const telegramMsg = `👑 <b>NÂNG HẠNG TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n\n` +
-                `• <b>Khách hàng:</b> <code>${(user.fullName || '').toUpperCase()}</code>\n` +
-                `• <b>Số điện thoại:</b> <code>${user.phone || user.id}</code>\n\n` +
-                `• <b>Hạng kích hoạt:</b> 👑 <b>${rankLabel.toUpperCase()}</b>\n` +
-                `• <b>Hạn mức tối đa:</b> <code>${rankBenefit ? rankBenefit.toLocaleString() : 'N/A'} đ</code>\n` +
-                `• <b>Phí nâng cấp:</b> 💰 <b>+${upgradeFee.toLocaleString()} đ</b>\n\n` +
-                `⏰ <i>Thời gian: ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
+              const telegramMsg = `<b>⭐ NÂNG HẠNG TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
+                `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
+                `• <b>Số điện thoại:</b> <code>${user.phone || user.id}</code>\n` +
+                `• <b>Hạng mới nâng cấp:</b> <b>${rankLabel.toUpperCase()}</b>\n` +
+                `• <b>Hệ thống PayOS:</b> GD thanh toán nâng cấp thành công\n` +
+                `• <b>Phí nâng cấp:</b> ${upgradeFee.toLocaleString()} đ\n` +
+                `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
               await sendTelegramNotification(telegramMsg, settings);
             } catch (err) {
               console.error("Lỗi lấy settings cho Telegram Rank upgrade:", err);

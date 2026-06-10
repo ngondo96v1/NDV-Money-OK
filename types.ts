@@ -59,7 +59,6 @@ export interface User {
   fullSettlementCount?: number;
   isFreeUpgrade?: boolean;
   hasCustomLimit?: boolean;
-  rankUpgradeDate?: string;
   updatedAt?: number;
 }
 

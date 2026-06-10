@@ -322,27 +322,13 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   };
 
   const toggleSubSection = (userId: string, section: string) => {
-    setExpandedSubSections(prev => {
-      const userSections = prev[userId] || {};
-      const nextVal = !userSections[section];
-      
-      const updatedUserSections = {
-        ...userSections,
-        [section]: nextVal
-      };
-      
-      if (section === 'PROFILE' && nextVal) {
-        updatedUserSections['LOANS'] = false;
+    setExpandedSubSections(prev => ({
+      ...prev,
+      [userId]: {
+        ...(prev[userId] || {}),
+        [section]: !(prev[userId]?.[section])
       }
-      if (section === 'LOANS' && nextVal) {
-        updatedUserSections['PROFILE'] = false;
-      }
-      
-      return {
-        ...prev,
-        [userId]: updatedUserSections
-      };
-    });
+    }));
   };
 
   const isSubSectionExpanded = (userId: string, section: string) => {
@@ -453,7 +439,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
           const userLoans = [...loans]
             .filter(l => {
               if (l.userId !== u.id) return false;
-              if (l.status === 'ĐÃ CỘNG DỒN' || l.status === 'CONSOLIDATED') return false;
+              if (l.status === 'ĐÃ CỘNG DỒN') return false;
               const isRolloverSettled = l.status === 'ĐÃ TẤT TOÁN' && (l.settlementType === 'PRINCIPAL' || l.settlementType === 'PARTIAL');
               if (isRolloverSettled) return false;
               if (hasActiveLoanForUser && (l.status === 'ĐÃ TẤT TOÁN' || l.status === 'ĐA TẤT TOÁN')) return false;
@@ -889,7 +875,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                                       <div className="flex items-center gap-2">
                                         <div className={`px-2.5 py-1 rounded-lg text-[7px] font-black uppercase flex items-center gap-1 ${statusStyles}`}>
                                           {isOverdue ? 'QUÁ HẠN' : loan.status}
-                                          {(loan.status === 'ĐÃ CỘNG DỒN' || loan.status === 'CONSOLIDATED') && loan.consolidatedInto && (
+                                          {loan.status === 'ĐÃ CỘNG DỒN' && loan.consolidatedInto && (
                                             <span className="text-[6px] normal-case opacity-60 ml-0.5">({loan.consolidatedInto})</span>
                                           )}
                                           {loan.status === 'CHỜ TẤT TOÁN' && (
@@ -1537,19 +1523,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                     type="text"
                     inputMode="numeric"
                     value={formatNumberWithDots(editUserForm.totalLimit)}
-                    onChange={(e) => {
-                      const newLimit = parseNumberFromDots(e.target.value);
-                      let newRank = editUserForm.rank;
-                      if (settings.RANK_CONFIG && settings.RANK_CONFIG.length > 0) {
-                        // Find the appropriate rank matching this limit
-                        const sortedRanks = [...settings.RANK_CONFIG].sort((a, b) => b.maxLimit - a.maxLimit);
-                        const matchedRank = sortedRanks.find(r => newLimit >= r.minLimit) || settings.RANK_CONFIG[0];
-                        if (matchedRank) {
-                          newRank = matchedRank.id;
-                        }
-                      }
-                      setEditUserForm({ ...editUserForm, totalLimit: newLimit, rank: newRank, hasCustomLimit: true });
-                    }}
+                    onChange={(e) => setEditUserForm({ ...editUserForm, totalLimit: parseNumberFromDots(e.target.value), hasCustomLimit: true })}
                     className="w-full bg-black border border-white/5 rounded-xl py-3 px-4 text-xs font-bold text-white focus:outline-none focus:border-blue-500 transition-all"
                   />
                 </div>

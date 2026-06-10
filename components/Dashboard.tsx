@@ -74,21 +74,14 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
 
   const currentDebt = loans
     .filter(l => {
-      if (!l || !l.status) return false;
-      const s = String(l.status).trim().toUpperCase().normalize('NFC');
+      const s = l.status;
       return s !== 'ĐÃ TẤT TOÁN' && 
              s !== 'ĐA TẤT TOÁN' && 
              s !== 'BỊ TỪ CHỐI' && 
-             s !== 'TỪ CHỐI' &&
-             s !== 'REJECTED' &&
              s !== 'ĐÃ CỘNG DỒN' && 
-             s !== 'ĐÃ CỘNG DỒN' &&
-             s !== 'CONSOLIDATED' && 
              s !== 'ĐÃ HỦY' && 
              s !== 'ĐÃ HUỶ' &&
-             s !== 'BỊ HỦY' &&
-             s !== 'BỊ HUỶ' &&
-             s !== 'CANCELLED';
+             s !== 'BỊ HỦY';
     })
     .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
 
@@ -103,7 +96,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
 
   const getRankInfo = (rankId: UserRank = 'bronze') => {
     const rankConfig = Array.isArray(settings.RANK_CONFIG) ? settings.RANK_CONFIG : [];
-    const foundRank = rankConfig.find((r: any) => String(r.id).toLowerCase() === String(rankId).toLowerCase());
+    const foundRank = rankConfig.find((r: any) => r.id === rankId);
     
     if (foundRank) {
       return { 
@@ -114,8 +107,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
     }
 
     // Fallback
-    const norm = String(rankId || '').toLowerCase();
-    switch (norm) {
+    switch (rankId) {
       case 'standard':
       case 'bronze': return { name: 'ĐỒNG', color: '#cd7f32', textColor: 'text-white' };
       case 'silver': return { name: 'BẠC', color: '#c0c0c0', textColor: 'text-white' };
@@ -191,7 +183,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
   const rankInfo = getRankInfo(user?.rank);
   const isBudgetLow = systemBudget < Number(settings.MIN_SYSTEM_BUDGET || 5000000);
 
-    const currentRankIdx = settings.RANK_CONFIG.findIndex((r: any) => String(r.id).toLowerCase() === String(user?.rank).toLowerCase());
+    const currentRankIdx = settings.RANK_CONFIG.findIndex((r: any) => r.id === user?.rank);
     const maxLimitOverall = Math.max(...settings.RANK_CONFIG.map((r: any) => r.maxLimit || 0));
     const currentRankConf = settings.RANK_CONFIG[currentRankIdx];
     const isHighestRank = currentRankConf && currentRankConf.maxLimit >= maxLimitOverall;
@@ -263,7 +255,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
                   <div className="flex items-center gap-1 bg-black/10 px-2 py-1 rounded-full border border-black/5">
                     <Star size={10} className="fill-current" />
                     <span className="text-[9px] font-black uppercase">
-                      {String(user?.rank).toLowerCase() === 'diamond' ? `${settings.MAX_ON_TIME_PAYMENTS_FOR_UPGRADE || 10}/${settings.MAX_ON_TIME_PAYMENTS_FOR_UPGRADE || 10}` : `${user?.rankProgress || 0}/${settings.MAX_ON_TIME_PAYMENTS_FOR_UPGRADE || 10}`} ĐIỂM
+                      {user?.rank === 'diamond' ? `${settings.MAX_ON_TIME_PAYMENTS_FOR_UPGRADE || 10}/${settings.MAX_ON_TIME_PAYMENTS_FOR_UPGRADE || 10}` : `${user?.rankProgress || 0}/${settings.MAX_ON_TIME_PAYMENTS_FOR_UPGRADE || 10}`} ĐIỂM
                     </span>
                   </div>
                 </div>

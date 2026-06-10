@@ -242,7 +242,7 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
     return loans
       .filter(l => {
         if (l.userId !== user?.id) return false;
-        if (l.status === 'ĐÃ CỘNG DỒN' || l.status === 'CONSOLIDATED') return false;
+        if (l.status === 'ĐÃ CỘNG DỒN') return false;
         const isRolloverSettled = l.status === 'ĐÃ TẤT TOÁN' && (l.settlementType === 'PRINCIPAL' || l.settlementType === 'PARTIAL');
         if (isRolloverSettled) return false;
         if (hasActiveLoan && (l.status === 'ĐÃ TẤT TOÁN' || l.status === 'ĐA TẤT TOÁN')) return false;
@@ -273,7 +273,7 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
     const userLoans = (loans || []).filter(l => l.userId === user.id);
     // Chỉ đếm các khoản vay thực tế (đang nợ, chờ duyệt, đã tất toán)
     // Loại bỏ 'ĐÃ CỘNG DỒN' và 'ĐÃ HỦY' để đảm bảo số thứ tự compact (ví dụ: NDV1 xong đến NDV2)
-    const validLoans = userLoans.filter(l => l.status !== 'ĐÃ CỘNG DỒN' && l.status !== 'CONSOLIDATED' && l.status !== 'ĐÃ HỦY');
+    const validLoans = userLoans.filter(l => l.status !== 'ĐÃ CỘNG DỒN' && l.status !== 'ĐÃ HỦY');
     const nextSeq = validLoans.length + 1;
     const format = getSystemFormat(settings, 'contract', '{ID}NDV{N}');
     return generateContractId(user.id, format, settings, undefined, nextSeq);
@@ -310,7 +310,7 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
     .filter(l => {
       if (!l.createdAt || typeof l.createdAt !== 'string') return false;
       const s = l.status;
-      if (['BỊ TỪ CHỐI', 'ĐÃ TẤT TOÁN', 'ĐA TẤT TOÁN', 'ĐÃ CỘNG DỒN', 'CONSOLIDATED', 'ĐÃ HỦY', 'ĐÃ HUỶ', 'BỊ HỦY'].includes(s)) return false;
+      if (['BỊ TỪ CHỐI', 'ĐÃ TẤT TOÁN', 'ĐA TẤT TOÁN', 'ĐÃ CỘNG DỒN', 'ĐÃ HỦY', 'ĐÃ HUỶ', 'BỊ HỦY'].includes(s)) return false;
       
       try {
         // Parse createdAt: "HH:mm:ss DD/MM/YYYY" or ISO format

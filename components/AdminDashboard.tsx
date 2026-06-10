@@ -228,9 +228,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       }
     } else if (type === 'user') {
       const user = item as User;
-      const rankDateStr = user.rankUpgradeDate || user.joinDate;
-      if (rankDateStr) {
-        return parseDateString(rankDateStr);
+      if (user.joinDate) {
+        return parseDateString(user.joinDate);
       }
     } else if (type === 'log') {
       const log = item as BudgetLog;
@@ -282,7 +281,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
 
   const filteredUsers = useMemo(() => {
     if (!tempStartDate) return users;
-    return users.filter(u => isAfterOrEqualMatch(u.rankUpgradeDate || u.joinDate, tempStartDate));
+    return users.filter(u => isAfterOrEqualMatch(u.joinDate, tempStartDate));
   }, [users, tempStartDate]);
 
   const availableYears = useMemo(() => {
@@ -366,7 +365,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       if (u.isAdmin || u.phone === 'admin' || u.id === 'admin' || !u.phone || u.phone.length < 10) return;
       if (u.id === '5444' || u.fullName?.toLowerCase().includes('test')) return;
 
-      const joinDate = parseDateString(u.rankUpgradeDate || u.joinDate);
+      const joinDate = parseDateString(u.joinDate);
       if (joinDate && !isNaN(joinDate.getTime()) && joinDate.getFullYear() === chartYear) {
         const m = joinDate.getMonth();
         if (u.rank && u.rank !== lowestRankId && !u.isFreeUpgrade && u.rankApproved !== false) {
@@ -449,7 +448,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       l.status !== 'BỊ TỪ CHỐI' && 
       l.status !== 'CHỜ DUYỆT' && 
       l.status !== 'ĐÃ CỘNG DỒN' &&
-      l.status !== 'CONSOLIDATED' &&
       l.status !== 'ĐÃ HUỶ' &&
       l.status !== 'ĐÃ HỦY'
     );

@@ -40,20 +40,19 @@ const Profile: React.FC<ProfileProps> = ({ user, onBack, onLogout, onUpdateBank,
   const getRankName = (rankId?: string) => {
     if (!rankId) return 'Thành viên hạng Đồng';
     
-    const rankConf = settings?.RANK_CONFIG?.find((r: any) => String(r.id).toLowerCase() === String(rankId).toLowerCase());
+    const rankConf = settings?.RANK_CONFIG?.find((r: any) => r.id === rankId);
     if (rankConf) {
       if (rankConf.name.toUpperCase() === 'VIP') return 'VIP';
       return `Thành viên ${rankConf.name}`;
     }
     
-    const norm = String(rankId || '').toLowerCase();
-    switch(norm) {
+    switch(rankId) {
       case 'standard': return 'Thành viên hạng Đồng';
       case 'bronze': return 'Thành viên hạng Đồng';
       case 'silver': return 'Thành viên hạng Bạc';
       case 'gold': return 'Thành viên hạng Vàng';
       case 'diamond': return 'Thành viên hạng Kim cương';
-      default: return norm.toUpperCase() === 'VIP' ? 'VIP' : rankId;
+      default: return rankId.toUpperCase() === 'VIP' ? 'VIP' : rankId;
     }
   };
 
