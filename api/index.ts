@@ -40,12 +40,7 @@ const originalToLocaleString = Date.prototype.toLocaleString;
 let firebaseApp: admin.app.App | null = null;
 try {
   let saJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  const saBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
-
-  if (saBase64) {
-    saJson = Buffer.from(saBase64, 'base64').toString('utf8');
-    console.log("[FIREBASE] Loaded Firebase service account config from environment base64");
-  } else if (!saJson) {
+  if (!saJson) {
     const localSaPath = path.resolve(process.cwd(), "firebase-service-account.json");
     if (fs.existsSync(localSaPath)) {
       saJson = fs.readFileSync(localSaPath, 'utf8');
@@ -161,14 +156,14 @@ const broadcastPushNotification = async (title: string, body: string, client: an
   try {
     const { data: users, error } = await client
       .from('users')
-      .select('id, fcmToken, isAdmin');
+      .select('id, fcmToken');
       
     if (error) {
       console.error(`[PUSH] Error fetching users for broadcast:`, error);
       return;
     }
     
-    const usersWithTokens = users?.filter((u: any) => u.fcmToken && u.fcmToken.trim() !== '' && !u.isAdmin) || [];
+    const usersWithTokens = users?.filter((u: any) => u.fcmToken && u.fcmToken.trim() !== '') || [];
     
     if (usersWithTokens.length > 0) {
       console.log(`[PUSH] Broadcasting to ${usersWithTokens.length} users with FCM tokens...`);
@@ -2343,12 +2338,12 @@ router.post("/send-push", async (req: any, res) => {
       // Send to all users who have a token
       const { data: users, error } = await client
         .from('users')
-        .select('fcmToken, id, isAdmin')
+        .select('fcmToken, id')
         .not('fcmToken', 'is', null);
         
       if (error) throw error;
       
-      const tokens = users.filter((u: any) => !u.isAdmin).map(u => u.fcmToken).filter(Boolean);
+      const tokens = users.map(u => u.fcmToken).filter(Boolean);
       if (tokens.length === 0) {
         return res.status(404).json({ error: "Không tìm thấy thiết bị nào để gửi thông báo." });
       }
