@@ -40,7 +40,12 @@ const originalToLocaleString = Date.prototype.toLocaleString;
 let firebaseApp: admin.app.App | null = null;
 try {
   let saJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (!saJson) {
+  const saBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+
+  if (saBase64) {
+    saJson = Buffer.from(saBase64, 'base64').toString('utf8');
+    console.log("[FIREBASE] Loaded Firebase service account config from environment base64");
+  } else if (!saJson) {
     const localSaPath = path.resolve(process.cwd(), "firebase-service-account.json");
     if (fs.existsSync(localSaPath)) {
       saJson = fs.readFileSync(localSaPath, 'utf8');
@@ -156,14 +161,14 @@ const broadcastPushNotification = async (title: string, body: string, client: an
   try {
     const { data: users, error } = await client
       .from('users')
-      .select('id, fcmToken');
+      .select('id, fcmToken, isAdmin');
       
     if (error) {
       console.error(`[PUSH] Error fetching users for broadcast:`, error);
       return;
     }
     
-    const usersWithTokens = users?.filter((u: any) => u.fcmToken && u.fcmToken.trim() !== '') || [];
+    const usersWithTokens = users?.filter((u: any) => u.fcmToken && u.fcmToken.trim() !== '' && !u.isAdmin) || [];
     
     if (usersWithTokens.length > 0) {
       console.log(`[PUSH] Broadcasting to ${usersWithTokens.length} users with FCM tokens...`);
@@ -730,9 +735,13 @@ const runFreeUpgradeMigration = async (client: any) => {
 
 const STORAGE_LIMIT_MB = 45; // Virtual limit for demo purposes
 
-// Debug middleware to log incoming requests
+// Debug middleware to log incoming requests and disable caching thoroughly
 router.use((req, res, next) => {
   console.log(`[API DEBUG] ${req.method} ${req.url}`);
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
   next();
 });
 
@@ -2334,12 +2343,12 @@ router.post("/send-push", async (req: any, res) => {
       // Send to all users who have a token
       const { data: users, error } = await client
         .from('users')
-        .select('fcmToken, id')
+        .select('fcmToken, id, isAdmin')
         .not('fcmToken', 'is', null);
         
       if (error) throw error;
       
-      const tokens = users.map(u => u.fcmToken).filter(Boolean);
+      const tokens = users.filter((u: any) => !u.isAdmin).map(u => u.fcmToken).filter(Boolean);
       if (tokens.length === 0) {
         return res.status(404).json({ error: "Không tìm thấy thiết bị nào để gửi thông báo." });
       }
@@ -3470,6 +3479,33 @@ router.post("/loans", async (req: any, res) => {
                 console.error("Lỗi lưu thông báo khoản vay:", dbNotifErr);
               }
               
+              // Send Telegram Log of status transition to operational channel
+              try {
+                const settings = await getMergedSettings(client);
+                let emojiStatus = "ℹ️";
+                if (newNorm === 'ĐANG NỢ') emojiStatus = "✅";
+                else if (newNorm === 'TỪ CHỐI') emojiStatus = "❌";
+                else if (newNorm === 'ĐÃ TẤT TOÁN' || newNorm === 'ĐÃ TẤT TOÁN') emojiStatus = "🏁";
+                else if (newNorm === 'QUÁ HẠN') emojiStatus = "⚠️";
+                else if (newNorm === 'GIA HẠN') emojiStatus = "⏰";
+                else if (newNorm === 'TTMP') emojiStatus = "💵";
+
+                const telegramMsg = `${emojiStatus} <b>CẬP NHẬT TRẠNG THÁI KHOẢN VAY</b>\n\n` +
+                  `• <b>Người vay:</b> <code>${(l.userName || 'CHƯA CẬP NHẬT').toUpperCase()}</code>\n` +
+                  `• <b>ID:</b> <code>${l.userId}</code>\n` +
+                  `• <b>Mã hợp đồng:</b> <code>${l.id}</code>\n` +
+                  `• <b>Số tiền vay:</b> 💰 <b>${Number(l.amount).toLocaleString()} đ</b>\n` +
+                  `• <b>Hạng mục cập nhật:</b> <i>${title}</i>\n` +
+                  `• <b>Trạng thái cũ:</b> <code>${oldNorm}</code>\n` +
+                  `• <b>Trạng thái mới:</b> <b>${newNorm}</b>\n` +
+                  `• <b>Hạn thanh toán:</b> 📅 <b>${l.date || 'Chưa xác định'}</b>\n\n` +
+                  `📢 <i>Nội dung gửi khách: ${message}</i>\n` +
+                  `⏰ <i>Thời gian xử lý: ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
+                await sendTelegramNotification(telegramMsg, settings);
+              } catch (telegramErr) {
+                console.error("Lỗi gửi Telegram Status Update:", telegramErr);
+              }
+
               // Trigger push notification to APK (.apk)
               try {
                 triggerPushForUser(l.userId, title, message, client);
@@ -3829,34 +3865,36 @@ router.post("/loan/delete", async (req: any, res) => {
     const { error: deleteError } = await client.from('loans').delete().eq('id', loanId);
     if (deleteError) throw deleteError;
 
-    // 3. Restore User Balance (Available Limit)
-    if (loan && loan.userId) {
-      // Fetch remaining loans to calculate and restore balance robustly
-      const { data: remainingLoans } = await client.from('loans').select('status, amount').eq('userId', loan.userId);
-      const { data: user, error: userError } = await client.from('users').select('balance, totalLimit').eq('id', loan.userId).single();
-      
-      if (!userError && user) {
-        const uLimit = Number(user.totalLimit || 0);
-        const activeDebt = (remainingLoans || []).filter((l: any) => {
-          const s = String(l.status || '').toUpperCase().normalize('NFC');
-          return s !== 'ĐÃ TẤT TOÁN' && 
-                 s !== 'ĐA TẤT TOÁN' && 
-                 s !== 'BỊ TỪ CHỐI' && 
-                 s !== 'ĐÃ CỘNG DỒN' && 
-                 s !== 'ĐÃ HỦY' && 
-                 s !== 'ĐÃ HUỶ' &&
-                 s !== 'BỊ HỦY';
-        }).reduce((sum: number, l: any) => sum + (Number(l.amount) || 0), 0);
-
-        const newBalance = Math.max(0, uLimit - activeDebt);
-        await client.from('users').update({ balance: newBalance, updatedAt: Date.now() }).eq('id', loan.userId);
-        
-        // Notify user of balance update via socket
-        const io = req.app.get("io");
-        if (io) {
-          io.to(`user_${loan.userId}`).emit("user_updated", { id: loan.userId, balance: newBalance });
-        }
-      }
+     // 3. Restore User Balance (Available Limit)
+     if (loan && loan.userId) {
+       // Fetch remaining loans including ID to calculate and restore balance robustly with manual in-memory filtering covering database race condition
+       const { data: remainingLoans } = await client.from('loans').select('id, status, amount').eq('userId', loan.userId);
+       const { data: user, error: userError } = await client.from('users').select('balance, totalLimit').eq('id', loan.userId).single();
+       
+       if (!userError && user) {
+         const uLimit = Number(user.totalLimit || 0);
+         const activeDebt = (remainingLoans || [])
+           .filter((l: any) => l.id !== loanId) // Force-exclude the deleted loan to handle replication lag and race conditions
+           .filter((l: any) => {
+             const s = String(l.status || '').toUpperCase().normalize('NFC');
+             return s !== 'ĐÃ TẤT TOÁN' && 
+                    s !== 'ĐA TẤT TOÁN' && 
+                    s !== 'BỊ TỪ CHỐI' && 
+                    s !== 'ĐÃ CỘNG DỒN' && 
+                    s !== 'ĐÃ HỦY' && 
+                    s !== 'ĐÃ HUỶ' &&
+                    s !== 'BỊ HỦY';
+           }).reduce((sum: number, l: any) => sum + (Number(l.amount) || 0), 0);
+ 
+         const newBalance = Math.max(0, uLimit - activeDebt);
+         await client.from('users').update({ balance: newBalance, updatedAt: Date.now() }).eq('id', loan.userId);
+         
+         // Notify user of balance update via socket
+         const io = req.app.get("io");
+         if (io) {
+           io.to(`user_${loan.userId}`).emit("user_updated", { id: loan.userId, balance: newBalance });
+         }
+       }
       
       // Also notify user and admins about the deletion
       const io = req.app.get("io");

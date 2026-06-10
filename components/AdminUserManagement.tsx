@@ -1537,7 +1537,19 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                     type="text"
                     inputMode="numeric"
                     value={formatNumberWithDots(editUserForm.totalLimit)}
-                    onChange={(e) => setEditUserForm({ ...editUserForm, totalLimit: parseNumberFromDots(e.target.value), hasCustomLimit: true })}
+                    onChange={(e) => {
+                      const newLimit = parseNumberFromDots(e.target.value);
+                      let newRank = editUserForm.rank;
+                      if (settings.RANK_CONFIG && settings.RANK_CONFIG.length > 0) {
+                        // Find the appropriate rank matching this limit
+                        const sortedRanks = [...settings.RANK_CONFIG].sort((a, b) => b.maxLimit - a.maxLimit);
+                        const matchedRank = sortedRanks.find(r => newLimit >= r.minLimit) || settings.RANK_CONFIG[0];
+                        if (matchedRank) {
+                          newRank = matchedRank.id;
+                        }
+                      }
+                      setEditUserForm({ ...editUserForm, totalLimit: newLimit, rank: newRank, hasCustomLimit: true });
+                    }}
                     className="w-full bg-black border border-white/5 rounded-xl py-3 px-4 text-xs font-bold text-white focus:outline-none focus:border-blue-500 transition-all"
                   />
                 </div>

@@ -703,7 +703,7 @@ const App: React.FC = () => {
     if (!token || !user?.id) return;
     
     try {
-      const response = await authenticatedFetch(`/api/data?userId=${user.id}&full=true`);
+      const response = await authenticatedFetch(`/api/data?userId=${user.id}&full=true&_t=${Date.now()}`);
       if (response.ok) {
         const data = await response.json();
         
@@ -809,10 +809,32 @@ const App: React.FC = () => {
   // Listen for in-app native push notifications (foreground)
   useEffect(() => {
     const handleInAppPush = (e: Event) => {
-      if (user?.isAdmin) {
-        // Do not display standard user push notifications on Admin views
+      // Robust check for Admin: 1. user state, 2. currentAppView, 3. localStorage representation
+      const savedUserStr = localStorage.getItem('vnv_user') || sessionStorage.getItem('vnv_user');
+      let isCachedAdmin = false;
+      if (savedUserStr) {
+        try {
+          const parsed = JSON.parse(savedUserStr);
+          if (parsed && parsed.isAdmin) {
+            isCachedAdmin = true;
+          }
+        } catch (_) {}
+      }
+
+      const isAdminView = [
+        AppView.ADMIN_DASHBOARD,
+        AppView.ADMIN_USERS,
+        AppView.ADMIN_LOANS,
+        AppView.ADMIN_BUDGET,
+        AppView.ADMIN_SYSTEM,
+        AppView.SYSTEM_MANUAL
+      ].includes(currentView);
+
+      if (user?.isAdmin || isCachedAdmin || isAdminView) {
+        console.log('[PUSH] Suppressing standard user push notification on Admin view/role:', currentView);
         return;
       }
+
       const customEvent = e as CustomEvent;
       if (customEvent.detail) {
         const { title, body } = customEvent.detail;
@@ -836,7 +858,7 @@ const App: React.FC = () => {
     
     window.addEventListener('app_push_received', handleInAppPush);
     return () => window.removeEventListener('app_push_received', handleInAppPush);
-  }, [user, fetchUserProfile]);
+  }, [user, fetchUserProfile, currentView]);
 
   useEffect(() => {
     // Only automatically show if conditions are met
@@ -1317,14 +1339,15 @@ const App: React.FC = () => {
     return () => clearInterval(pollInterval);
   }, [user?.isAdmin, isTabActive, fetchData]);
 
-  // AUTO-POLLING for Regular Users: Fetch fresh database updates every 30 seconds if tab is active as a fallback for socket disconnects
+  // AUTO-POLLING for Regular Users: Fetch fresh database updates every 6 seconds if tab is active as a fallback for socket disconnects
+  // This achieves near-instant real-time updates on serverless deployment environments like Vercel
   useEffect(() => {
     if (!user || user.isAdmin || !isTabActive) return;
 
     const pollInterval = setInterval(() => {
       console.log("[POLL] Regular user fetching fresh data fallback...");
       fetchUserProfile();
-    }, 30000); // 30 seconds is standard and keeps database usage optimal while providing excellent responsiveness
+    }, 6000); // Highly responsive 6-second polling for perfect serverless Vercel sync
 
     return () => clearInterval(pollInterval);
   }, [user?.id, user?.isAdmin, isTabActive, fetchUserProfile]);
@@ -1609,6 +1632,33 @@ const App: React.FC = () => {
 
     socket.on('notification_updated', (notif: Notification) => {
       console.log('[REALTIME] Notification received', notif);
+      
+      const savedUserStr = localStorage.getItem('vnv_user') || sessionStorage.getItem('vnv_user');
+      let isCachedAdmin = false;
+      if (savedUserStr) {
+        try {
+          const parsed = JSON.parse(savedUserStr);
+          if (parsed && parsed.isAdmin) {
+            isCachedAdmin = true;
+          }
+        } catch (_) {}
+      }
+      
+      const isAdminView = [
+        AppView.ADMIN_DASHBOARD,
+        AppView.ADMIN_USERS,
+        AppView.ADMIN_LOANS,
+        AppView.ADMIN_BUDGET,
+        AppView.ADMIN_SYSTEM,
+        AppView.SYSTEM_MANUAL
+      ].includes(currentView);
+
+      if (user?.isAdmin || isCachedAdmin || isAdminView) {
+        // Refresh admin views without showing standard user toasts or modifying user notifications state
+        fetchData(false, true, true);
+        return;
+      }
+
       setNotifications(prev => {
         if (prev.some(n => n.id === notif.id)) return prev;
         const next = [notif, ...prev].slice(0, 10);
@@ -1630,8 +1680,6 @@ const App: React.FC = () => {
           }
         });
         fetchData(false, false, true);
-      } else if (user?.isAdmin) {
-        fetchData(false, true, true);
       }
     });
 
@@ -3468,13 +3516,23 @@ const App: React.FC = () => {
 
       // Merge data and recalculate balance robustly
       const userLoans = loans.filter(l => l.userId === userId);
-      const intermediateUser = { ...targetUser, ...updatedData };
+      // If totalLimit was modified manually but rank was not explicitly edited, dynamically align user.rank to matching settings config
+      let updatedRankId = updatedData.rank !== undefined ? updatedData.rank : targetUser.rank;
+      if (updatedData.totalLimit !== undefined && updatedData.rank === undefined && settings.RANK_CONFIG && settings.RANK_CONFIG.length > 0) {
+        const sortedRanks = [...settings.RANK_CONFIG].sort((a, b) => b.maxLimit - a.maxLimit);
+        const matched = sortedRanks.find(r => Number(updatedData.totalLimit) >= r.minLimit) || settings.RANK_CONFIG[0];
+        if (matched) {
+          updatedRankId = matched.id;
+        }
+      }
+
+      const intermediateUser = { ...targetUser, ...updatedData, rank: updatedRankId };
       const newBalance = calculateUserBalance(intermediateUser as User, userLoans);
 
       const updatedUser = { 
         ...intermediateUser, 
         balance: newBalance,
-        isFreeUpgrade: updatedData.rank !== undefined && updatedData.rank !== targetUser.rank ? true : intermediateUser.isFreeUpgrade,
+        isFreeUpgrade: updatedRankId !== targetUser.rank ? true : intermediateUser.isFreeUpgrade,
         hasCustomLimit: updatedData.totalLimit !== undefined ? true : intermediateUser.hasCustomLimit,
         updatedAt: Date.now() 
       };
