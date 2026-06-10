@@ -449,6 +449,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       l.status !== 'BỊ TỪ CHỐI' && 
       l.status !== 'CHỜ DUYỆT' && 
       l.status !== 'ĐÃ CỘNG DỒN' &&
+      l.status !== 'CONSOLIDATED' &&
       l.status !== 'ĐÃ HUỶ' &&
       l.status !== 'ĐÃ HỦY'
     );

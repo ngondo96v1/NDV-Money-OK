@@ -545,17 +545,24 @@ const App: React.FC = () => {
 
   const calculateUserBalance = useCallback((u: User, userLoans: LoanRecord[]) => {
     // ONLY ĐÃ TẤT TOÁN, BỊ TỪ CHỐI, ĐÃ CỘNG DỒN and ĐÃ HỦY are not current debt. everything else counts as debt.
-    // Handling minor spelling variations to be robust
+    // Handling minor spelling variations and synonym statuses to be robust
     const activeDebt = userLoans
       .filter(l => {
-        const s = l.status;
+        if (!l || !l.status) return false;
+        const s = String(l.status).trim().toUpperCase().normalize('NFC');
         return s !== 'ĐÃ TẤT TOÁN' && 
                s !== 'ĐA TẤT TOÁN' && 
                s !== 'BỊ TỪ CHỐI' && 
+               s !== 'TỪ CHỐI' &&
+               s !== 'REJECTED' &&
                s !== 'ĐÃ CỘNG DỒN' && 
+               s !== 'ĐÃ CỘNG DỒN' &&
+               s !== 'CONSOLIDATED' && 
                s !== 'ĐÃ HỦY' && 
                s !== 'ĐÃ HUỶ' &&
-               s !== 'BỊ HỦY';
+               s !== 'BỊ HỦY' &&
+               s !== 'BỊ HUỶ' &&
+               s !== 'CANCELLED';
       })
       .reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
     return Math.max(0, (Number(u.totalLimit) || 0) - activeDebt);
@@ -1515,19 +1522,18 @@ const App: React.FC = () => {
         // Recalculate user balance real-time if the updated loan belongs to the logged-in user
         if (user && updatedLoan.userId === user.id) {
           const nextUserLoans = next.filter(l => l.userId === user.id);
-          const newBalance = calculateUserBalance(user, nextUserLoans);
-          if (user.balance !== newBalance) {
-            setUser(prevUser => {
-              if (!prevUser) return prevUser;
-              const nextUser = { ...prevUser, balance: newBalance };
-              if (rememberMe) {
-                localStorage.setItem('vnv_user', JSON.stringify(nextUser));
-              } else {
-                sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
-              }
-              return nextUser;
-            });
-          }
+          setUser(prevUser => {
+            if (!prevUser) return prevUser;
+            const newBalance = calculateUserBalance(prevUser, nextUserLoans);
+            if (prevUser.balance === newBalance) return prevUser;
+            const nextUser = { ...prevUser, balance: newBalance };
+            if (rememberMe) {
+              localStorage.setItem('vnv_user', JSON.stringify(nextUser));
+            } else {
+              sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
+            }
+            return nextUser;
+          });
         }
         
         return next;
@@ -1551,19 +1557,18 @@ const App: React.FC = () => {
         // Recalculate user balance real-time
         if (user) {
           const nextUserLoans = next.filter(l => l.userId === user.id);
-          const newBalance = calculateUserBalance(user, nextUserLoans);
-          if (user.balance !== newBalance) {
-            setUser(prevUser => {
-              if (!prevUser) return prevUser;
-              const nextUser = { ...prevUser, balance: newBalance };
-              if (rememberMe) {
-                localStorage.setItem('vnv_user', JSON.stringify(nextUser));
-              } else {
-                sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
-              }
-              return nextUser;
-            });
-          }
+          setUser(prevUser => {
+            if (!prevUser) return prevUser;
+            const newBalance = calculateUserBalance(prevUser, nextUserLoans);
+            if (prevUser.balance === newBalance) return prevUser;
+            const nextUser = { ...prevUser, balance: newBalance };
+            if (rememberMe) {
+              localStorage.setItem('vnv_user', JSON.stringify(nextUser));
+            } else {
+              sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
+            }
+            return nextUser;
+          });
         }
 
         // Recalculate balance for Admin's registeredUsers list
@@ -1601,19 +1606,18 @@ const App: React.FC = () => {
           const userRelated = updatedLoans.filter(l => l.userId === user.id);
           if (userRelated.length > 0) {
             const nextUserLoans = newLoans.filter(l => l.userId === user.id);
-            const newBalance = calculateUserBalance(user, nextUserLoans);
-            if (user.balance !== newBalance) {
-              setUser(prevUser => {
-                if (!prevUser) return prevUser;
-                const nextUser = { ...prevUser, balance: newBalance };
-                if (rememberMe) {
-                  localStorage.setItem('vnv_user', JSON.stringify(nextUser));
-                } else {
-                  sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
-                }
-                return nextUser;
-              });
-            }
+            setUser(prevUser => {
+              if (!prevUser) return prevUser;
+              const newBalance = calculateUserBalance(prevUser, nextUserLoans);
+              if (prevUser.balance === newBalance) return prevUser;
+              const nextUser = { ...prevUser, balance: newBalance };
+              if (rememberMe) {
+                localStorage.setItem('vnv_user', JSON.stringify(nextUser));
+              } else {
+                sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
+              }
+              return nextUser;
+            });
           }
         }
         

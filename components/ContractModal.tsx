@@ -115,8 +115,10 @@ const ContractModal: React.FC<ContractModalProps> = ({ contract, user, onClose, 
 
       // Sort matched loans to prioritize the actual predecessor
       const sortedMatches = [...matchedLoans].sort((a, b) => {
-        if (a.status === 'ĐÃ CỘNG DỒN' && b.status !== 'ĐÃ CỘNG DỒN') return 1;
-        if (b.status === 'ĐÃ CỘNG DỒN' && a.status !== 'ĐÃ CỘNG DỒN') return -1;
+        const aIsConsol = a.status === 'ĐÃ CỘNG DỒN' || a.status === 'CONSOLIDATED';
+        const bIsConsol = b.status === 'ĐÃ CỘNG DỒN' || b.status === 'CONSOLIDATED';
+        if (aIsConsol && !bIsConsol) return 1;
+        if (bIsConsol && !aIsConsol) return -1;
         if (a.settledAt && !b.settledAt) return -1;
         if (!a.settledAt && b.settledAt) return 1;
         return 0;

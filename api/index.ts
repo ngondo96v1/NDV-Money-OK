@@ -3871,14 +3871,20 @@ router.post("/loan/delete", async (req: any, res) => {
          const activeDebt = (remainingLoans || [])
            .filter((l: any) => l.id !== loanId) // Force-exclude the deleted loan to handle replication lag and race conditions
            .filter((l: any) => {
-             const s = String(l.status || '').toUpperCase().normalize('NFC');
+             const s = String(l.status || '').trim().toUpperCase().normalize('NFC');
              return s !== 'ĐÃ TẤT TOÁN' && 
                     s !== 'ĐA TẤT TOÁN' && 
                     s !== 'BỊ TỪ CHỐI' && 
+                    s !== 'TỪ CHỐI' &&
+                    s !== 'REJECTED' &&
                     s !== 'ĐÃ CỘNG DỒN' && 
+                    s !== 'ĐÃ CỘNG DỒN' &&
+                    s !== 'CONSOLIDATED' && 
                     s !== 'ĐÃ HỦY' && 
                     s !== 'ĐÃ HUỶ' &&
-                    s !== 'BỊ HỦY';
+                    s !== 'BỊ HỦY' &&
+                    s !== 'BỊ HUỶ' &&
+                    s !== 'CANCELLED';
            }).reduce((sum: number, l: any) => sum + (Number(l.amount) || 0), 0);
  
          const newBalance = Math.max(0, uLimit - activeDebt);

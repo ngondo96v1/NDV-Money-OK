@@ -453,7 +453,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
           const userLoans = [...loans]
             .filter(l => {
               if (l.userId !== u.id) return false;
-              if (l.status === 'ĐÃ CỘNG DỒN') return false;
+              if (l.status === 'ĐÃ CỘNG DỒN' || l.status === 'CONSOLIDATED') return false;
               const isRolloverSettled = l.status === 'ĐÃ TẤT TOÁN' && (l.settlementType === 'PRINCIPAL' || l.settlementType === 'PARTIAL');
               if (isRolloverSettled) return false;
               if (hasActiveLoanForUser && (l.status === 'ĐÃ TẤT TOÁN' || l.status === 'ĐA TẤT TOÁN')) return false;
@@ -889,7 +889,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                                       <div className="flex items-center gap-2">
                                         <div className={`px-2.5 py-1 rounded-lg text-[7px] font-black uppercase flex items-center gap-1 ${statusStyles}`}>
                                           {isOverdue ? 'QUÁ HẠN' : loan.status}
-                                          {loan.status === 'ĐÃ CỘNG DỒN' && loan.consolidatedInto && (
+                                          {(loan.status === 'ĐÃ CỘNG DỒN' || loan.status === 'CONSOLIDATED') && loan.consolidatedInto && (
                                             <span className="text-[6px] normal-case opacity-60 ml-0.5">({loan.consolidatedInto})</span>
                                           )}
                                           {loan.status === 'CHỜ TẤT TOÁN' && (
