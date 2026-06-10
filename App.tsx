@@ -1435,12 +1435,6 @@ const App: React.FC = () => {
           }
           return nextUser;
         });
-        
-        // Force immediate background pull from DB
-        fetchUserProfile();
-        fetchData(false, false, true);
-      } else if (user?.isAdmin) {
-        fetchData(false, true, true);
       }
     });
 
@@ -1472,10 +1466,6 @@ const App: React.FC = () => {
           } else {
             sessionStorage.setItem('vnv_user', JSON.stringify(nextUser));
           }
-          fetchUserProfile();
-          fetchData(false, false, true);
-        } else if (user.isAdmin) {
-          fetchData(false, true, true);
         }
       }
     });
@@ -1509,12 +1499,6 @@ const App: React.FC = () => {
         
         return next;
       });
-
-      if (user && updatedLoan.userId === user.id) {
-        fetchData(false, false, true);
-      } else if (user?.isAdmin) {
-        fetchData(false, true, true);
-      }
     });
 
     socket.on('loan_deleted', (data: { id: string }) => {
@@ -1543,8 +1527,6 @@ const App: React.FC = () => {
         
         return next;
       });
-
-      fetchData(false, !!user?.isAdmin, true);
     });
 
     socket.on('loans_updated', (updatedLoans: LoanRecord[]) => {
@@ -1581,15 +1563,6 @@ const App: React.FC = () => {
         
         return newLoans;
       });
-
-      if (user) {
-        const hasMyLoan = updatedLoans.some(l => l.userId === user.id);
-        if (hasMyLoan) {
-          fetchData(false, false, true);
-        } else if (user.isAdmin) {
-          fetchData(false, true, true);
-        }
-      }
     });
 
     socket.on('notification_updated', (notif: Notification) => {
@@ -1614,9 +1587,6 @@ const App: React.FC = () => {
             }
           }
         });
-        fetchData(false, false, true);
-      } else if (user?.isAdmin) {
-        fetchData(false, true, true);
       }
     });
 
@@ -1672,9 +1642,6 @@ const App: React.FC = () => {
         if (data.TOTAL_FINE_PROFIT !== undefined) setFineProfit(Number(data.TOTAL_FINE_PROFIT));
         if (data.MONTHLY_STATS) setMonthlyStats(data.MONTHLY_STATS.slice(0, 6));
       }
-
-      // Automatically sync latest state on config changed
-      fetchData(false, !!user?.isAdmin, true);
     });
 
     socket.on('sync_completed', (data: any) => {
@@ -1732,8 +1699,8 @@ const App: React.FC = () => {
         };
         setAdminNotifications(prev => [newNotif, ...prev].slice(0, 50));
         
-        // Refresh full data forcing admin load
-        fetchData(false, true, true);
+        // Refresh full data
+        fetchData(false, false, true);
       }
     });
 
@@ -1745,7 +1712,7 @@ const App: React.FC = () => {
 
     socket.on('payment_success', (data: { message: string, type?: string }) => {
       console.log('[SOCKET] Payment success:', data);
-      fetchData(false, !!user?.isAdmin, true);
+      fetchData(true);
       // Only redirect to Dashboard if NOT an admin
       if (user && !user.isAdmin) {
         setCurrentView(AppView.DASHBOARD);
@@ -1754,7 +1721,7 @@ const App: React.FC = () => {
 
     socket.on('rank_upgrade_success', (data: { message: string }) => {
       console.log('[SOCKET] Rank upgrade success:', data);
-      fetchData(false, !!user?.isAdmin, true);
+      fetchData(true);
       // Only redirect to Dashboard if NOT an admin
       if (user && !user.isAdmin) {
         setCurrentView(AppView.DASHBOARD);
@@ -1763,7 +1730,7 @@ const App: React.FC = () => {
 
     socket.on('users_bulk_updated', () => {
       console.log('[SOCKET] Users bulk updated (Rank Sync)');
-      fetchData(false, !!user?.isAdmin, true);
+      fetchData(true);
       if (user?.isAdmin) {
         fetchFullData(true);
       }

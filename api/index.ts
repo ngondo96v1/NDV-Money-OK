@@ -1915,16 +1915,14 @@ router.post("/register", async (req, res) => {
 
     // Telegram Notification to Admin
     try {
-      const telegramMsg = `👤 <b>ĐĂNG KÝ THÀNH VIÊN MỚI RE-SYNC</b>\n\n` +
-        `• <b>Họ tên:</b> <code>${(sanitizedUser.fullName || 'CHƯA CUNG CẤP').toUpperCase()}</code>\n` +
+      const telegramMsg = `<b>👤 ĐĂNG KÝ TÀI KHOẢN MỚI</b>\n` +
+        `• <b>Họ tên:</b> ${sanitizedUser.fullName || 'Chưa cung cấp'}\n` +
         `• <b>Số điện thoại:</b> <code>${sanitizedUser.phone}</code>\n` +
-        `• <b>Zalo liên hệ:</b> <code>${sanitizedUser.refZalo || 'Chưa cung cấp'}</code>\n` +
-        `• <b>CCCD/CMND:</b> <code>${sanitizedUser.idNumber || 'Chưa cung cấp'}</code>\n` +
-        `• <b>Địa chỉ:</b> <code>${sanitizedUser.address || 'Chưa cung cấp'}</code>\n\n` +
-        `• <b>ID Tài khoản:</b> <code>${sanitizedUser.id}</code>\n` +
-        `• <b>Mật khẩu:</b> <code>${userData.password}</code>\n` +
-        `• <b>Gói phân hạng:</b> <b>${sanitizedUser.rank.toUpperCase()}</b> (${sanitizedUser.totalLimit.toLocaleString()} đ)\n\n` +
-        `⏰ <i>Thời gian: ${getVietnamTimeStrServer()}</i>`;
+        `• <b>ID Hệ thống:</b> <code>${sanitizedUser.id}</code>\n` +
+        `• <b>Hạng:</b> ${sanitizedUser.rank.toUpperCase()}\n` +
+        `• <b>Hạn mức khởi điểm:</b> ${sanitizedUser.totalLimit.toLocaleString()} đ\n` +
+        `• <b>Zalo liên hệ:</b> ${sanitizedUser.refZalo || 'Không cung cấp'}\n` +
+        `• <b>Thời gian:</b> ${getVietnamTimeStrServer()}`;
       
       await sendTelegramNotification(telegramMsg, settings);
     } catch (telegramCatch) {
@@ -3049,21 +3047,13 @@ router.post("/users", async (req: any, res) => {
         // Telegram Notification
         try {
           const settings = await getMergedSettings(client);
-          const rankConfigs = Array.isArray(settings.RANK_CONFIG) ? settings.RANK_CONFIG : [];
-          const targetRankConfig = rankConfigs.find((r: any) => r.id === u.pendingUpgradeRank?.toLowerCase());
-          const newLimit = targetRankConfig?.maxLimit || 0;
-          const upgradePercent = Number(settings.UPGRADE_PERCENT) || 10;
-          const estFee = Math.round(newLimit * (upgradePercent / 100));
-
-          const telegramMsg = `👑 <b>YÊU CẦU NÂNG HẠNG THÀNH VIÊN</b>\n\n` +
-            `• <b>Khách hàng:</b> <code>${(u.fullName || 'CHƯA CUNG CẤP').toUpperCase()}</code>\n` +
+          const telegramMsg = `<b>⭐ YÊU CẦU NÂNG HẠNG MỚI</b>\n` +
+            `• <b>Họ tên:</b> ${u.fullName || 'Chưa cung cấp'}\n` +
             `• <b>Số điện thoại:</b> <code>${u.phone || u.id}</code>\n` +
-            `• <b>Số tài khoản:</b> <code>${u.bankAccountNumber || 'Chưa liên kết'}</code> (${u.bankName || 'Chưa liên kết'})\n\n` +
-            `• <b>Hạng hiện tại:</b> <b>${(u.rank || 'N/A').toUpperCase()}</b> (${u.totalLimit?.toLocaleString()} đ)\n` +
-            `• <b>Hạng đề xuất:</b> 👑 <b>${(u.pendingUpgradeRank || 'N/A').toUpperCase()}</b> (${newLimit?.toLocaleString()} đ)\n` +
-            `• <b>Phí nâng cấp (${upgradePercent}%):</b> <code>${estFee.toLocaleString()} đ</code>\n\n` +
-            `📸 <b>Hóa đơn đối soát:</b> ${u.rankUpgradeBill ? `<a href="${u.rankUpgradeBill}">[Bấm Xem Biên Lai]</a>` : '<i>Chưa có ảnh</i>'}\n` +
-            `⏰ <i>Thời gian: ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
+            `• <b>ID Hệ thống:</b> <code>${u.id}</code>\n` +
+            `• <b>Hạng yêu cầu:</b> <code>${u.pendingUpgradeRank.toUpperCase()}</code>\n` +
+            `• <b>Yêu cầu:</b> Chờ duyệt nâng hạng và hạn mức mới\n` +
+            `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
           await sendTelegramNotification(telegramMsg, settings);
         } catch (err) {
           console.error("Lỗi lấy settings/gửi Telegram Rank:", err);
@@ -3509,24 +3499,13 @@ router.post("/loans", async (req: any, res) => {
         // Telegram Notification
         try {
           const settings = await getMergedSettings(client);
-          let uDetails = null;
-          try {
-            const { data: userData } = await client.from('users').select('phone, bankName, bankAccountNumber, bankAccountHolder').eq('id', l.userId).maybeSingle();
-            if (userData) uDetails = userData;
-          } catch (uErr) {
-            console.error("Lỗi lấy thông tin user cho Telegram Loan:", uErr);
-          }
-
-          const telegramMsg = `💸 <b>YÊU CẦU ĐĂNG KÝ VAY MỚI</b>\n\n` +
-            `• <b>Khách hàng:</b> <code>${(l.userName || 'CHƯA CẬP NHẬT').toUpperCase()}</code>\n` +
-            `• <b>Số điện thoại:</b> <code>${uDetails?.phone || 'N/A'}</code>\n` +
-            `• <b>Mã khoản vay:</b> <code>${l.id || 'N/A'}</code>\n\n` +
-            `• <b>Số tiền đề xuất:</b> 💰 <b>${l.amount.toLocaleString()} đ</b>\n` +
-            `• <b>Thời hạn vay:</b> <code>${l.term || 0} ngày</code>\n` +
-            `• <b>Thụ hưởng:</b> <code>${uDetails?.bankAccountNumber || 'Chưa liên kết'}</code> (${uDetails?.bankName || 'Chưa liên kết'})\n` +
-            `• <b>Mục đích vay:</b> <i>${l.loanPurpose || 'Chi tiêu cá nhân'}</i>\n\n` +
-            `⏰ <i>Thời gian: ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
-
+          const telegramMsg = `<b>💸 CÓ YÊU CẦU VAY MỚI</b>\n` +
+            `• <b>Người vay:</b> ${l.userName || 'Chưa cập nhật'}\n` +
+            `• <b>ID User:</b> <code>${l.userId}</code>\n` +
+            `• <b>Số tiền vay:</b> <code>${l.amount.toLocaleString()} đ</code>\n` +
+            `• <b>Thời hạn:</b> ${l.term || 0} ngày\n` +
+            `• <b>Trạng thái:</b> Chờ duyệt giải ngân\n` +
+            `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
           await sendTelegramNotification(telegramMsg, settings);
         } catch (err) {
           console.error("Lỗi lấy settings/gửi Telegram Loan:", err);
@@ -3554,24 +3533,15 @@ router.post("/loans", async (req: any, res) => {
         // Telegram Notification
         try {
           const settings = await getMergedSettings(client);
-          let uDetails = null;
-          try {
-            const { data: userData } = await client.from('users').select('phone, bankName, bankAccountNumber, bankAccountHolder').eq('id', l.userId).maybeSingle();
-            if (userData) uDetails = userData;
-          } catch (uErr) {
-            console.error("Lỗi lấy thông tin user cho Telegram Settle:", uErr);
-          }
-
           const labelUpper = typeLabel.toUpperCase();
-          const telegramMsg = `🔔 <b>YÊU CẦU THANH TOÁN KHOẢN VAY</b>\n\n` +
-            `• <b>Khách hàng:</b> <code>${(l.userName || 'CHƯA CẬP NHẬT').toUpperCase()}</code>\n` +
-            `• <b>Số điện thoại:</b> <code>${uDetails?.phone || 'N/A'}</code>\n` +
-            `• <b>Mã khoản vay:</b> <code>${l.id}</code>\n\n` +
-            `• <b>Hình thức:</b> 🏷️ <b>${labelUpper}</b>\n` +
-            `• <b>Số tiền thanh toán:</b> 💰 <b>${(l.settlementType === 'PARTIAL' && l.partialAmount ? l.partialAmount : l.amount).toLocaleString()} đ</b>\n` +
-            `• <b>Gốc khoản vay:</b> <code>${l.amount.toLocaleString()} đ</code>\n\n` +
-            `📸 <b>Hóa đơn đối soát:</b> ${l.billImage ? `<a href="${l.billImage}">[Bấm Xem Biên Lai]</a>` : '<i>Chưa có ảnh</i>'}\n` +
-            `⏰ <i>Thời gian: ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
+          const telegramMsg = `<b>🔔 YÊU CẦU THANH TOÁN (${labelUpper})</b>\n` +
+            `• <b>Khách hàng:</b> ${l.userName || 'Chưa cập nhật'}\n` +
+            `• <b>ID User:</b> <code>${l.userId}</code>\n` +
+            `• <b>Mã khoản vay:</b> <code>${l.id}</code>\n` +
+            `• <b>Số tiền khoản vay:</b> ${l.amount.toLocaleString()} đ\n` +
+            `• <b>Phân loại:</b> Yêu cầu ${typeLabel.toLowerCase()} (Đã up bill đối soát)\n` +
+            `• <b>Trạng thái:</b> Chờ Admin xác nhận thanh toán\n` +
+            `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
           await sendTelegramNotification(telegramMsg, settings);
         } catch (err) {
           console.error("Lỗi lấy settings/gửi Telegram Settle:", err);
@@ -6520,14 +6490,14 @@ router.post("/payment/webhook", async (req, res) => {
             try {
               const settings = await getMergedSettings(client);
               const labelUpper = settleLabel.toUpperCase();
-              const telegramMsg = `✅ <b>THANH TOÁN TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n\n` +
-                `• <b>Khách hàng:</b> <code>${(user.fullName || '').toUpperCase()}</code>\n` +
+              const telegramMsg = `<b>💸 THANH TOÁN TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
+                `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
                 `• <b>Số điện thoại:</b> <code>${user.phone}</code>\n` +
-                `• <b>Mã khoản vay:</b> <code>${loanId}</code>\n\n` +
-                `• <b>Hình thức:</b> 💳 <b>Cổng tự động PayOS</b> (${labelUpper})\n` +
-                `• <b>Số tiền thanh toán:</b> 💰 <b>+${amount.toLocaleString()} đ</b>\n` +
-                `• <b>Kết quả:</b> Đã tự động cập nhật & tất toán trên hệ thống\n\n` +
-                `⏰ <i>Thời gian: ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
+                `• <b>Mã khoản vay:</b> <code>${loanId}</code>\n` +
+                `• <b>Hệ thống PayOS:</b> GD thanh toán tự động thành công\n` +
+                `• <b>Phân loại:</b> ${labelUpper}\n` +
+                `• <b>Số tiền nạp:</b> ${amount.toLocaleString()} đ\n` +
+                `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
               await sendTelegramNotification(telegramMsg, settings);
             } catch (err) {
               console.error("Lỗi lấy settings cho Telegram PayOS:", err);
@@ -6654,14 +6624,13 @@ router.post("/payment/webhook", async (req, res) => {
             // Telegram Notification (Crucial for Vercel/serverless environments without running sockets)
             try {
               const settings = await getMergedSettings(client);
-              const rankBenefit = settings.RANK_CONFIG?.find((r: any) => r.id === targetRank.toLowerCase())?.maxLimit;
-              const telegramMsg = `👑 <b>NÂNG HẠNG TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n\n` +
-                `• <b>Khách hàng:</b> <code>${(user.fullName || '').toUpperCase()}</code>\n` +
-                `• <b>Số điện thoại:</b> <code>${user.phone || user.id}</code>\n\n` +
-                `• <b>Hạng kích hoạt:</b> 👑 <b>${rankLabel.toUpperCase()}</b>\n` +
-                `• <b>Hạn mức tối đa:</b> <code>${rankBenefit ? rankBenefit.toLocaleString() : 'N/A'} đ</code>\n` +
-                `• <b>Phí nâng cấp:</b> 💰 <b>+${upgradeFee.toLocaleString()} đ</b>\n\n` +
-                `⏰ <i>Thời gian: ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
+              const telegramMsg = `<b>⭐ NÂNG HẠNG TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
+                `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
+                `• <b>Số điện thoại:</b> <code>${user.phone || user.id}</code>\n` +
+                `• <b>Hạng mới nâng cấp:</b> <b>${rankLabel.toUpperCase()}</b>\n` +
+                `• <b>Hệ thống PayOS:</b> GD thanh toán nâng cấp thành công\n` +
+                `• <b>Phí nâng cấp:</b> ${upgradeFee.toLocaleString()} đ\n` +
+                `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
               await sendTelegramNotification(telegramMsg, settings);
             } catch (err) {
               console.error("Lỗi lấy settings cho Telegram Rank upgrade:", err);
