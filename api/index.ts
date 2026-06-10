@@ -3518,14 +3518,13 @@ router.post("/loans", async (req: any, res) => {
           }
 
           const telegramMsg = `💸 <b>YÊU CẦU ĐĂNG KÝ VAY MỚI</b>\n\n` +
-            `• <b>Khách hàng:</b> <code>${(l.userName || 'CHƯA CẬP NHẬT').toUpperCase()}</code>\n` +
-            `• <b>Số điện thoại:</b> <code>${uDetails?.phone || 'N/A'}</code>\n` +
-            `• <b>Mã khoản vay:</b> <code>${l.id || 'N/A'}</code>\n\n` +
-            `• <b>Số tiền đề xuất:</b> 💰 <b>${l.amount.toLocaleString()} đ</b>\n` +
-            `• <b>Thời hạn vay:</b> <code>${l.term || 0} ngày</code>\n` +
-            `• <b>Thụ hưởng:</b> <code>${uDetails?.bankAccountNumber || 'Chưa liên kết'}</code> (${uDetails?.bankName || 'Chưa liên kết'})\n` +
-            `• <b>Mục đích vay:</b> <i>${l.loanPurpose || 'Chi tiêu cá nhân'}</i>\n\n` +
-            `⏰ <i>Thời gian: ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
+            `• <b>Người vay:</b> <code>${(l.userName || 'CHƯA CẬP NHẬT').toUpperCase()}</code>\n` +
+            `• <b>ID:</b> <code>${l.userId}</code>\n` +
+            `• <b>Số tiền vay:</b> 💰 <b>${l.amount.toLocaleString()} đ</b>\n` +
+            `• <b>Mục đích vay:</b> <i>${l.loanPurpose || 'Chi tiêu cá nhân'}</i>\n` +
+            `• <b>Ngày đến hạn:</b> 📅 <b>${l.date || 'Chưa xác định'}</b>\n` +
+            `• <b>Trạng thái:</b> ⏳ <b>${l.status || 'CHỜ DUYỆT'}</b>\n` +
+            `• <b>Thời gian tạo:</b> <code>${l.createdAt || (new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'))}</code>`;
 
           await sendTelegramNotification(telegramMsg, settings);
         } catch (err) {
@@ -3564,14 +3563,14 @@ router.post("/loans", async (req: any, res) => {
 
           const labelUpper = typeLabel.toUpperCase();
           const telegramMsg = `🔔 <b>YÊU CẦU THANH TOÁN KHOẢN VAY</b>\n\n` +
-            `• <b>Khách hàng:</b> <code>${(l.userName || 'CHƯA CẬP NHẬT').toUpperCase()}</code>\n` +
-            `• <b>Số điện thoại:</b> <code>${uDetails?.phone || 'N/A'}</code>\n` +
-            `• <b>Mã khoản vay:</b> <code>${l.id}</code>\n\n` +
-            `• <b>Hình thức:</b> 🏷️ <b>${labelUpper}</b>\n` +
+            `• <b>Người thanh toán:</b> <code>${(l.userName || 'CHƯA CẬP NHẬT').toUpperCase()}</code>\n` +
+            `• <b>ID:</b> <code>${l.userId}</code>\n` +
+            `• <b>Mã khoản vay:</b> <code>${l.id}</code>\n` +
+            `• <b>Phân loại:</b> 📊 <b>${labelUpper}</b>\n` +
             `• <b>Số tiền thanh toán:</b> 💰 <b>${(l.settlementType === 'PARTIAL' && l.partialAmount ? l.partialAmount : l.amount).toLocaleString()} đ</b>\n` +
-            `• <b>Gốc khoản vay:</b> <code>${l.amount.toLocaleString()} đ</code>\n\n` +
-            `📸 <b>Hóa đơn đối soát:</b> ${l.billImage ? `<a href="${l.billImage}">[Bấm Xem Biên Lai]</a>` : '<i>Chưa có ảnh</i>'}\n` +
-            `⏰ <i>Thời gian: ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
+            `• <b>Biên lai thanh toán:</b> ${l.billImage ? `<a href="${l.billImage}">[Bấm Xem Biên Lai]</a>` : '<i>Chưa có ảnh</i>'}\n` +
+            `• <b>Trạng thái:</b> ⏳ <b>${l.status || 'CHỜ DUYỆT'}</b>\n` +
+            `• <b>Thời gian yêu cầu:</b> <code>${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</code>`;
           await sendTelegramNotification(telegramMsg, settings);
         } catch (err) {
           console.error("Lỗi lấy settings/gửi Telegram Settle:", err);
@@ -3850,10 +3849,11 @@ router.post("/loan/delete", async (req: any, res) => {
         }
       }
       
-      // Also notify user about the deletion
+      // Also notify user and admins about the deletion
       const io = req.app.get("io");
       if (io) {
         io.to(`user_${loan.userId}`).emit("loan_deleted", { id: loanId });
+        io.to("admin").emit("loan_deleted", { id: loanId });
       }
     }
     

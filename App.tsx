@@ -1519,7 +1519,9 @@ const App: React.FC = () => {
 
     socket.on('loan_deleted', (data: { id: string }) => {
       console.log('[REALTIME] Loan deleted:', data.id);
+      let deletedLoan: LoanRecord | undefined;
       setLoans(prev => {
+        deletedLoan = prev.find(l => l.id === data.id);
         const next = prev.filter(l => l.id !== data.id);
         localStorage.setItem('ndv_loans', JSON.stringify(next));
         
@@ -1539,6 +1541,19 @@ const App: React.FC = () => {
               return nextUser;
             });
           }
+        }
+
+        // Recalculate balance for Admin's registeredUsers list
+        if (deletedLoan) {
+          const loanUserId = deletedLoan.userId;
+          setRegisteredUsers(prevUsers => prevUsers.map(u => {
+            if (u.id === loanUserId) {
+              const nextUserLoans = next.filter(l => l.userId === loanUserId);
+              const newBalance = calculateUserBalance(u, nextUserLoans);
+              return { ...u, balance: newBalance };
+            }
+            return u;
+          }));
         }
         
         return next;
@@ -3785,6 +3800,7 @@ const App: React.FC = () => {
       if (resp.ok) {
         setLoans(prev => prev.filter(l => l.id !== loanId));
         toast.success("Đã xóa khoản vay");
+        await fetchFullData(true);
       } else {
         const err = await resp.json();
         toast.error(err.error || "Không thể xóa khoản vay");
