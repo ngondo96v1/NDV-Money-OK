@@ -1285,15 +1285,15 @@ router.post("/settings", async (req: any, res) => {
   if (newConfig.SYSTEM_BUDGET !== undefined && newBudget > oldBudget && (newBudget - oldBudget) >= 1000000) {
     const extraBudget = newBudget - oldBudget;
     const title = "BỔ SUNG NGÂN SÁCH";
-    const body = `Cập nhật: NGÂN SÁCH đã được bổ sung thêm ${extraBudget.toLocaleString('vi-VN')} đ.`;
+    const body = `NGÂN SÁCH đã được bổ sung thêm ${extraBudget.toLocaleString('vi-VN')} đ.`;
     broadcastPushNotification(title, body, client);
   } else if (newConfig.MAINTENANCE_MODE !== undefined && newMaintenanceMode && !oldMaintenanceMode) {
     const title = "BẢO TRÌ HỆ THỐNG";
-    const body = "Hệ thống đang tiến hành BẢO TRÌ định kỳ. Các chức năng sẽ tạm ngưng hoạt động cho tới khi bảo trì hoàn tất.";
+    const body = "Hệ thống đang tiến hành BẢO TRÌ để nâng cấp dịch vụ";
     broadcastPushNotification(title, body, client);
   } else if (newConfig.MAINTENANCE_MODE !== undefined && !newMaintenanceMode && oldMaintenanceMode) {
     const title = "BẢO TRÌ HOÀN TẤT";
-    const body = "Hệ thống đã hoàn tất BẢO TRÌ. Hệ thống đã hoạt động bình thường.";
+    const body = "Hệ thống đã hoàn tất BẢO TRÌ";
     broadcastPushNotification(title, body, client);
   }
   
