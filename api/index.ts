@@ -1284,16 +1284,16 @@ router.post("/settings", async (req: any, res) => {
   // Send notifications for budget additions or maintenance mode toggles
   if (newConfig.SYSTEM_BUDGET !== undefined && newBudget > oldBudget && (newBudget - oldBudget) >= 1000000) {
     const extraBudget = newBudget - oldBudget;
-    const title = "Hệ thống bổ sung ngân sách giải ngân";
-    const body = `Cập nhật: Nguồn quỹ giải ngân đã được bổ sung thêm ${extraBudget.toLocaleString('vi-VN')} đ. Quý khách có nhu cầu vay có thể đăng ký vay hoặc nâng hạng mức vay ngay bây giờ!`;
+    const title = "BỔ SUNG NGÂN SÁCH";
+    const body = `Cập nhật: NGÂN SÁCH đã được bổ sung thêm ${extraBudget.toLocaleString('vi-VN')} đ.`;
     broadcastPushNotification(title, body, client);
   } else if (newConfig.MAINTENANCE_MODE !== undefined && newMaintenanceMode && !oldMaintenanceMode) {
-    const title = "Thông báo bảo trì hệ thống";
-    const body = "Hệ thống đang tiến hành bảo trì định kỳ nguồn quỹ giải ngân. Các chức năng đăng ký vay mới sẽ tạm ngưng hoạt động cho tới khi bảo trì hoàn tất.";
+    const title = "BẢO TRÌ HỆ THỐNG";
+    const body = "Hệ thống đang tiến hành BẢO TRÌ định kỳ. Các chức năng sẽ tạm ngưng hoạt động cho tới khi bảo trì hoàn tất.";
     broadcastPushNotification(title, body, client);
   } else if (newConfig.MAINTENANCE_MODE !== undefined && !newMaintenanceMode && oldMaintenanceMode) {
-    const title = "Bảo trì hoàn tất - Nguồn quỹ giải ngân hoạt động trở lại";
-    const body = "Hệ thống đã hoàn tất bảo trì nguồn quỹ giải ngân. Chức năng nhận hồ sơ vay mới đã hoạt động bình thường.";
+    const title = "BẢO TRÌ HOÀN TẤT";
+    const body = "Hệ thống đã hoàn tất BẢO TRÌ. Hệ thống đã hoạt động bình thường.";
     broadcastPushNotification(title, body, client);
   }
   
