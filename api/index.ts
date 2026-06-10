@@ -1285,15 +1285,15 @@ router.post("/settings", async (req: any, res) => {
   if (newConfig.SYSTEM_BUDGET !== undefined && newBudget > oldBudget && (newBudget - oldBudget) >= 1000000) {
     const extraBudget = newBudget - oldBudget;
     const title = "BỔ SUNG NGÂN SÁCH";
-    const body = `NGÂN SÁCH đã được bổ sung thêm ${extraBudget.toLocaleString('vi-VN')} đ.`;
+    const body = `NGÂN SÁCH đã được bổ sung thêm ${extraBudget.toLocaleString('vi-VN')} đ. Quý khách có thể Đăng ký khoản vay mới hoặc Nâng hạn mức vay ngay bây giờ.`;
     broadcastPushNotification(title, body, client);
   } else if (newConfig.MAINTENANCE_MODE !== undefined && newMaintenanceMode && !oldMaintenanceMode) {
     const title = "BẢO TRÌ HỆ THỐNG";
-    const body = "Hệ thống đang tiến hành BẢO TRÌ để nâng cấp dịch vụ";
+    const body = "Để nâng cao chất lượng Hệ thống đang tiến hành BẢO TRÌ để nâng cấp dịch vụ. Một số chức năng sẽ tạm thời không khả dụng trong thời gian này";
     broadcastPushNotification(title, body, client);
   } else if (newConfig.MAINTENANCE_MODE !== undefined && !newMaintenanceMode && oldMaintenanceMode) {
     const title = "BẢO TRÌ HOÀN TẤT";
-    const body = "Hệ thống đã hoàn tất BẢO TRÌ";
+    const body = "Hệ thống đã hoàn tất BẢO TRÌ, mời Quý khách trải nghiệm dịch vụ mới.";
     broadcastPushNotification(title, body, client);
   }
   
