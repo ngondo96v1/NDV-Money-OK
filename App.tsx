@@ -140,7 +140,7 @@ const App: React.FC = () => {
   });
   const [settleLoanFromDash, setSettleLoanFromDash] = useState<LoanRecord | null>(null);
   const [viewLoanFromDash, setViewLoanFromDash] = useState<LoanRecord | null>(null);
-  const [user, setUser] = useState<User | null>(() => {
+  const [user, setUserState] = useState<User | null>(() => {
     // Check both localStorage (Stay Logged In) and sessionStorage (Session only)
     const savedLocal = localStorage.getItem('vnv_user');
     const savedSession = sessionStorage.getItem('vnv_user');
@@ -155,6 +155,37 @@ const App: React.FC = () => {
     }
     return null;
   });
+
+  const setUser = useCallback((u: User | null | ((prev: User | null) => User | null)) => {
+    setUserState(prev => {
+      const next = typeof u === 'function' ? u(prev) : u;
+      if (!next) {
+        localStorage.removeItem('vnv_user');
+        sessionStorage.removeItem('vnv_user');
+      } else {
+        // Automatically detect which storage has active token or user representation
+        const hasLocalToken = localStorage.getItem('vnv_token') !== null;
+        const hasSessionToken = sessionStorage.getItem('vnv_token') !== null;
+        
+        if (hasLocalToken) {
+          localStorage.setItem('vnv_user', JSON.stringify(next));
+        }
+        if (hasSessionToken) {
+          sessionStorage.setItem('vnv_user', JSON.stringify(next));
+        }
+        if (!hasLocalToken && !hasSessionToken) {
+          if (localStorage.getItem('vnv_user')) {
+            localStorage.setItem('vnv_user', JSON.stringify(next));
+          } else if (sessionStorage.getItem('vnv_user')) {
+            sessionStorage.setItem('vnv_user', JSON.stringify(next));
+          } else {
+            localStorage.setItem('vnv_user', JSON.stringify(next));
+          }
+        }
+      }
+      return next;
+    });
+  }, []);
 
   // State for server-side search and counts
   const [totalUsers, setTotalUsers] = useState<number>(0);
