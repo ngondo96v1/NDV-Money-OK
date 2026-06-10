@@ -3831,21 +3831,30 @@ router.post("/loan/delete", async (req: any, res) => {
 
     // 3. Restore User Balance (Available Limit)
     if (loan && loan.userId) {
+      // Fetch remaining loans to calculate and restore balance robustly
+      const { data: remainingLoans } = await client.from('loans').select('status, amount').eq('userId', loan.userId);
       const { data: user, error: userError } = await client.from('users').select('balance, totalLimit').eq('id', loan.userId).single();
+      
       if (!userError && user) {
-        // Restore balance only for non-settled/non-rejected loans that were actually "active"
-        // Most common case is deleting a pending or active loan to fix client status
-        const isActuallyDeducted = ['CHỜ DUYỆT', 'ĐÃ DUYỆT', 'ĐANG GIẢI NGÂN', 'ĐANG NỢ', 'CHỜ TẤT TOÁN', 'QUÁ HẠN'].includes(loan.status);
+        const uLimit = Number(user.totalLimit || 0);
+        const activeDebt = (remainingLoans || []).filter((l: any) => {
+          const s = String(l.status || '').toUpperCase().normalize('NFC');
+          return s !== 'ĐÃ TẤT TOÁN' && 
+                 s !== 'ĐA TẤT TOÁN' && 
+                 s !== 'BỊ TỪ CHỐI' && 
+                 s !== 'ĐÃ CỘNG DỒN' && 
+                 s !== 'ĐÃ HỦY' && 
+                 s !== 'ĐÃ HUỶ' &&
+                 s !== 'BỊ HỦY';
+        }).reduce((sum: number, l: any) => sum + (Number(l.amount) || 0), 0);
+
+        const newBalance = Math.max(0, uLimit - activeDebt);
+        await client.from('users').update({ balance: newBalance, updatedAt: Date.now() }).eq('id', loan.userId);
         
-        if (isActuallyDeducted) {
-          const newBalance = Math.min(user.totalLimit, (user.balance || 0) + loan.amount);
-          await client.from('users').update({ balance: newBalance, updatedAt: Date.now() }).eq('id', loan.userId);
-          
-          // Notify user of balance update
-          const io = req.app.get("io");
-          if (io) {
-            io.to(`user_${loan.userId}`).emit("user_updated", { id: loan.userId, balance: newBalance });
-          }
+        // Notify user of balance update via socket
+        const io = req.app.get("io");
+        if (io) {
+          io.to(`user_${loan.userId}`).emit("user_updated", { id: loan.userId, balance: newBalance });
         }
       }
       
