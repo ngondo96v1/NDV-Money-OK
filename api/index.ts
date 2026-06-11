@@ -6084,12 +6084,14 @@ router.post("/payment/create-link", async (req, res) => {
       finalDescription = finalDescription.substring(0, 25);
     }
 
+    const isApp = req.body.isApp === true || req.body.isApp === 'true';
+
     const body = {
       orderCode: orderCode,
       amount: Number(amount),
       description: finalDescription,
-      cancelUrl: `${domain}/api/payment-result?payment=cancel&type=${type}&id=${id}&screen=${screen || ''}`,
-      returnUrl: `${domain}/api/payment-result?payment=success&type=${type}&id=${id}&screen=${screen || ''}`,
+      cancelUrl: `${domain}/api/payment-result?payment=cancel&type=${type}&id=${id}&screen=${screen || ''}${isApp ? '&isApp=true' : ''}`,
+      returnUrl: `${domain}/api/payment-result?payment=success&type=${type}&id=${id}&screen=${screen || ''}${isApp ? '&isApp=true' : ''}`,
     };
 
     const paymentLinkResponse = await payosInstance.paymentRequests.create(body);
@@ -6737,11 +6739,16 @@ router.post("/payment/webhook", async (req, res) => {
 });
 
 router.get("/payment-result", (req, res) => {
-  const { payment, type, id, screen } = req.query;
+  const { payment, type, id, screen, isApp } = req.query;
+  const isSuccess = payment === 'success';
+  const statusLabel = isSuccess ? 'THÀNH CÔNG' : 'ĐÃ HỦY / THẤT BẠI';
+  const statusColor = isSuccess ? '#00e676' : '#ff1744';
+
   res.send(`
     <html>
       <head>
-        <title>Kết quả thanh toán</title>
+        <title>Kết Quả Thanh Toán - NDV Money</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
           body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
@@ -6749,33 +6756,142 @@ router.get("/payment-result", (req, res) => {
             flex-direction: column; 
             align-items: center; 
             justify-content: center; 
-            height: 100vh; 
-            background: #000; 
+            min-height: 100vh; 
+            background: #0d0d0d; 
             color: #fff; 
             margin: 0;
+            padding: 16px;
+            box-sizing: border-box;
             text-align: center;
           }
+          .card {
+            background: #161616;
+            border: 1px solid #222;
+            border-radius: 16px;
+            padding: 32px 24px;
+            max-width: 380px;
+            width: 100%;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+          }
           .loader { 
-            border: 4px solid #1a1a1a; 
-            border-top: 4px solid #ff8c00; 
+            border: 3px solid #222; 
+            border-top: 3px solid #ff8c00; 
             border-radius: 50%; 
-            width: 50px; 
-            height: 50px; 
+            width: 44px; 
+            height: 44px; 
             animation: spin 1s linear infinite; 
-            margin-bottom: 24px; 
-            box-shadow: 0 0 20px rgba(255, 140, 0, 0.2);
+            margin-bottom: 20px; 
           }
           @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-          h1 { font-size: 18px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; margin: 0 0 8px 0; }
-          p { font-size: 12px; color: #888; margin: 0; }
+          
+          .icon-status {
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 16px;
+          }
+          .success-bg {
+            background: rgba(0, 230, 118, 0.1);
+            color: #00e676;
+            border: 1.5px solid rgba(0, 230, 118, 0.2);
+          }
+          .fail-bg {
+            background: rgba(255, 23, 68, 0.1);
+            color: #ff1744;
+            border: 1.5px solid rgba(255, 23, 68, 0.2);
+          }
+          
+          h1 { 
+            font-size: 16px; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+            letter-spacing: 1.5px; 
+            margin: 0 0 6px 0; 
+            color: #eaeaea;
+          }
+          .status-text {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 20px;
+          }
+          p { 
+            font-size: 12.5px; 
+            color: #a0a0a0; 
+            margin: 0 0 24px 0; 
+            line-height: 1.5;
+          }
+          .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 12px 18px;
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            text-decoration: none;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-sizing: border-box;
+          }
+          .btn-primary {
+            background: linear-gradient(135deg, #ff8c00 0%, #e06c00 100%);
+            color: #000;
+            border: none;
+            box-shadow: 0 4px 14px rgba(255, 140, 0, 0.3);
+          }
+          .btn-primary:active {
+            transform: scale(0.98);
+            box-shadow: 0 2px 6px rgba(255, 140, 0, 0.2);
+          }
+          .btn-secondary {
+            background: transparent;
+            color: #ccc;
+            border: 1px solid #333;
+          }
+          .btn-secondary:active {
+            background: rgba(255,255,255,0.05);
+          }
         </style>
       </head>
       <body>
-        <div class="loader"></div>
-        <h1>Đang xử lý</h1>
-        <p>Hệ thống đang đồng bộ kết quả thanh toán...</p>
+        <div class="card">
+          ${isSuccess 
+            ? '<div class="icon-status success-bg">✓</div>' 
+            : '<div class="icon-status fail-bg">✕</div>'
+          }
+          <h1>Kết Quả Thanh Toán</h1>
+          <div class="status-text" style="color: ${statusColor};">
+            ${statusLabel}
+          </div>
+          
+          <p id="info-text">
+            Hệ thống đang lưu thông tin giao dịch.<br/>
+            Ứng dụng sẽ tự động mở lại sau vài giây...
+          </p>
+          
+          <div class="loader" id="loading-spinner"></div>
+          
+          <a class="btn btn-primary" id="btn-app" style="display: none;" href="#">QUAY VỀ ỨNG DỤNG NDV MONEY</a>
+          <a class="btn btn-secondary" id="btn-web" href="/dashboard?payment=${payment}&type=${type}&id=${id}&screen=${screen}">TIẾP TỤC TRÊN WEB</a>
+        </div>
+
         <script>
-          // Notify the opener if it exists
+          const isApp = '${isApp}' === 'true';
+          const deepLinkUrl = "com.ndvmoney.app://dashboard?payment=${payment}&type=${type}&id=${id}&screen=${screen}";
+          
+          document.getElementById('btn-app').href = deepLinkUrl;
+
+          // Notify parent tab if opener exists (classic web popup)
           try {
             if (window.opener && !window.opener.closed) {
               window.opener.postMessage({ 
@@ -6785,18 +6901,36 @@ router.get("/payment-result", (req, res) => {
                 id: '${id}', 
                 screen: '${screen}' 
               }, '*');
-              
-              // Give it a moment to process before closing
-              setTimeout(() => {
-                window.close();
-              }, 500);
-            } else {
-              // If no opener, redirect to dashboard
-              window.location.href = '/dashboard?payment=${payment}&type=${type}&id=${id}&screen=${screen}';
             }
           } catch (e) {
             console.error('Error notifying opener:', e);
-            window.location.href = '/dashboard?payment=${payment}&type=${type}&id=${id}&screen=${screen}';
+          }
+
+          if (isApp) {
+            document.getElementById('btn-app').style.display = 'inline-flex';
+            document.getElementById('info-text').innerHTML = 'Giao dịch hoàn tất!<br/>Vui lòng nhấn nút dưới để mở lại ứng dụng NDV Money.';
+            document.getElementById('loading-spinner').style.display = 'none';
+
+            // Auto redirect attempt to the custom scheme
+            window.location.href = deepLinkUrl;
+            
+            // Auto redirect fallback of 3 seconds to try web if they don't have the app installed
+            setTimeout(() => {
+              console.log("Deep link triggered automatically.");
+            }, 500);
+          } else {
+            // Web view flow
+            setTimeout(() => {
+              try {
+                if (window.opener && !window.opener.closed) {
+                  window.close();
+                } else {
+                  window.location.href = '/dashboard?payment=${payment}&type=${type}&id=${id}&screen=${screen}';
+                }
+              } catch (e) {
+                window.location.href = '/dashboard?payment=${payment}&type=${type}&id=${id}&screen=${screen}';
+              }
+            }, 1000);
           }
         </script>
       </body>

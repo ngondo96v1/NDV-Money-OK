@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense, lazy } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 import { AppView, User, UserRank, LoanRecord, Notification, MonthlyStat, AppSettings, Voucher, BudgetLog } from './types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User as UserIcon, Home, Briefcase, Medal, LayoutGrid, Users, Wallet, AlertTriangle, X, Database, Settings, RefreshCcw, Loader2, Sparkles, Check, CreditCard } from 'lucide-react';
@@ -174,6 +176,10 @@ const App: React.FC = () => {
     setIsGlobalProcessing(true);
     
     try {
+      const isApp = window.location.protocol === 'capacitor:' || 
+                    window.location.protocol === 'file:' || 
+                    Capacitor.isNativePlatform();
+
       const response = await authenticatedFetch('/api/payment/create-link', {
         method: 'POST',
         body: JSON.stringify({
@@ -184,7 +190,8 @@ const App: React.FC = () => {
           settleType,
           partialAmount,
           voucherId,
-          screen: currentView
+          screen: currentView,
+          isApp: isApp
         })
       });
       
@@ -1828,6 +1835,54 @@ const App: React.FC = () => {
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
+  }, [processPaymentResult]);
+
+  // Handle Deep Linking in Capacitor (Native App redirect)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const setupDeepLinks = async () => {
+      CapacitorApp.addListener('appUrlOpen', (event: { url: string }) => {
+        console.log('[DEEPLINK] App opened with URL:', event.url);
+        try {
+          // Parse the URL: com.ndvmoney.app://dashboard?payment=success&...
+          const parsedUrl = new URL(event.url);
+          const params = new URLSearchParams(parsedUrl.search);
+          const payment = params.get('payment');
+          const screen = params.get('screen');
+          const type = params.get('type');
+          const id = params.get('id');
+
+          if (payment) {
+            console.log('[DEEPLINK] Parsed success/cancel callback parameters:', { payment, screen, type, id });
+            const cleanType = type === 'undefined' ? '' : type;
+            const cleanId = id === 'undefined' ? '' : id;
+            const cleanScreen = screen === 'undefined' ? '' : screen;
+
+            processPaymentResult(payment, cleanScreen || '', cleanType || '', cleanId || '');
+          }
+        } catch (e) {
+          console.error('[DEEPLINK] Error handling deep link url:', event.url, e);
+          
+          // Fallback parsing for custom schemes without standard format of URL parser (some webviews don't support com.ndvmoney.app:// fully via native JS URL class)
+          if (event.url.includes('payment=')) {
+            const queryPart = event.url.split('?')[1];
+            if (queryPart) {
+              const params = new URLSearchParams(queryPart);
+              const payment = params.get('payment');
+              const screen = params.get('screen');
+              const type = params.get('type');
+              const id = params.get('id');
+              if (payment) {
+                processPaymentResult(payment, screen || '', type || '', id || '');
+              }
+            }
+          }
+        }
+      });
+    };
+
+    setupDeepLinks();
   }, [processPaymentResult]);
 
   // Restore sub-state when data is loaded
