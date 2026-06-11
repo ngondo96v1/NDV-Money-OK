@@ -3534,52 +3534,54 @@ router.post("/loans", async (req: any, res) => {
         // Telegram Notification
         try {
           const settings = await getMergedSettings(client);
-          const labelUpper = typeLabel.toUpperCase();
           const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 10) / 100;
           const fineAmount = Math.round((l.fine || 0) / 1000) * 1000;
           const loanAmount = l.amount || 0;
           const partialAmt = l.partialAmount || 0;
 
+          let labelUpper = "";
           let breakdownMsg = "";
           if (l.settlementType === 'PRINCIPAL') {
+            labelUpper = "GIA HẠN (GH)";
             const extFee = Math.round((loanAmount * feePercent) / 1000) * 1000;
             const totalExt = extFee + fineAmount;
-            breakdownMsg = `• <b>Thông tin gia hạn:</b>\n` +
-              `  - Tiền gốc (giữ nguyên): <code>${loanAmount.toLocaleString('vi-VN')} đ</code>\n` +
-              `  - Phí dịch vụ gia hạn (${settings.PRE_DISBURSEMENT_FEE || 10}%): <code>${extFee.toLocaleString('vi-VN')} đ</code>\n` +
-              `  - Phí phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
-              `  - ➡️ <b>TỔNG SỐ TIỀN CẦN CHUYỂN:</b> <code>${totalExt.toLocaleString('vi-VN')} đ</code>`;
+            breakdownMsg = 
+              `• Tiền gốc (giữ nguyên): <code>${loanAmount.toLocaleString('vi-VN')} đ</code>\n` +
+              `• Phí gia hạn (${settings.PRE_DISBURSEMENT_FEE || 10}%): <code>${extFee.toLocaleString('vi-VN')} đ</code>\n` +
+              `• Phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
+              `• ➡️ <b>TỔNG CẦN CHUYỂN:</b> <code>${totalExt.toLocaleString('vi-VN')} đ</code>`;
           } else if (l.settlementType === 'PARTIAL') {
+            labelUpper = "THANH TOÁN MỘT PHẦN (TTMP)";
             const remainingPrincipal = Math.max(0, loanAmount - partialAmt);
             const extFeeForRemaining = Math.round((remainingPrincipal * feePercent) / 1000) * 1000;
             const totalPartial = partialAmt + extFeeForRemaining + fineAmount;
-            breakdownMsg = `• <b>Thông tin thanh toán một phần (TTMP):</b>\n` +
-              `  - Số gốc thanh toán đợt này (Trả gốc): <code>${partialAmt.toLocaleString('vi-VN')} đ</code>\n` +
-              `  - Số gốc còn lại (Dư nợ mới): <code>${remainingPrincipal.toLocaleString('vi-VN')} đ</code>\n` +
-              `  - Phí dịch vụ dư nợ mới (${settings.PRE_DISBURSEMENT_FEE || 10}%): <code>${extFeeForRemaining.toLocaleString('vi-VN')} đ</code>\n` +
-              `  - Phí phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
-              `  - ➡️ <b>TỔNG SỐ TIỀN CẦN CHUYỂN:</b> <code>${totalPartial.toLocaleString('vi-VN')} đ</code>`;
+            breakdownMsg = 
+              `• Số trả gốc kỳ này: <code>${partialAmt.toLocaleString('vi-VN')} đ</code>\n` +
+              `• Dư nợ mới kỳ tới: <code>${remainingPrincipal.toLocaleString('vi-VN')} đ</code>\n` +
+              `• Phí cho dư nợ mới: <code>${extFeeForRemaining.toLocaleString('vi-VN')} đ</code>\n` +
+              `• Phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
+              `• ➡️ <b>TỔNG CẦN CHUYỂN:</b> <code>${totalPartial.toLocaleString('vi-VN')} đ</code>`;
           } else {
+            labelUpper = "TẤT TOÁN TOÀN BỘ (TT)";
             const totalSettle = loanAmount + fineAmount;
-            breakdownMsg = `• <b>Thông tin tất toán:</b>\n` +
-              `  - Tiền tất toán (Tiền gốc): <code>${loanAmount.toLocaleString('vi-VN')} đ</code>\n` +
-              `  - Phí phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
-              `  - ➡️ <b>TỔNG SỐ TIỀN CẦN CHUYỂN:</b> <code>${totalSettle.toLocaleString('vi-VN')} đ</code>`;
+            breakdownMsg = 
+              `• Tiền gốc tất toán: <code>${loanAmount.toLocaleString('vi-VN')} đ</code>\n` +
+              `• Phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
+              `• ➡️ <b>TỔNG CẦN CHUYỂN:</b> <code>${totalSettle.toLocaleString('vi-VN')} đ</code>`;
           }
 
           const billUrl = l.billImage && typeof l.billImage === 'string' && l.billImage.startsWith('http') 
-            ? `<a href="${l.billImage}">Nhấp vào đây để xem ảnh</a>` 
-            : (l.billImage ? 'Dữ liệu ảnh Base64 (Đã lưu trữ)' : 'Không có ảnh bill');
+            ? `<a href="${l.billImage}">Nhấp để xem ảnh</a>` 
+            : (l.billImage ? 'Dữ liệu ảnh' : 'Không có ảnh');
 
-          const telegramMsg = `<b>🔔 YÊU CẦU THANH TOÁN (${labelUpper})</b>\n` +
-            `• <b>Khách hàng:</b> ${l.userName || 'Chưa cập nhật'}\n` +
-            `• <b>ID User:</b> <code>${l.userId}</code>\n` +
-            `• <b>Mã khoản vay:</b> <code>${l.id}</code>\n` +
-            `• <b>Phân loại:</b> Yêu cầu ${typeLabel.toLowerCase()} (Đã up bill đối soát)\n` +
+          const telegramMsg = `<b>🔔 YÊU CẦU THANH TOÁN: ${labelUpper}</b>\n` +
+            `• Khách hàng: <b>${l.userName || 'Chưa cập nhật'}</b>\n` +
+            `• ID User: <code>${l.userId}</code>\n` +
+            `• Mã chuyển: <code>${l.id}</code>\n` +
             breakdownMsg + `\n` +
-            `• <b>Ảnh đối soát:</b> ${billUrl}\n` +
-            `• <b>Trạng thái:</b> Chờ Admin xác nhận thanh toán\n` +
-            `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+            `• Minh chứng: ${billUrl}\n` +
+            `• Trạng thái: <i>Chờ xác nhận thanh toán</i>\n` +
+            `• Thời gian: <i>${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
           await sendTelegramNotification(telegramMsg, settings);
         } catch (err) {
           console.error("Lỗi lấy settings/gửi Telegram Settle:", err);
@@ -6527,48 +6529,49 @@ router.post("/payment/webhook", async (req, res) => {
              // Telegram Notification
              try {
                const settings = await getMergedSettings(client);
-               const labelUpper = settleLabel.toUpperCase();
                const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 10) / 100;
                const fineAmount = Math.round((loan.fine || 0) / 1000) * 1000;
                const loanAmount = loan.amount || 0;
                const partialAmt = loan.partialAmount || 0;
 
+               let labelUpper = "";
                let breakdownMsg = "";
                if (settleType === 'PRINCIPAL') {
+                 labelUpper = "GIA HẠN TỰ ĐỘNG (GH_AUTO)";
                  const extFee = Math.round((loanAmount * feePercent) / 1000) * 1000;
                  const totalExt = extFee + fineAmount;
-                 breakdownMsg = `• <b>Thông tin gia hạn:</b>\n` +
-                   `  - Tiền gốc (giữ nguyên): <code>${loanAmount.toLocaleString('vi-VN')} đ</code>\n` +
-                   `  - Phí dịch vụ gia hạn (${settings.PRE_DISBURSEMENT_FEE || 10}%): <code>${extFee.toLocaleString('vi-VN')} đ</code>\n` +
-                   `  - Phí phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
-                   `  - ➡️ <b>TỔNG SỐ TIỀN ĐÃ THANH TOÁN:</b> <code>${totalExt.toLocaleString('vi-VN')} đ</code>`;
+                 breakdownMsg = 
+                   `• Tiền gốc (giữ nguyên): <code>${loanAmount.toLocaleString('vi-VN')} đ</code>\n` +
+                   `• Phí gia hạn (${settings.PRE_DISBURSEMENT_FEE || 10}%): <code>${extFee.toLocaleString('vi-VN')} đ</code>\n` +
+                   `• Phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
+                   `• Trạng thái: <i>Đã gia hạn & tạo kỳ mới tự động</i>`;
                } else if (settleType === 'PARTIAL') {
+                 labelUpper = "THANH TOÁN MỘT PHẦN TỰ ĐỘNG (TTMP_AUTO)";
                  const remainingPrincipal = Math.max(0, loanAmount - partialAmt);
                  const extFeeForRemaining = Math.round((remainingPrincipal * feePercent) / 1000) * 1000;
                  const totalPartial = partialAmt + extFeeForRemaining + fineAmount;
-                 breakdownMsg = `• <b>Thông tin thanh toán một phần (TTMP):</b>\n` +
-                   `  - Số gốc thanh toán (Trả gốc): <code>${partialAmt.toLocaleString('vi-VN')} đ</code>\n` +
-                   `  - Số gốc còn lại (Dư nợ mới): <code>${remainingPrincipal.toLocaleString('vi-VN')} đ</code>\n` +
-                   `  - Phí dịch vụ dư nợ mới (${settings.PRE_DISBURSEMENT_FEE || 10}%): <code>${extFeeForRemaining.toLocaleString('vi-VN')} đ</code>\n` +
-                   `  - Phí phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
-                   `  - ➡️ <b>TỔNG SỐ TIỀN ĐÃ THANH TOÁN:</b> <code>${totalPartial.toLocaleString('vi-VN')} đ</code>`;
+                 breakdownMsg = 
+                   `• Số trả gốc kỳ này: <code>${partialAmt.toLocaleString('vi-VN')} đ</code>\n` +
+                   `• Dư nợ mới kỳ tới: <code>${remainingPrincipal.toLocaleString('vi-VN')} đ</code>\n` +
+                   `• Phí cho dư nợ mới: <code>${extFeeForRemaining.toLocaleString('vi-VN')} đ</code>\n` +
+                   `• Phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
+                   `• Trạng thái: <i>Đã chuyển đổi sang dư nợ mới tự động</i>`;
                } else {
+                 labelUpper = "TẤT TOÁN TỰ ĐỘNG (TT_AUTO)";
                  const totalSettle = loanAmount + fineAmount;
-                 breakdownMsg = `• <b>Thông tin tất toán:</b>\n` +
-                   `  - Tiền tất toán (Tiền gốc): <code>${loanAmount.toLocaleString('vi-VN')} đ</code>\n` +
-                   `  - Phí phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
-                   `  - ➡️ <b>TỔNG SỐ TIỀN ĐẠT TẤT TOÁN:</b> <code>${totalSettle.toLocaleString('vi-VN')} đ</code>`;
+                 breakdownMsg = 
+                   `• Tiền gốc tất toán: <code>${loanAmount.toLocaleString('vi-VN')} đ</code>\n` +
+                   `• Phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
+                   `• Trạng thái: <i>Đã tất toán hoàn tất tự động</i>`;
                }
 
-               const telegramMsg = `<b>💸 THANH TOÁN TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
-                 `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
-                 `• <b>Số điện thoại:</b> <code>${user.phone}</code>\n` +
-                 `• <b>Mã khoản vay:</b> <code>${loanId}</code>\n` +
-                 `• <b>Hệ thống PayOS:</b> GD thanh toán tự động thành công\n` +
-                 `• <b>Phân loại:</b> ${labelUpper}\n` +
+               const telegramMsg = `<b>💸 THANH TOÁN TỰ ĐỘNG: ${labelUpper}</b>\n` +
+                 `• Khách hàng: <b>${user.fullName || 'Chưa cập nhật'}</b>\n` +
+                 `• Số điện thoại: <code>${user.phone}</code>\n` +
+                 `• Mã khoản vay: <code>${loanId}</code>\n` +
                  breakdownMsg + `\n` +
-                 `• <b>Số tiền thực thu (Nhận từ cổng):</b> <code>${amount.toLocaleString('vi-VN')} đ</code>\n` +
-                 `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+                 `• ➡️ <b>SỐ TIỀN THỰC THU:</b> <code>${amount.toLocaleString('vi-VN')} đ</code>\n` +
+                 `• Thời gian: <i>${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
                await sendTelegramNotification(telegramMsg, settings);
              } catch (err) {
                console.error("Lỗi lấy settings cho Telegram PayOS:", err);
@@ -6694,13 +6697,13 @@ router.post("/payment/webhook", async (req, res) => {
             // Telegram Notification (Crucial for Vercel/serverless environments without running sockets)
             try {
               const settings = await getMergedSettings(client);
-              const telegramMsg = `<b>⭐ NÂNG HẠNG TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
-                `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
-                `• <b>Số điện thoại:</b> <code>${user.phone || user.id}</code>\n` +
-                `• <b>Hạng mới nâng cấp:</b> <b>${rankLabel.toUpperCase()}</b>\n` +
-                `• <b>Hệ thống PayOS:</b> GD thanh toán nâng cấp thành công\n` +
-                `• <b>Phí nâng cấp:</b> ${upgradeFee.toLocaleString()} đ\n` +
-                `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+              const telegramMsg = `<b>⭐ NÂNG HẠNG TỰ ĐỘNG (PAYOS): ${rankLabel.toUpperCase()} (UPGRADE)</b>\n` +
+                `• Khách hàng: <b>${user.fullName || 'Chưa cập nhật'}</b>\n` +
+                `• Số điện thoại: <code>${user.phone || user.id}</code>\n` +
+                `• Phân hạng mới: <b>${rankLabel.toUpperCase()}</b>\n` +
+                `• Phí nâng hạng: <code>${upgradeFee.toLocaleString('vi-VN')} đ</code>\n` +
+                `• Trạng thái: <i>Kích hoạt hạn mức mới tự động</i>\n` +
+                `• Thời gian: <i>${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}</i>`;
               await sendTelegramNotification(telegramMsg, settings);
             } catch (err) {
               console.error("Lỗi lấy settings cho Telegram Rank upgrade:", err);
