@@ -3502,8 +3502,9 @@ router.post("/loans", async (req: any, res) => {
           const telegramMsg = `<b>💸 CÓ YÊU CẦU VAY MỚI</b>\n` +
             `• <b>Người vay:</b> ${l.userName || 'Chưa cập nhật'}\n` +
             `• <b>ID User:</b> <code>${l.userId}</code>\n` +
+            `• <b>Mã khoản vay:</b> <code>${l.id}</code>\n` +
             `• <b>Số tiền vay:</b> <code>${l.amount.toLocaleString()} đ</code>\n` +
-            `• <b>Thời hạn:</b> ${l.term || 0} ngày\n` +
+            `• <b>Thời hạn:</b> ${l.date || 'Chưa xác định'}\n` +
             `• <b>Trạng thái:</b> Chờ duyệt giải ngân\n` +
             `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
           await sendTelegramNotification(telegramMsg, settings);
@@ -3534,12 +3535,49 @@ router.post("/loans", async (req: any, res) => {
         try {
           const settings = await getMergedSettings(client);
           const labelUpper = typeLabel.toUpperCase();
+          const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 10) / 100;
+          const fineAmount = Math.round((l.fine || 0) / 1000) * 1000;
+          const loanAmount = l.amount || 0;
+          const partialAmt = l.partialAmount || 0;
+
+          let breakdownMsg = "";
+          if (l.settlementType === 'PRINCIPAL') {
+            const extFee = Math.round((loanAmount * feePercent) / 1000) * 1000;
+            const totalExt = extFee + fineAmount;
+            breakdownMsg = `• <b>Thông tin gia hạn:</b>\n` +
+              `  - Tiền gốc (giữ nguyên): <code>${loanAmount.toLocaleString('vi-VN')} đ</code>\n` +
+              `  - Phí dịch vụ gia hạn (${settings.PRE_DISBURSEMENT_FEE || 10}%): <code>${extFee.toLocaleString('vi-VN')} đ</code>\n` +
+              `  - Phí phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
+              `  - ➡️ <b>TỔNG SỐ TIỀN CẦN CHUYỂN:</b> <code>${totalExt.toLocaleString('vi-VN')} đ</code>`;
+          } else if (l.settlementType === 'PARTIAL') {
+            const remainingPrincipal = Math.max(0, loanAmount - partialAmt);
+            const extFeeForRemaining = Math.round((remainingPrincipal * feePercent) / 1000) * 1000;
+            const totalPartial = partialAmt + extFeeForRemaining + fineAmount;
+            breakdownMsg = `• <b>Thông tin thanh toán một phần (TTMP):</b>\n` +
+              `  - Số gốc thanh toán đợt này (Trả gốc): <code>${partialAmt.toLocaleString('vi-VN')} đ</code>\n` +
+              `  - Số gốc còn lại (Dư nợ mới): <code>${remainingPrincipal.toLocaleString('vi-VN')} đ</code>\n` +
+              `  - Phí dịch vụ dư nợ mới (${settings.PRE_DISBURSEMENT_FEE || 10}%): <code>${extFeeForRemaining.toLocaleString('vi-VN')} đ</code>\n` +
+              `  - Phí phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
+              `  - ➡️ <b>TỔNG SỐ TIỀN CẦN CHUYỂN:</b> <code>${totalPartial.toLocaleString('vi-VN')} đ</code>`;
+          } else {
+            const totalSettle = loanAmount + fineAmount;
+            breakdownMsg = `• <b>Thông tin tất toán:</b>\n` +
+              `  - Tiền tất toán (Tiền gốc): <code>${loanAmount.toLocaleString('vi-VN')} đ</code>\n` +
+              `  - Phí phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
+              `  - ➡️ <b>TỔNG SỐ TIỀN CẦN CHUYỂN:</b> <code>${totalSettle.toLocaleString('vi-VN')} đ</code>`;
+          }
+
+          const billUrl = l.billImage && typeof l.billImage === 'string' && l.billImage.startsWith('http') 
+            ? `<a href="${l.billImage}">Nhấp vào đây để xem ảnh</a>` 
+            : (l.billImage ? 'Dữ liệu ảnh Base64 (Đã lưu trữ)' : 'Không có ảnh bill');
+
           const telegramMsg = `<b>🔔 YÊU CẦU THANH TOÁN (${labelUpper})</b>\n` +
             `• <b>Khách hàng:</b> ${l.userName || 'Chưa cập nhật'}\n` +
             `• <b>ID User:</b> <code>${l.userId}</code>\n` +
             `• <b>Mã khoản vay:</b> <code>${l.id}</code>\n` +
-            `• <b>Số tiền khoản vay:</b> ${l.amount.toLocaleString()} đ\n` +
             `• <b>Phân loại:</b> Yêu cầu ${typeLabel.toLowerCase()} (Đã up bill đối soát)\n` +
+            breakdownMsg + `\n` +
+            `• <b>Ảnh đối soát:</b> ${billUrl}\n` +
             `• <b>Trạng thái:</b> Chờ Admin xác nhận thanh toán\n` +
             `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
           await sendTelegramNotification(telegramMsg, settings);
@@ -6348,69 +6386,69 @@ router.post("/payment/webhook", async (req, res) => {
                 })
                 .eq('id', loan.userId);
 
-            // PRINCIPAL (Gia hạn) or PARTIAL (TTMP): Create next cycle loan
-            const nextCount = (loan.principalPaymentCount || 0) + 1;
-            const nextExtensionCount = settleType === 'PRINCIPAL' ? (loan.extensionCount || 0) + 1 : (loan.extensionCount || 0);
-            const nextPartialCount = settleType === 'PARTIAL' ? (loan.partialPaymentCount || 0) + 1 : (loan.partialPaymentCount || 0);
-            
-            // Use originalBaseId if available, otherwise strip prefixes from current ID
-            let cleanBaseId = loan.originalBaseId || loan.id;
-            if (!loan.originalBaseId) {
-              const allAbbrs = (settings.MASTER_CONFIGS || [])
-                .filter((c: any) => c.category === 'ABBREVIATION' || c.category === 'TRANSFER_CONTENT' || c.category === 'CONTRACT_NEW')
-                .map((c: any) => c.abbreviation)
-                .filter(Boolean);
-              const systemAbbrs = ['TTMP', 'GH', 'GN', 'NH', 'TT', 'TATTOAN', 'GIAHAN', 'GIAINGAN'];
-              const combinedAbbrs = [...new Set([...allAbbrs, ...systemAbbrs])];
-              const stripRegex = new RegExp(`^(${combinedAbbrs.join('|')})`, 'i');
+              // PRINCIPAL (Gia hạn) or PARTIAL (TTMP): Create next cycle loan
+              const nextCount = (loan.principalPaymentCount || 0) + 1;
+              const nextExtensionCount = settleType === 'PRINCIPAL' ? (loan.extensionCount || 0) + 1 : (loan.extensionCount || 0);
+              const nextPartialCount = settleType === 'PARTIAL' ? (loan.partialPaymentCount || 0) + 1 : (loan.partialPaymentCount || 0);
               
-              const oldId = cleanBaseId;
-              cleanBaseId = cleanBaseId.replace(stripRegex, '').trim();
-              if (oldId !== cleanBaseId) {
-                cleanBaseId = cleanBaseId.replace(/(LAN|LẦN|L|#)\s*\d+$/i, '').replace(/\d+$/, '').trim();
+              // Use originalBaseId if available, otherwise strip prefixes from current ID
+              let cleanBaseId = loan.originalBaseId || loan.id;
+              if (!loan.originalBaseId) {
+                const allAbbrs = (settings.MASTER_CONFIGS || [])
+                  .filter((c: any) => c.category === 'ABBREVIATION' || c.category === 'TRANSFER_CONTENT' || c.category === 'CONTRACT_NEW')
+                  .map((c: any) => c.abbreviation)
+                  .filter(Boolean);
+                const systemAbbrs = ['TTMP', 'GH', 'GN', 'NH', 'TT', 'TATTOAN', 'GIAHAN', 'GIAINGAN'];
+                const combinedAbbrs = [...new Set([...allAbbrs, ...systemAbbrs])];
+                const stripRegex = new RegExp(`^(${combinedAbbrs.join('|')})`, 'i');
+                
+                const oldId = cleanBaseId;
+                cleanBaseId = cleanBaseId.replace(stripRegex, '').trim();
+                if (oldId !== cleanBaseId) {
+                  cleanBaseId = cleanBaseId.replace(/(LAN|LẦN|L|#)\s*\d+$/i, '').replace(/\d+$/, '').trim();
+                }
               }
-            }
 
-            // Generate new ID using Admin configured formats
-            const format = settleType === 'PRINCIPAL' 
-              ? getFormatFromSettings(settings, 'EXTENSION', settings.CONTRACT_FORMAT_EXTENSION || "{ID}GH{N}", 'SYSTEM_CONTRACT_FORMATS_CONFIG')
-              : getFormatFromSettings(settings, 'PARTIAL_SETTLEMENT', settings.CONTRACT_FORMAT_PARTIAL_SETTLEMENT || "{ID}TTMP{N}", 'SYSTEM_CONTRACT_FORMATS_CONFIG');
-            
-            const newId = generateContractIdServer(loan.userId, format, settings, cleanBaseId, undefined, nextCount, nextExtensionCount, nextPartialCount);
-            
-            // Calculate new due date (1st of next month)
-            let newDueDate = loan.date;
-            if (loan.date && typeof loan.date === 'string') {
-              const [d, m, y] = loan.date.split('/').map(Number);
-              const currentDueDate = new Date(y, m - 1, d);
-              const nextCycleDate = new Date(currentDueDate.getFullYear(), currentDueDate.getMonth() + 1, 1);
-              const dayStr = nextCycleDate.getDate().toString().padStart(2, '0');
-              const monthStr = (nextCycleDate.getMonth() + 1).toString().padStart(2, '0');
-              newDueDate = `${dayStr}/${monthStr}/${nextCycleDate.getFullYear()}`;
-            }
-            
-            const nextLoanAmount = settleType === 'PARTIAL' ? (loan.amount - (loan.partialAmount || 0)) : loan.amount;
-            
-            nextLoan = {
-              ...loan,
-              id: newId,
-              originalBaseId: cleanBaseId,
-              status: 'ĐANG NỢ',
-              date: newDueDate,
-              amount: nextLoanAmount,
-              principalPaymentCount: nextCount,
-              extensionCount: nextExtensionCount,
-              partialPaymentCount: nextPartialCount,
-              billImage: null,
-              settlementType: null,
-              partialAmount: null,
-              fine: 0,
-              payosOrderCode: null,
-              payosCheckoutUrl: null,
-              payosExpireAt: null,
-              updatedAt: Date.now()
-            };
+              // Generate new ID using Admin configured formats
+              const format = settleType === 'PRINCIPAL' 
+                ? getFormatFromSettings(settings, 'EXTENSION', settings.CONTRACT_FORMAT_EXTENSION || "{ID}GH{N}", 'SYSTEM_CONTRACT_FORMATS_CONFIG')
+                : getFormatFromSettings(settings, 'PARTIAL_SETTLEMENT', settings.CONTRACT_FORMAT_PARTIAL_SETTLEMENT || "{ID}TTMP{N}", 'SYSTEM_CONTRACT_FORMATS_CONFIG');
               
+              const newId = generateContractIdServer(loan.userId, format, settings, cleanBaseId, undefined, nextCount, nextExtensionCount, nextPartialCount);
+              
+              // Calculate new due date (1st of next month)
+              let newDueDate = loan.date;
+              if (loan.date && typeof loan.date === 'string') {
+                const [d, m, y] = loan.date.split('/').map(Number);
+                const currentDueDate = new Date(y, m - 1, d);
+                const nextCycleDate = new Date(currentDueDate.getFullYear(), currentDueDate.getMonth() + 1, 1);
+                const dayStr = nextCycleDate.getDate().toString().padStart(2, '0');
+                const monthStr = (nextCycleDate.getMonth() + 1).toString().padStart(2, '0');
+                newDueDate = `${dayStr}/${monthStr}/${nextCycleDate.getFullYear()}`;
+              }
+              
+              const nextLoanAmount = settleType === 'PARTIAL' ? (loan.amount - (loan.partialAmount || 0)) : loan.amount;
+              
+              nextLoan = {
+                ...loan,
+                id: newId,
+                originalBaseId: cleanBaseId,
+                status: 'ĐANG NỢ',
+                date: newDueDate,
+                amount: nextLoanAmount,
+                principalPaymentCount: nextCount,
+                extensionCount: nextExtensionCount,
+                partialPaymentCount: nextPartialCount,
+                billImage: null,
+                settlementType: null,
+                partialAmount: null,
+                fine: 0,
+                payosOrderCode: null,
+                payosCheckoutUrl: null,
+                payosExpireAt: null,
+                updatedAt: Date.now()
+              };
+
               await client.from('loans').insert([nextLoan]);
               
               // Update user rank progress and balance if partial
@@ -6486,25 +6524,58 @@ router.post("/payment/webhook", async (req, res) => {
               type: 'SYSTEM'
             }]);
 
-            // Telegram Notification
-            try {
-              const settings = await getMergedSettings(client);
-              const labelUpper = settleLabel.toUpperCase();
-              const telegramMsg = `<b>💸 THANH TOÁN TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
-                `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
-                `• <b>Số điện thoại:</b> <code>${user.phone}</code>\n` +
-                `• <b>Mã khoản vay:</b> <code>${loanId}</code>\n` +
-                `• <b>Hệ thống PayOS:</b> GD thanh toán tự động thành công\n` +
-                `• <b>Phân loại:</b> ${labelUpper}\n` +
-                `• <b>Số tiền nạp:</b> ${amount.toLocaleString()} đ\n` +
-                `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
-              await sendTelegramNotification(telegramMsg, settings);
-            } catch (err) {
-              console.error("Lỗi lấy settings cho Telegram PayOS:", err);
+             // Telegram Notification
+             try {
+               const settings = await getMergedSettings(client);
+               const labelUpper = settleLabel.toUpperCase();
+               const feePercent = Number(settings.PRE_DISBURSEMENT_FEE || 10) / 100;
+               const fineAmount = Math.round((loan.fine || 0) / 1000) * 1000;
+               const loanAmount = loan.amount || 0;
+               const partialAmt = loan.partialAmount || 0;
+
+               let breakdownMsg = "";
+               if (settleType === 'PRINCIPAL') {
+                 const extFee = Math.round((loanAmount * feePercent) / 1000) * 1000;
+                 const totalExt = extFee + fineAmount;
+                 breakdownMsg = `• <b>Thông tin gia hạn:</b>\n` +
+                   `  - Tiền gốc (giữ nguyên): <code>${loanAmount.toLocaleString('vi-VN')} đ</code>\n` +
+                   `  - Phí dịch vụ gia hạn (${settings.PRE_DISBURSEMENT_FEE || 10}%): <code>${extFee.toLocaleString('vi-VN')} đ</code>\n` +
+                   `  - Phí phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
+                   `  - ➡️ <b>TỔNG SỐ TIỀN ĐÃ THANH TOÁN:</b> <code>${totalExt.toLocaleString('vi-VN')} đ</code>`;
+               } else if (settleType === 'PARTIAL') {
+                 const remainingPrincipal = Math.max(0, loanAmount - partialAmt);
+                 const extFeeForRemaining = Math.round((remainingPrincipal * feePercent) / 1000) * 1000;
+                 const totalPartial = partialAmt + extFeeForRemaining + fineAmount;
+                 breakdownMsg = `• <b>Thông tin thanh toán một phần (TTMP):</b>\n` +
+                   `  - Số gốc thanh toán (Trả gốc): <code>${partialAmt.toLocaleString('vi-VN')} đ</code>\n` +
+                   `  - Số gốc còn lại (Dư nợ mới): <code>${remainingPrincipal.toLocaleString('vi-VN')} đ</code>\n` +
+                   `  - Phí dịch vụ dư nợ mới (${settings.PRE_DISBURSEMENT_FEE || 10}%): <code>${extFeeForRemaining.toLocaleString('vi-VN')} đ</code>\n` +
+                   `  - Phí phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
+                   `  - ➡️ <b>TỔNG SỐ TIỀN ĐÃ THANH TOÁN:</b> <code>${totalPartial.toLocaleString('vi-VN')} đ</code>`;
+               } else {
+                 const totalSettle = loanAmount + fineAmount;
+                 breakdownMsg = `• <b>Thông tin tất toán:</b>\n` +
+                   `  - Tiền tất toán (Tiền gốc): <code>${loanAmount.toLocaleString('vi-VN')} đ</code>\n` +
+                   `  - Phí phạt quá hạn: <code>${fineAmount.toLocaleString('vi-VN')} đ</code>\n` +
+                   `  - ➡️ <b>TỔNG SỐ TIỀN ĐẠT TẤT TOÁN:</b> <code>${totalSettle.toLocaleString('vi-VN')} đ</code>`;
+               }
+
+               const telegramMsg = `<b>💸 THANH TOÁN TỰ ĐỘNG THÀNH CÔNG (PAYOS)</b>\n` +
+                 `• <b>Khách hàng:</b> ${user.fullName || 'Chưa cập nhật'}\n` +
+                 `• <b>Số điện thoại:</b> <code>${user.phone}</code>\n` +
+                 `• <b>Mã khoản vay:</b> <code>${loanId}</code>\n` +
+                 `• <b>Hệ thống PayOS:</b> GD thanh toán tự động thành công\n` +
+                 `• <b>Phân loại:</b> ${labelUpper}\n` +
+                 breakdownMsg + `\n` +
+                 `• <b>Số tiền thực thu (Nhận từ cổng):</b> <code>${amount.toLocaleString('vi-VN')} đ</code>\n` +
+                 `• <b>Thời gian:</b> ${new Date().toLocaleTimeString('vi-VN')} ${new Date().toLocaleDateString('vi-VN')}`;
+               await sendTelegramNotification(telegramMsg, settings);
+             } catch (err) {
+               console.error("Lỗi lấy settings cho Telegram PayOS:", err);
+             }
             }
           }
         }
-      } 
       // 2. If not a loan, try to find a user with this orderCode (Rank Upgrade)
       else {
         console.log(`[PAYOS] No loan found for orderCode ${orderCode}, searching for user upgrade...`);
