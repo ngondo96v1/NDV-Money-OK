@@ -1931,7 +1931,7 @@ const App: React.FC = () => {
       let currentLoan = { ...loan };
 
       // Fine calculation
-      if ((loan.status === 'ĐANG NỢ' || loan.status === 'CHỜ TẤT TOÁN' || loan.status === 'ĐANG GIẢI NGÂN') && loan.date && typeof loan.date === 'string') {
+      if ((loan.status === 'ĐANG NỢ' || loan.status === 'QUÁ HẠN' || loan.status === 'CHỜ TẤT TOÁN' || loan.status === 'ĐANG GIẢI NGÂN') && loan.date && typeof loan.date === 'string') {
         const fineRate = Number(settings.FINE_RATE || 0.1) / 100;
         const maxFinePercent = Number(settings.MAX_FINE_PERCENT || 30);
         const newFine = calculateFine(loan.amount, loan.date, fineRate, maxFinePercent);
@@ -2002,7 +2002,7 @@ const App: React.FC = () => {
       // B. Rank Demotion: Handle overdue penalties
       const userLoans = newLoans.filter(l => 
         l.userId === targetUser.id && 
-        (l.status === 'ĐANG NỢ' || l.status === 'CHỜ TẤT TOÁN' || l.status === 'ĐANG GIẢI NGÂN')
+        (l.status === 'ĐANG NỢ' || l.status === 'QUÁ HẠN' || l.status === 'CHỜ TẤT TOÁN' || l.status === 'ĐANG GIẢI NGÂN')
       );
 
       let maxDiffDays = 0;

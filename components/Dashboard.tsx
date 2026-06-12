@@ -371,7 +371,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
                 // Calculate current fine dynamically for 100% accuracy display
                 const fineRate = Number(settings.FINE_RATE || 0.1) / 100;
                 const maxPercent = Number(settings.MAX_FINE_PERCENT || 30);
-                const calculatedFine = (item.status === 'ĐANG NỢ' || item.status === 'CHỜ TẤT TOÁN' || item.status === 'ĐANG GIẢI NGÂN') 
+                const calculatedFine = (item.status === 'ĐANG NỢ' || item.status === 'QUÁ HẠN' || item.status === 'CHỜ TẤT TOÁN' || item.status === 'ĐANG GIẢI NGÂN') 
                   ? calculateFine(item.amount, item.date, fineRate, maxPercent)
                   : 0;
                 const currentFine = Math.max(calculatedFine, item.fine || 0);

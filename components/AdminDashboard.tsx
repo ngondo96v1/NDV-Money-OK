@@ -400,22 +400,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     return result;
   }, [budgetLogs, tempStartDate, revenueFilter, isItemRevenueMatched]);
 
-  // Loan Statistics
+  // Loan Statistics - ALWAYS active stats from the unfiltered list of loans
+  // to ensure outstanding/isolated liabilities represent real state under any selective start date config.
   const { settledLoans, pendingLoans, activeLoans, overdueLoans, isolatedBadDebt, isolatedBadDebtPrincipal, isolatedBadDebtFine } = useMemo(() => {
     const today = new Date();
     const lockedUserIds = new Set((users || []).filter(u => u.isLocked).map(u => u.id));
 
-    const isolatedLoans = filteredLoans.filter(l => {
+    const isolatedLoans = loans.filter(l => {
       const activeStatuses = ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'];
       return lockedUserIds.has(l.userId) && activeStatuses.includes(l.status);
     });
 
     return {
       settledLoans: filteredLoans.filter(l => l.status === 'ĐÃ TẤT TOÁN' && l.settlementType !== 'PRINCIPAL' && l.settlementType !== 'PARTIAL'),
-      pendingLoans: filteredLoans.filter(l => l.status === 'CHỜ DUYỆT' || l.status === 'CHỜ TẤT TOÁN'),
-      activeLoans: filteredLoans.filter(l => l.status === 'ĐANG NỢ' && !lockedUserIds.has(l.userId)),
-      overdueLoans: filteredLoans.filter(l => {
-        if ((l.status !== 'ĐANG NỢ' && l.status !== 'CHỜ TẤT TOÁN') || !l.date || typeof l.date !== 'string') return false;
+      pendingLoans: loans.filter(l => l.status === 'CHỜ DUYỆT' || l.status === 'CHỜ TẤT TOÁN'),
+      activeLoans: loans.filter(l => l.status === 'ĐANG NỢ' && !lockedUserIds.has(l.userId)),
+      overdueLoans: loans.filter(l => {
+        if ((l.status !== 'ĐANG NỢ' && l.status !== 'CHỜ TẤT TOÁN' && l.status !== 'QUÁ HẠN') || !l.date || typeof l.date !== 'string') return false;
         if (lockedUserIds.has(l.userId)) return false; // Exclude locked from regular overdue
         const [d, m, y] = l.date.split('/').map(Number);
         const dueDate = new Date(y, m - 1, d);
@@ -425,7 +426,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       isolatedBadDebtPrincipal: isolatedLoans.reduce((sum, l) => sum + (Number(l.amount) || 0), 0),
       isolatedBadDebtFine: isolatedLoans.reduce((sum, l) => sum + (Number(l.fine) || 0), 0)
     };
-  }, [filteredLoans, users]);
+  }, [loans, filteredLoans, users]);
   
   // Financial Statistics
   const { totalDisbursed, totalCollected, activeDebt, collectionRate } = useMemo(() => {
@@ -453,9 +454,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
     );
     const disbursed = originalLoans.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
 
-    // Current real active debt in distribution / outstanding (includes any active rollovers)
-    const debt = filteredLoans
-      ? filteredLoans.filter((l: any) => activeStatuses.includes(l.status) && !lockedUserIds.has(l.userId)).reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
+    // Current real active debt in distribution / outstanding - Always computed from the unfiltered list of loans
+    // to ensure that global liability indicators remain mathematically stable and accurate in real life
+    const debt = loans
+      ? loans.filter((l: any) => activeStatuses.includes(l.status) && !lockedUserIds.has(l.userId)).reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
       : 0;
 
     // True collected capital is the initial real money dispersed minus what is still active/outstanding
@@ -469,7 +471,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
       activeDebt: debt,
       collectionRate: rate
     };
-  }, [filteredLoans, users]);
+  }, [loans, filteredLoans, users]);
 
   // Precise Dynamic Profits calculation for specified Date range filter
   const { filteredLoanProfit, filteredFineProfit, filteredRankProfit } = useMemo(() => {

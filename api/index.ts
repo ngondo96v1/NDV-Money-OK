@@ -2218,11 +2218,25 @@ export const runDailyOverdueChecksAndAutoLock = async (io: any) => {
 
       // Task 1: Auto-update status of overdue loans to 'QUÁ HẠN' in DB
       if (daysOverdue > 0) {
+        const fineRate = Number(settings.FINE_RATE || 0.1) / 100;
+        const maxFinePercent = Number(settings.MAX_FINE_PERCENT || 30);
+        let expectedFine = loan.amount * fineRate * daysOverdue;
+        const maxFine = loan.amount * (maxFinePercent / 100);
+        expectedFine = Math.min(expectedFine, maxFine);
+        expectedFine = Math.ceil(expectedFine / 1000) * 1000;
+
         if (loan.status !== 'QUÁ HẠN' && loan.status !== 'CHỜ TẤT TOÁN') {
-          await client.from('loans').update({ status: 'QUÁ HẠN', updatedAt: Date.now() }).eq('id', loan.id);
+          await client.from('loans').update({ status: 'QUÁ HẠN', fine: expectedFine, updatedAt: Date.now() }).eq('id', loan.id);
           loan.status = 'QUÁ HẠN';
+          loan.fine = expectedFine;
           if (io) {
-            io.to(`user_${loan.userId}`).emit("loan_updated", { ...loan, status: 'QUÁ HẠN' });
+            io.to(`user_${loan.userId}`).emit("loan_updated", { ...loan, status: 'QUÁ HẠN', fine: expectedFine });
+          }
+        } else if (loan.fine !== expectedFine) {
+          await client.from('loans').update({ fine: expectedFine, updatedAt: Date.now() }).eq('id', loan.id);
+          loan.fine = expectedFine;
+          if (io) {
+            io.to(`user_${loan.userId}`).emit("loan_updated", { ...loan, fine: expectedFine });
           }
         }
 

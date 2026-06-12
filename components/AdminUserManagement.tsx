@@ -909,7 +909,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                                       {(() => {
                                         const fineRateVal = Number(settings.FINE_RATE || 0.1) / 100;
                                         const maxPercentVal = Number(settings.MAX_FINE_PERCENT || 30);
-                                        const calculatedFineVal = (loan.status === 'ĐANG NỢ' || loan.status === 'CHỜ TẤT TOÁN' || loan.status === 'ĐANG GIẢI NGÂN') 
+                                        const calculatedFineVal = (loan.status === 'ĐANG NỢ' || loan.status === 'QUÁ HẠN' || loan.status === 'CHỜ TẤT TOÁN' || loan.status === 'ĐANG GIẢI NGÂN') 
                                           ? calculateFine(loan.amount, loan.date || '', fineRateVal, maxPercentVal)
                                           : 0;
                                         const currentFineVal = Math.max(calculatedFineVal, loan.fine || 0);
@@ -1576,7 +1576,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                       const newStatus = e.target.value as LoanRecord['status'];
                       const fRate = Number(settings.FINE_RATE || 0.1) / 100;
                       const mPercent = Number(settings.MAX_FINE_PERCENT || 30);
-                      const newFine = (newStatus === 'ĐANG NỢ' || newStatus === 'CHỜ TẤT TOÁN' || newStatus === 'ĐANG GIẢI NGÂN' || newStatus === 'ĐANG ĐỐI SOÁT')
+                      const newFine = (newStatus === 'ĐANG NỢ' || newStatus === 'QUÁ HẠN' || newStatus === 'CHỜ TẤT TOÁN' || newStatus === 'ĐANG GIẢI NGÂN' || newStatus === 'ĐANG ĐỐI SOÁT')
                         ? calculateFine(editLoanForm.amount, editLoanForm.date, fRate, mPercent)
                         : editLoanForm.fine;
                       setEditLoanForm({ ...editLoanForm, status: newStatus, fine: newFine });
@@ -1603,7 +1603,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                       const newAmount = parseNumberFromDots(e.target.value);
                       const fRate = Number(settings.FINE_RATE || 0.1) / 100;
                       const mPercent = Number(settings.MAX_FINE_PERCENT || 30);
-                      const newFine = (editLoanForm.status === 'ĐANG NỢ' || editLoanForm.status === 'CHỜ TẤT TOÁN' || editLoanForm.status === 'ĐANG GIẢI NGÂN')
+                      const newFine = (editLoanForm.status === 'ĐANG NỢ' || editLoanForm.status === 'QUÁ HẠN' || editLoanForm.status === 'CHỜ TẤT TOÁN' || editLoanForm.status === 'ĐANG GIẢI NGÂN')
                         ? calculateFine(newAmount, editLoanForm.date, fRate, mPercent)
                         : editLoanForm.fine;
                       setEditLoanForm({ ...editLoanForm, amount: newAmount, fine: newFine });
@@ -1632,7 +1632,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                       const newDate = fromHtmlDate(e.target.value);
                       const fRate = Number(settings.FINE_RATE || 0.1) / 100;
                       const mPercent = Number(settings.MAX_FINE_PERCENT || 30);
-                      const newFine = (editLoanForm.status === 'ĐANG NỢ' || editLoanForm.status === 'CHỜ TẤT TOÁN' || editLoanForm.status === 'ĐANG GIẢI NGÂN')
+                      const newFine = (editLoanForm.status === 'ĐANG NỢ' || editLoanForm.status === 'QUÁ HẠN' || editLoanForm.status === 'CHỜ TẤT TOÁN' || editLoanForm.status === 'ĐANG GIẢI NGÂN')
                         ? calculateFine(editLoanForm.amount, newDate, fRate, mPercent)
                         : editLoanForm.fine;
                       setEditLoanForm({ ...editLoanForm, date: newDate, fine: newFine });

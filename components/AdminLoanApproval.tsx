@@ -229,7 +229,7 @@ const AdminLoanApproval: React.FC<AdminLoanApprovalProps> = ({ loans, isGlobalPr
                             const today = new Date();
                       const [d, m, y] = (loan.date && typeof loan.date === 'string') ? loan.date.split('/').map(Number) : [0, 0, 0];
                       const dueDate = d !== 0 ? new Date(y, m - 1, d) : null;
-                      const isOverdue = (loan.status === 'ĐANG NỢ' || loan.status === 'CHỜ TẤT TOÁN') && dueDate && dueDate < today;
+                      const isOverdue = loan.status === 'QUÁ HẠN' || ((loan.status === 'ĐANG NỢ' || loan.status === 'CHỜ TẤT TOÁN') && dueDate && dueDate < today);
                       const fineRate = Number(settings.FINE_RATE || 0.1) / 100;
                       const maxFinePercent = Number(settings.MAX_FINE_PERCENT || 30);
                       const fine = isOverdue ? calculateFine(loan.amount, loan.date || '', fineRate, maxFinePercent) : 0;
