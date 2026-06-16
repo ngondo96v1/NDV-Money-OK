@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { User, LoanRecord, AppSettings } from '../types';
 import { Wallet, X, Eye, FileText, CheckCircle2, ShieldCheck, Eraser, ChevronLeft, CreditCard, CircleHelp, Info, Award, Landmark, FileCheck, AlertCircle, AlertTriangle, ShieldAlert, ChevronRight, History, Calendar, Scale, Check, Loader2, MessageCircle, ArrowUpCircle, ArrowDownToLine, Copy, Camera, Download } from 'lucide-react';
 import ContractModal from './ContractModal';
-import { compressImage, generateContractId, uploadToImgBB, getSystemFormat, generatePaymentContent, replaceContractPlaceholders, getContractDate } from '../utils';
+import { compressImage, generateContractId, uploadToImgBB, getSystemFormat, generatePaymentContent, replaceContractPlaceholders, getContractDate, getVNDate, calculateFine } from '../utils';
 import { BANK_BINS } from '../constants';
 
 interface LoanApplicationProps {
@@ -380,7 +380,7 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
     // Các trạng thái đang xử lý (ngăn chặn spam đơn vay mới)
     const isProcessingLoan = loans.some(l => ['CHỜ DUYỆT', 'ĐÃ DUYỆT', 'ĐANG GIẢI NGÂN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'].includes(l.status));
 
-    const today = new Date();
+    const today = getVNDate();
     
     const isLimitReached = currentCycleTotal >= cycleLimit;
 
@@ -549,8 +549,13 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
                 {displayedLoans.map((item, idx) => {
                   if (!item.date || typeof item.date !== 'string') return null;
                   const [d, m, y] = item.date.split('/').map(Number);
-                  const isOverdue = (item.status === 'ĐANG NỢ' || item.status === 'CHỜ TẤT TOÁN') && new Date(y, m - 1, d) < today;
+                  const isOverdue = (item.status === 'ĐANG NỢ' || item.status === 'CHỜ TẤT TOÁN' || item.status === 'QUÁ HẠN') && new Date(y, m - 1, d) < today;
                   const statusColor = getStatusColor(item.status, isOverdue, item.settlementType);
+
+                  const fRate = Number(settings.FINE_RATE || 0.1) / 100;
+                  const mPercent = Number(settings.MAX_FINE_PERCENT || 30);
+                  const calculatedFine = isOverdue ? calculateFine(item.amount, item.date || '', fRate, mPercent) : 0;
+                  const currentFine = Math.max(calculatedFine, item.fine || 0);
 
                   return (
                     <div key={idx} className={`bg-[#111111] border rounded-2xl p-3.5 flex flex-col gap-2.5 ${isOverdue ? 'border-red-600/30 bg-red-600/5' : 'border-white/5'}`}>
@@ -629,7 +634,7 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
                             {isOverdue && (
                               <div className="text-right">
                                 <p className="text-[6px] font-black text-gray-600 uppercase tracking-widest leading-none">Phí phạt trễ hạn</p>
-                                <p className="text-[9px] font-black text-red-500">{(item.fine || 0).toLocaleString()} đ</p>
+                                <p className="text-[9px] font-black text-red-500">{currentFine.toLocaleString()} đ</p>
                               </div>
                             )}
                           </div>
@@ -816,9 +821,18 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
   const renderSettleDetail = () => {
     if (!settleLoan) return null;
     
-    const amountAll = Math.round(settleLoan.amount + (settleLoan.fine || 0));
-    const amountPrincipal = Math.round((settleLoan.amount * (settings.PRE_DISBURSEMENT_FEE / 100)) + (settleLoan.fine || 0));
-    const amountPartial = Math.round(partialAmount + ((settleLoan.amount - partialAmount) * (settings.PRE_DISBURSEMENT_FEE / 100)) + (settleLoan.fine || 0));
+    const currentSettleLoanFine = (() => {
+      const fRate = Number(settings.FINE_RATE || 0.1) / 100;
+      const mPercent = Number(settings.MAX_FINE_PERCENT || 30);
+      const calculatedFine = (settleLoan.status === 'ĐANG NỢ' || settleLoan.status === 'QUÁ HẠN' || settleLoan.status === 'CHỜ TẤT TOÁN' || settleLoan.status === 'ĐANG GIẢI NGÂN') 
+        ? calculateFine(settleLoan.amount, settleLoan.date || '', fRate, mPercent)
+        : 0;
+      return Math.max(calculatedFine, settleLoan.fine || 0);
+    })();
+
+    const amountAll = Math.round(settleLoan.amount + currentSettleLoanFine);
+    const amountPrincipal = Math.round((settleLoan.amount * (settings.PRE_DISBURSEMENT_FEE / 100)) + currentSettleLoanFine);
+    const amountPartial = Math.round(partialAmount + ((settleLoan.amount - partialAmount) * (settings.PRE_DISBURSEMENT_FEE / 100)) + currentSettleLoanFine);
     
     // Voucher logic
     const availableVouchers = (user?.vouchers || []).filter(v => {
@@ -1110,10 +1124,10 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
                               )}
 
                               <div className="pt-2 space-y-2">
-                                {settleLoan.fine > 0 && (
+                                {currentSettleLoanFine > 0 && (
                                   <div className="flex items-center justify-between px-4 text-[9px] font-black text-red-500 uppercase tracking-widest animate-in fade-in slide-in-from-top-1 duration-300">
                                     <span>Bao gồm phí quá hạn:</span>
-                                    <span>+{(settleLoan.fine || 0).toLocaleString()} đ</span>
+                                    <span>+{currentSettleLoanFine.toLocaleString()} đ</span>
                                   </div>
                                 )}
                                 <div className="bg-black/40 p-4 rounded-xl border border-white/5 flex items-center justify-between">
@@ -1219,10 +1233,10 @@ const LoanApplication: React.FC<LoanApplicationProps> = ({ user, loans, systemBu
 
                                     <div className="space-y-1">
                                       <p className="text-[7px] font-bold text-gray-400 uppercase tracking-widest">Số tiền thanh toán</p>
-                                      {settleLoan.fine > 0 && (
+                                      {currentSettleLoanFine > 0 && (
                                         <div className="flex items-center justify-between px-1 text-[7px] font-black text-red-500 uppercase tracking-widest animate-in fade-in slide-in-from-top-1 duration-300">
                                           <span>Bao gồm phí quá hạn:</span>
-                                          <span>+{(settleLoan.fine || 0).toLocaleString()} đ</span>
+                                          <span>+{currentSettleLoanFine.toLocaleString()} đ</span>
                                         </div>
                                       )}
                                       <div 

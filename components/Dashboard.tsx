@@ -316,7 +316,18 @@ const Dashboard: React.FC<DashboardProps> = React.memo(({
             <div className="space-y-0.5 text-right">
               <p className="text-[7px] font-bold text-gray-500 uppercase">Phí phạt quá hạn</p>
               <p className="text-base font-black text-red-500">
-                {loans.reduce((acc, curr) => acc + (curr.fine || 0), 0).toLocaleString()} đ
+                {(() => {
+                  const totalFineVal = loans.reduce((acc, curr) => {
+                    const fineRate = Number(settings.FINE_RATE || 0.1) / 100;
+                    const maxPercent = Number(settings.MAX_FINE_PERCENT || 30);
+                    const calculatedFine = (curr.status === 'ĐANG NỢ' || curr.status === 'QUÁ HẠN' || curr.status === 'CHỜ TẤT TOÁN' || curr.status === 'ĐANG GIẢI NGÂN') 
+                      ? calculateFine(curr.amount, curr.date || '', fineRate, maxPercent)
+                      : 0;
+                    const currentFine = Math.max(calculatedFine, curr.fine || 0);
+                    return acc + currentFine;
+                  }, 0);
+                  return totalFineVal.toLocaleString();
+                })()} đ
               </p>
             </div>
           </div>

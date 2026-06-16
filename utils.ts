@@ -37,10 +37,16 @@ export const compressImage = (base64Str: string, maxWidth = 600, maxHeight = 600
   });
 };
 
+export const getVNDate = (d?: Date): Date => {
+  const date = d || new Date();
+  const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+  return new Date(utc + (3600000 * 7));
+};
+
 export const calculateFine = (amount: number, dueDateStr: string, fineRate = 0.001, maxFinePercent = 30): number => {
   const [d, m, y] = dueDateStr.split('/').map(Number);
   const dueDate = new Date(y, m - 1, d);
-  const today = new Date();
+  const today = getVNDate();
   
   // Set time to midnight for accurate day comparison
   dueDate.setHours(0, 0, 0, 0);

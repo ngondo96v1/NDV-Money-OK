@@ -1955,6 +1955,13 @@ router.use(async (req, res, next) => {
   next();
 });
 
+// Helper to get Vietnam date (GMT+7)
+const getVNDate = (d?: Date): Date => {
+  const date = d || new Date();
+  const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+  return new Date(utc + (3600000 * 7));
+};
+
 // Helper to calculate overdue days
 const calculateOverdueDays = (dueDateStr: string): number => {
   if (!dueDateStr) return 0;
@@ -1963,7 +1970,7 @@ const calculateOverdueDays = (dueDateStr: string): number => {
     if (isNaN(d) || isNaN(m) || isNaN(y)) return 0;
     const dueDate = new Date(y, m - 1, d);
     dueDate.setHours(0, 0, 0, 0);
-    const today = new Date();
+    const today = getVNDate();
     today.setHours(0, 0, 0, 0);
     
     if (today <= dueDate) return 0;
