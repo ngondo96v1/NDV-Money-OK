@@ -38,6 +38,7 @@ import * as d3 from 'd3';
 
 import DatabaseErrorModal from './DatabaseErrorModal';
 import NotificationModal from './NotificationModal';
+import { calculateFine, getVNDate } from '../utils';
 
 interface AdminDashboardProps {
   user: User | null;
@@ -403,13 +404,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
   // Loan Statistics - ALWAYS active stats from the unfiltered list of loans
   // to ensure outstanding/isolated liabilities represent real state under any selective start date config.
   const { settledLoans, pendingLoans, activeLoans, overdueLoans, isolatedBadDebt, isolatedBadDebtPrincipal, isolatedBadDebtFine } = useMemo(() => {
-    const today = new Date();
+    const today = getVNDate();
     const lockedUserIds = new Set((users || []).filter(u => u.isLocked).map(u => u.id));
 
     const isolatedLoans = loans.filter(l => {
       const activeStatuses = ['ĐANG NỢ', 'QUÁ HẠN', 'CHỜ TẤT TOÁN', 'ĐANG ĐỐI SOÁT'];
       return lockedUserIds.has(l.userId) && activeStatuses.includes(l.status);
     });
+
+    const fineRateVal = Number(settings.FINE_RATE || 0.1) / 100;
+    const maxPercentVal = Number(settings.MAX_FINE_PERCENT || 30);
+
+    const getLoanFine = (l: LoanRecord) => {
+      const calculatedFine = (l.status === 'ĐANG NỢ' || l.status === 'QUÁ HẠN' || l.status === 'CHỜ TẤT TOÁN' || l.status === 'ĐANG GIẢI NGÂN') 
+        ? calculateFine(l.amount, l.date || '', fineRateVal, maxPercentVal)
+        : 0;
+      return Math.max(calculatedFine, l.fine || 0);
+    };
+
+    const calculatedIsolatedBadDebtFine = isolatedLoans.reduce((sum, l) => sum + getLoanFine(l), 0);
+    const calculatedIsolatedBadDebtPrincipal = isolatedLoans.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
 
     return {
       settledLoans: filteredLoans.filter(l => l.status === 'ĐÃ TẤT TOÁN' && l.settlementType !== 'PRINCIPAL' && l.settlementType !== 'PARTIAL'),
@@ -422,11 +436,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = React.memo(({
         const dueDate = new Date(y, m - 1, d);
         return dueDate < today;
       }),
-      isolatedBadDebt: isolatedLoans.reduce((sum, l) => sum + (Number(l.amount) || 0) + (Number(l.fine) || 0), 0),
-      isolatedBadDebtPrincipal: isolatedLoans.reduce((sum, l) => sum + (Number(l.amount) || 0), 0),
-      isolatedBadDebtFine: isolatedLoans.reduce((sum, l) => sum + (Number(l.fine) || 0), 0)
+      isolatedBadDebt: calculatedIsolatedBadDebtPrincipal + calculatedIsolatedBadDebtFine,
+      isolatedBadDebtPrincipal: calculatedIsolatedBadDebtPrincipal,
+      isolatedBadDebtFine: calculatedIsolatedBadDebtFine
     };
-  }, [loans, filteredLoans, users]);
+  }, [loans, filteredLoans, users, settings]);
   
   // Financial Statistics
   const { totalDisbursed, totalCollected, activeDebt, collectionRate } = useMemo(() => {
